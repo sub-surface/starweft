@@ -160,6 +160,7 @@ SW.combat = (function () {
       state.rep.vigil -= 1; state.rep.severed = Math.min(10, state.rep.severed + 0.7);
       if (sys.ideology !== 'free') state.rep[sys.ideology] = Math.max(-10, (state.rep[sys.ideology] || 0) - 1);
       state.stats.raidsLed = (state.stats.raidsLed || 0) + 1;
+      SW.ships.rec(ship, 'raids');
       SW.game.emit('toast', { kind: 'good', text: '☠ Raid on ' + sys.name + ': +' + Math.round(lootCr) + '¤' + (tookGoods ? ', ' + tookGoods + ' ' + D.COMMODITIES[bestC].name + ' seized' : '') + '. Infamy rises.' });
       SW.game.emit('sfx', 'sell');
       return { ok: true, win: true };

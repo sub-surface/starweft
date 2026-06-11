@@ -314,6 +314,9 @@ section('Exploration economy (distance scaling, finds, first-light)');
   assert(st.credits > cr1 && st.research > res1, 'sale pays credits + research');
   assert((scout.data || []).length === 0, 'charts leave the ship on sale');
   assert(A.sellData(st, scout.id).ok === false, 'cannot sell the same charts twice');
+  assert(far.charted === true, 'sold system is officially charted');
+  assert((st.news || []).some(function (n) { return /chart/.test(n.text); }), 'sale published a ticker headline');
+  assert(scout.rec && scout.rec.surveys >= 1, 'ship service record kept');
   // forced anomaly find: physical loot stays instant
   D.TUNE.surveyFindChance = 1;
   const near = st.systems[home.links[0]];
@@ -355,6 +358,24 @@ section('Opening economy sanity (no-player run)');
   for (const s of copy.systems) s.discovered = true;
   const ops = SW.economy.opportunities(copy, 12);
   assert(ops.length >= 6, 'profitable routes exist for the taking (' + ops.length + ')');
+}
+
+// ---------- 6a2b. world run parameters ----------
+section('World run parameters (density / wealth / rivals / badlands)');
+{
+  const sparse = G.newGame({ seed: 'smoke-world', difficulty: 'relaxed', world: { density: 'sparse', wealth: 'gilded', rivals: 0, badlands: 'shallow' } });
+  const bubbleN = sparse.systems.filter(function (s) { return !s.badlands; }).length;
+  const badN = sparse.systems.filter(function (s) { return s.badlands; }).length;
+  assert(bubbleN <= 185 && bubbleN >= 150, 'sparse bubble thinned (' + bubbleN + ')');
+  assert(sparse.systems.some(function (s) { return !s.badlands && SW.util.dist(s, sparse.systems[0]) > 65; }), 'sparse bubble widened');
+  assert(badN <= 50, 'shallow badlands (' + badN + ')');
+  assert(sparse.rivals.length === 0, 'no rivals when asked');
+  const std = G.newGame({ seed: 'smoke-world', difficulty: 'relaxed' });
+  let gildStock = 0, stdStock = 0;
+  for (const s of sparse.systems) for (const c in s.stocks) gildStock += s.stocks[c];
+  for (const s of std.systems) for (const c in s.stocks) stdStock += s.stocks[c];
+  assert(gildStock / Math.max(1, sparse.systems.length) > stdStock / std.systems.length, 'gilded worlds start richer per system');
+  assert(std.systems.filter(function (s) { return !s.badlands; }).length >= 230, 'standard preset unchanged');
 }
 
 // ---------- 6a3. command grammar (intents → visible queues) ----------

@@ -64,11 +64,13 @@ SW.game = (function () {
       gameOver: null,
       bookmarks: [],
       perks: [], perkPoints: 0, milestones: {}, scourgeStance: null,
+      world: D.resolveWorld(opts.world),
+      news: [],
     };
     SW.galaxy.generate(state);
     SW.story.init(state);
     SW.scourge.init(state);
-    SW.rivals.init(state, 2);
+    SW.rivals.init(state, state.world.rivals);
     SW.combat.init(state);
     SW.worldevents.init(state);
 
@@ -577,6 +579,13 @@ SW.game = (function () {
     state.story.flags.postgame = true;
     state.gameOver = null;
     return { ok: true };
+  };
+
+  // ---- News (the ticker's memory; serialized, capped) ----
+  G.news = function (state, text, sysId) {
+    state.news = state.news || [];
+    state.news.push({ t: state.tick, text: text, sys: sysId === undefined ? null : sysId });
+    if (state.news.length > 30) state.news.shift();
   };
 
   // ---- Action journal ----

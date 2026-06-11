@@ -71,6 +71,8 @@ SW.ui = (function () {
       e.stopPropagation();
     });
 
+    const tk = $('#ticker');
+    if (tk) tk.addEventListener('click', tickerClick);
     setInterval(refreshTick, 300);
     requestAnimationFrame(portraitLoop);
   };
@@ -78,6 +80,7 @@ SW.ui = (function () {
   function refreshTick() {
     const s = st();
     if (!s) return;
+    if (++tickerBeat % 16 === 0) rotateTicker(); // ~5s carousel
     renderTopbar();
     SW.audio.updateMood(s);
     const focused = document.activeElement && (document.activeElement.tagName === 'SELECT' || document.activeElement.tagName === 'INPUT');
@@ -97,6 +100,74 @@ SW.ui = (function () {
     document.querySelectorAll('#dockTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === tab); });
     renderDock(true);
   };
+
+  // ============ ticker carousel ============
+  // One ambient channel: market movers, world headlines, dock gossip.
+  // Clicking an item focuses what it's about.
+  let tickerBeat = 0, tickerCount = 0, tickerAction = null;
+  const TICKER_FLAVOR = [
+    'Dock gossip: the Mariners are paying for quiet lanes again',
+    'Lost: one cargo manifest, sentimental value. Reward in FUEL',
+    'The Synod reminds all pilots that the lanes are prayers',
+    'Combine futures desk closed pending "recalibration"',
+    'Heard on the wire: a scout came back from the dark singing',
+    'Vigil bulletin: report unlicensed lane-keels. Report everything',
+    'Classified: Sparrow hull, lightly raided, runs fine, no questions',
+    'The Severed do not advertise. This space intentionally dark',
+    'Earth Anchorage noodle stand now accepts CRYSTAL. Owner regrets it',
+    'Loomkeeper pamphlet: WEFT AND BE WOVEN',
+    'Salvage law reminder: if it sings, it is not salvage',
+    'A drifter swears the black hole blinked. Drinks were involved',
+  ];
+  function tickerMovers(s) {
+    const out = [];
+    for (const c of D.COMM_IDS) {
+      if (D.COMMODITIES[c].locked) continue;
+      let now = 0, then = 0, n = 0;
+      for (const sys of s.systems) {
+        const h = sys.hist && sys.hist[c];
+        if (!h || h.length < 5) continue;
+        now += h[h.length - 1]; then += h[h.length - 5]; n++;
+      }
+      if (n < 3 || then <= 0) continue;
+      const pct = (now - then) / then * 100;
+      if (Math.abs(pct) >= 5) out.push({ c: c, pct: pct });
+    }
+    out.sort(function (a, b) { return Math.abs(b.pct) - Math.abs(a.pct); });
+    return out.slice(0, 3);
+  }
+  function rotateTicker() {
+    const s = st();
+    if (!s) return;
+    const items = [];
+    for (const m of tickerMovers(s)) {
+      items.push({
+        text: (m.pct > 0 ? '▲ ' : '▼ ') + D.COMMODITIES[m.c].name + ' ' + (m.pct > 0 ? '+' : '') + Math.round(m.pct) + '% across the weave',
+        act: { kind: 'exchange', c: m.c },
+      });
+    }
+    for (const nw of (s.news || []).slice(-6).reverse()) {
+      items.push({ text: nw.text, act: nw.sys !== null && nw.sys !== undefined ? { kind: 'sys', id: nw.sys } : null });
+    }
+    items.push({ text: '“' + TICKER_FLAVOR[(Math.floor(s.tick / 40) + tickerCount) % TICKER_FLAVOR.length] + '”', act: null });
+    tickerCount++;
+    const it = items[tickerCount % items.length];
+    tickerAction = it.act;
+    const el = $('#ticker');
+    if (!el) return;
+    el.textContent = it.text;
+    el.style.cursor = it.act ? 'pointer' : '';
+  }
+  function tickerClick() {
+    const s = st();
+    if (!s || !tickerAction) return;
+    if (tickerAction.kind === 'sys' && s.systems[tickerAction.id]) jumpToSystem(tickerAction.id);
+    else if (tickerAction.kind === 'exchange' && SW.tech.has(s, 'exchange')) {
+      exchangeComm = tickerAction.c;
+      $('#exchange').classList.remove('hidden');
+      renderExchange();
+    }
+  }
 
   // ============ portrait animation loop ============
   let lastPortraitDraw = 0;
@@ -489,6 +560,15 @@ SW.ui = (function () {
     html += '<div class="sub">' + status + ' · hold ' + SW.ships.cargoTotal(ship) + '/' + SW.ships.cap(s, ship) +
       (hull.power ? ' · pwr ' + SW.combat.power(s, ship) : '') +
       (ship.stranded ? ' · <span style="color:var(--danger)">stranded</span>' : '') + '</div>';
+    if (ship.rec) {
+      const R2 = ship.rec;
+      const bits = [];
+      if (R2.hauls) bits.push(R2.hauls + ' hauls');
+      if (R2.surveys) bits.push(R2.surveys + ' surveys');
+      if (R2.charted) bits.push(R2.charted + ' first sightings');
+      if (R2.raids) bits.push(R2.raids + ' raids');
+      if (bits.length) html += '<div class="sub" title="Service record — this hull\'s history">⚓ ' + bits.join(' · ') + '</div>';
+    }
     const cargo = Object.keys(ship.cargo);
     const chipDataV = SW.ships.dataValue(ship);
     if (cargo.length || chipDataV > 0) {
@@ -572,7 +652,59 @@ SW.ui = (function () {
     else if (activeTab === 'routes') renderRoutes(body, force);
     else if (activeTab === 'ops') renderOps(body);
     else if (activeTab === 'tech') renderTech(body, force);
+    else if (activeTab === 'you') renderYou(body);
     else if (activeTab === 'log') renderLog(body);
+  }
+
+  // ============ YOU: the captain, not the network ============
+  function renderYou(body) {
+    const s = st();
+    let html = '<div class="row"><canvas id="youSigil" width="56" height="56"></canvas>' +
+      '<div class="grow"><div class="title">' + esc(s.identity.name) + '</div>' +
+      '<div class="sub">“' + esc(s.identity.motto) + '”</div></div></div>';
+    const doc = SW.tech.doctrine(s);
+    const stanceNames = { hold: 'HOLD THE LINE', cure: 'CHASE THE CURE', exodus: 'PREPARE THE EXODUS' };
+    html += '<div class="row">' +
+      '<span class="tag" data-info="origin:' + s.origin + '">' + esc(D.ORIGINS[s.origin].name) + '</span>' +
+      (doc ? '<span class="tag acc" data-info="tech:' + doc + '">' + esc(D.TECHS[doc].name) + '</span>' : '<span class="tag" style="opacity:0.5">no doctrine yet</span>') +
+      (s.scourgeStance ? '<span class="tag' + (s.scourgeStance === 'hold' ? '' : ' acc') + '">' + stanceNames[s.scourgeStance] + '</span>' : '') +
+      ((s.infamy || 0) >= 1 ? '<span class="tag bad">infamy ' + Math.floor(s.infamy) + '</span>' : '') +
+      '</div>';
+
+    // aptitudes: a character sheet, not a tech-tree footnote
+    const pts = s.perkPoints || 0;
+    html += '<h4>Aptitudes <span class="tag' + (pts ? ' acc' : '') + '">' + pts + ' point' + (pts === 1 ? '' : 's') + '</span></h4>';
+    const perkList = SW.perks.list(s);
+    const cats = [];
+    for (const p of perkList) if (cats.indexOf(p.cat) < 0) cats.push(p.cat);
+    for (const cat of cats) {
+      html += '<div class="row"><span class="sub" style="width:86px">' + cat.toUpperCase() + '</span>';
+      for (const p of perkList.filter(function (x) { return x.cat === cat; })) {
+        if (p.owned) html += '<span class="tag acc" title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</span>';
+        else if (p.available) html += '<button data-act="buyPerk" data-id="' + p.id + '" ' + (pts ? '' : 'disabled') + ' title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</button>';
+        else html += '<span class="tag" style="opacity:0.4" title="Requires ' + esc((D.PERKS[p.req] || {}).name || '') + ' — ' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</span>';
+      }
+      html += '</div>';
+    }
+    // milestones: where the points come from
+    html += '<h4>Milestones</h4>';
+    for (const m of D.PERK_MILESTONES) {
+      const done = !!(s.milestones && s.milestones[m.id]);
+      html += '<div class="row"><span class="sub grow"' + (done ? '' : ' style="opacity:0.55"') + '>' + (done ? '◆ ' : '◇ ') + esc(m.label) + '</span>' +
+        (done ? '<span class="tag acc">+1</span>' : '') + '</div>';
+    }
+    // the fleet's collected history
+    let hauls = 0, surveys = 0, charted = 0, raids = 0;
+    for (const sh of s.ships) {
+      const r = sh.rec || {};
+      hauls += r.hauls || 0; surveys += r.surveys || 0; charted += r.charted || 0; raids += r.raids || 0;
+    }
+    html += '<h4>Service record (fleet)</h4>';
+    html += '<div class="sub">' + hauls + ' hauls · ' + surveys + ' surveys · ' + charted + ' first sightings · ' + raids + ' raids</div>';
+    html += '<div class="sub">' + (s.stats.dataSold ? U.fmt(s.stats.dataSold) + '¤ in charts sold · ' : '') + (s.fragments || []).length + ' chronicle fragments</div>';
+    body.innerHTML = html;
+    const cv = document.getElementById('youSigil');
+    if (cv) addPortrait(cv, { kind: 'sigil', seed: s.identity.sigil, hue: s.identity.hue });
   }
 
   function renderFleet(body) {
@@ -692,7 +824,9 @@ SW.ui = (function () {
     const ship = selectedShip();
     const hull = ship ? ship.hull : 'sparrow';
     const proj = SW.ships.projectRoute(s, ui.routeDraft, hull);
-    el.textContent = 'projected ' + (proj.profit >= 0 ? '+' : '') + U.fmt(proj.profit) + '¤ / loop (' + D.HULLS[hull].name + ')';
+    const perTick = proj.profit / Math.max(1, proj.dist / D.HULLS[hull].speed);
+    el.textContent = 'projected ' + (proj.profit >= 0 ? '+' : '') + U.fmt(proj.profit) + '¤/loop ≈ ' +
+      (perTick >= 0 ? '+' : '') + perTick.toFixed(1) + '¤/tick (' + D.HULLS[hull].name + ')';
     el.style.color = proj.profit > 0 ? 'var(--accent)' : 'var(--danger)';
   }
 
@@ -778,25 +912,9 @@ SW.ui = (function () {
     const s = st();
     let html = '<div class="row"><span class="title grow num">◇ ' + Math.floor(s.research) + '</span><span class="sub">click a node to research</span><button data-act="openTechTree">expand</button></div>';
     html += '<canvas id="techCanvas"></canvas>';
-    // aptitudes: the captain, not the network — points come from milestones
-    const pts = s.perkPoints || 0;
-    const perkList = SW.perks.list(s);
-    const ownedN = perkList.filter(function (p) { return p.owned; }).length;
-    if (pts > 0 || ownedN > 0) {
-      html += '<h4>Aptitudes <span class="tag' + (pts ? ' acc' : '') + '">' + pts + ' point' + (pts === 1 ? '' : 's') + '</span></h4>';
-      const cats = [];
-      for (const p of perkList) if (cats.indexOf(p.cat) < 0) cats.push(p.cat);
-      for (const cat of cats) {
-        const chain = perkList.filter(function (p) { return p.cat === cat; });
-        if (!chain.some(function (p) { return p.owned || p.available; })) continue;
-        html += '<div class="row"><span class="sub" style="width:86px">' + cat.toUpperCase() + '</span>';
-        for (const p of chain) {
-          if (p.owned) html += '<span class="tag acc" title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</span>';
-          else if (p.available) html += '<button data-act="buyPerk" data-id="' + p.id + '" ' + (pts ? '' : 'disabled') + ' title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</button>';
-          else html += '<span class="tag" style="opacity:0.4" title="Requires ' + esc((D.PERKS[p.req] || {}).name || '') + '">' + p.icon + '</span>';
-        }
-        html += '</div>';
-      }
+    // aptitudes live in the YOU tab; just flag waiting points here
+    if ((s.perkPoints || 0) > 0) {
+      html += '<div class="row"><span class="tag acc">◆ ' + s.perkPoints + ' aptitude point' + (s.perkPoints === 1 ? '' : 's') + ' waiting — see the YOU tab</span></div>';
     }
     const tree = SW.tech.tree(s);
     if (tree.doctrines.some(function (d2) { return d2.visible; })) {
@@ -1120,6 +1238,19 @@ SW.ui = (function () {
         ' <b class="num" style="color:var(--accent)">+' + Math.round(op.margin) + '</b></span>' +
         '<button data-act="quickRoute" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '">＋ route</button></div>';
     }
+    // movers: the terminal reads the same history the sparklines do
+    html += '<h4>Movers</h4>';
+    const mv = tickerMovers(s);
+    if (!mv.length) html += '<div class="sub">Markets becalmed. Suspicious in its own way.</div>';
+    for (const m of mv) {
+      html += '<div class="row"><span class="grow sub" data-info="commodity:' + m.c + '">' + commName(m.c) + '</span>' +
+        '<span class="num" style="color:' + (m.pct > 0 ? '#ffb070' : '#7fe0a8') + '">' + (m.pct > 0 ? '▲ +' : '▼ ') + Math.round(m.pct) + '%</span>' +
+        '<button data-act="exComm" data-c="' + m.c + '">view</button></div>';
+    }
+    // bulletins: paid placements, allegedly
+    html += '<h4 title="The terminal carries advertising. The terminal regrets nothing.">Bulletins</h4>';
+    html += '<div class="sub">' + esc(TICKER_FLAVOR[Math.floor(s.tick / 40) % TICKER_FLAVOR.length]) + '</div>';
+    html += '<div class="sub">' + esc(TICKER_FLAVOR[(Math.floor(s.tick / 40) + 5) % TICKER_FLAVOR.length]) + '</div>';
     // fleet utilization
     const idle = s.ships.filter(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission; });
     html += '<h4>Fleet</h4>';
@@ -1314,6 +1445,11 @@ SW.ui = (function () {
       Object.keys(D.DIFFICULTY).map(function (d) {
         return '<option value="' + d + '"' + (d === 'standard' ? ' selected' : '') + '>' + D.DIFFICULTY[d].name + ' — ' + D.DIFFICULTY[d].desc + '</option>';
       }).join('') + '</select></div>';
+    html += '<div class="row"><span class="sub" style="width:64px">world</span>' +
+      '<select id="ngDen">' + Object.keys(D.WORLD.density).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.density[k].name + '</option>'; }).join('') + '</select>' +
+      '<select id="ngWea">' + Object.keys(D.WORLD.wealth).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.wealth[k].name + '</option>'; }).join('') + '</select>' +
+      '<select id="ngBad">' + Object.keys(D.WORLD.badlands).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>badlands: ' + D.WORLD.badlands[k].name + '</option>'; }).join('') + '</select>' +
+      '<select id="ngRiv"><option value="2" selected>2 rivals</option><option value="1">1 rival</option><option value="0">no rivals</option></select></div>';
     html += '<div class="row"><span class="sub" style="width:64px">aptitude</span><select id="ngApt" style="flex:1">' +
       '<option value="">— undecided (find yourself out there) —</option>' +
       Object.keys(D.PERKS).filter(function (id) { return !D.PERKS[id].req; }).map(function (id) {
@@ -1485,6 +1621,7 @@ SW.ui = (function () {
       case 'buildSite': { const r = A().buildSite(s, sysId, btn.dataset.body, btn.dataset.fac); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'buyPerk': { const r = A().buyPerk(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
+      case 'exComm': exchangeComm = btn.dataset.c; renderExchange(); break;
       case 'clearQueue': if (ship) A().clearQueue(s, ship.id); break;
       case 'fetchHere': {
         if (!ship || sysId === null) break;
@@ -1581,6 +1718,12 @@ SW.ui = (function () {
           difficulty: $('#ngDiff').value,
           origin: chosenOrigin,
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
+          world: {
+            density: ($('#ngDen') && $('#ngDen').value) || 'standard',
+            wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
+            badlands: ($('#ngBad') && $('#ngBad').value) || 'standard',
+            rivals: ($('#ngRiv') && $('#ngRiv').value) || 2,
+          },
           identity: {
             name: ($('#idName').value || 'The Provisional Weft').slice(0, 40),
             motto: ($('#idMotto').value || 'Finish the round.').slice(0, 60),

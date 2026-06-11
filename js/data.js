@@ -247,6 +247,49 @@ SW.data = (function () {
     wonder:    { name: 'Anomaly',           icon: '◈' },
   };
 
+  // ---- Cartography data buyers: who pays over the odds for which charts ----
+  D.DATA_BUYERS = {
+    synod:   { wonderRecord: 1.3, anomalyTrace: 1.2 },
+    combine: { survey: 1.2 },
+    mariners:{ firstlight: 1.25 },
+    loom:    { deepFieldMap: 1.3, wonderRecord: 1.2 },
+    vigil:   { deepFieldMap: 1.2 },
+  };
+
+  // ---- World setup presets (run parameters; SPEC §3.5) ----
+  D.WORLD = {
+    density: {
+      sparse:   { name: 'Sparse — the long dark', sysCount: 180, bubbleR: 75, minSysDist: 3.2 },
+      standard: { name: 'Standard',               sysCount: 260, bubbleR: 58, minSysDist: 2.0 },
+      crowded:  { name: 'Crowded — close skies',  sysCount: 330, bubbleR: 52, minSysDist: 1.7 },
+    },
+    wealth: {
+      deprived: { name: 'Deprived — you are the thread', mult: 0.55 },
+      standard: { name: 'Standard',                      mult: 1.0 },
+      gilded:   { name: 'Gilded — fat and slow',         mult: 1.6 },
+    },
+    badlands: {
+      shallow:  { name: 'Shallow', count: 45,  R: 100 },
+      standard: { name: 'Standard', count: 90, R: 120 },
+      deep:     { name: 'Deep — Noita country', count: 150, R: 150 },
+    },
+  };
+  D.resolveWorld = function (opts) {
+    opts = opts || {};
+    const den = D.WORLD.density[opts.density] || D.WORLD.density.standard;
+    const wea = D.WORLD.wealth[opts.wealth] || D.WORLD.wealth.standard;
+    const bad = D.WORLD.badlands[opts.badlands] || D.WORLD.badlands.standard;
+    let rivals = parseInt(opts.rivals, 10);
+    if (!(rivals >= 0 && rivals <= 2)) rivals = 2;
+    return {
+      density: opts.density || 'standard', wealth: opts.wealth || 'standard',
+      badlandsPreset: opts.badlands || 'standard',
+      sysCount: den.sysCount, bubbleR: den.bubbleR, minSysDist: den.minSysDist,
+      wealthMult: wea.mult, rivals: rivals,
+      badlandsCount: bad.count, badlandsR: bad.R,
+    };
+  };
+
   // ---- Difficulty ----
   D.DIFFICULTY = {
     relaxed:  { name: 'Relaxed',  desc: 'No Scourge. Pure sandbox weaving.',            startCredits: 900, scourgeStart: -1,  spreadEvery: 0,  spreadAccel: 0,    research: 1.2 },

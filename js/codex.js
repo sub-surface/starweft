@@ -138,6 +138,7 @@ SW.codex = (function () {
         if (consL.length) lines.push('Consumes ' + consL.join(' · '));
         if (sys.slots.length) lines.push('Factories: ' + sys.slots.map(function (o) { return o === 'ANY' ? 'Fabricator' : D.COMMODITIES[o].name; }).join(', '));
         lines.push(sys.surveyed ? (data.bodies.length + ' bodies · HZ ' + data.hz[0].toFixed(2) + '–' + data.hz[1].toFixed(2) + ' AU') : 'Unsurveyed — a scout idling here will chart its worlds.');
+        if (sys.surveyed) lines.push(sys.charted ? '◈ Officially charted — your data is on the maps.' : '◌ Charts unsold — survey data has not reached a cartographer.');
         if (sys.scourge === 1) lines.push('⚠ SCOURGE INCOMING — ' + Math.max(0, sys.threatAt - state.tick) + ' ticks.');
         if (sys.scourge === 2) lines.push('† Corrupted. The market is ash.');
         if (sys.note) lines.push('"' + sys.note + '"');

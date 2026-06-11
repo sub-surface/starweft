@@ -158,7 +158,7 @@ step('map hover + click on every system type', function () {
 });
 
 step('all dock tabs render', function () {
-  ['fleet', 'routes', 'ops', 'tech', 'log'].forEach(function (t) { SW.ui.setTab(t); });
+  ['fleet', 'routes', 'ops', 'tech', 'you', 'log'].forEach(function (t) { SW.ui.setTab(t); });
 });
 
 step('camera alignment action flattens the orbit view', function () {

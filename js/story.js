@@ -19,6 +19,11 @@ SW.story = (function () {
 
   ST.tick = function (state) {
     const st = state.story;
+    // hails age out: ignoring is an answer, and the faction notices
+    if (st.hail) {
+      if (!ev(st.hail.id)) st.hail = null; // dynamic encounter lost across a load
+      else if (state.tick - st.hail.at > 60) ST.dismissHail(state);
+    }
     if (st.pending) {
       if (!ev(st.pending)) st.pending = null; // dynamic event lost across a load: let it go
       else return;
@@ -234,6 +239,25 @@ SW.story = (function () {
     return null;
   }
 
+  // ---- hails: ambient encounters that don't block the game ----
+  // A chip appears; the player can open it (modal) or let it pass.
+  ST.openHail = function (state) {
+    const h = state.story.hail;
+    if (!h || !ev(h.id)) { state.story.hail = null; return { ok: false, msg: 'The channel is dead.' }; }
+    if (state.story.pending) return { ok: false, msg: 'Another matter holds the line.' };
+    state.story.hail = null;
+    fire(state, h.id, h.ctx);
+    return { ok: true };
+  };
+  ST.dismissHail = function (state) {
+    const h = state.story.hail;
+    if (!h) return { ok: false };
+    state.story.hail = null;
+    const fdef = SW.lore.ENC_FACTIONS[h.fac];
+    if (fdef && fdef.rep) rep(state, fdef.rep, -0.2); // they remember being left on read
+    return { ok: true };
+  };
+
   // ---- arrival hook ----
   ST.onArrival = function (state, sysId, ship) {
     const st = state.story, sys = state.systems[sysId];
@@ -249,10 +273,15 @@ SW.story = (function () {
     if (!U.chance(state, D.TUNE.arrivalEventChance)) return;
     st.lastDropIn = state.tick;
 
-    // half the drop-ins are assembled encounters, half are authored events
+    // half the drop-ins are assembled encounters — they hail rather than block
     if (U.chance(state, 0.5)) {
+      if (st.hail) return; // one open channel at a time
       const enc = ST.buildEncounter(state, sys, ship);
-      if (enc) { fire(state, enc.id, ctx); return; }
+      if (enc) {
+        st.hail = { id: enc.id, ctx: ctx, at: state.tick, fac: enc.speaker.faction, title: enc.title };
+        SW.game.emit('sfx', 'click');
+        return;
+      }
     }
     const pool = SW.eventsData.EVENTS.filter(function (e) {
       if (!e.arrival) return false;

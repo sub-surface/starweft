@@ -26,6 +26,10 @@ SW.ships = (function () {
   };
   function hasTech(state, id) { return state.tech.unlocked.indexOf(id) >= 0; }
 
+  // Service record: every hull quietly accumulates its history.
+  function rec(ship, key) { ship.rec = ship.rec || {}; ship.rec[key] = (ship.rec[key] || 0) + 1; }
+  S.rec = rec;
+
   // ---- Range (command web) ----
   S.rangeAnchors = function (state) {
     const out = [];
@@ -126,8 +130,15 @@ SW.ships = (function () {
     if (!sys || sys.type !== 'pop' || sys.scourge === 2) return { ok: false, msg: 'Cartographers buy at populated systems.' };
     const data = ship.data || [];
     if (!data.length) return { ok: false, msg: 'No charts aboard.' };
+    // local buyers pay over the odds for the kinds they covet
+    const buyer = D.DATA_BUYERS[sys.ideology] || {};
     let credits = 0, research = 0;
-    for (const b of data) { credits += b.c; research += b.r; }
+    for (const b of data) {
+      credits += Math.round(b.c * (buyer[b.kind] || 1));
+      research += b.r;
+      const src = state.systems[b.sys];
+      if (src) src.charted = true; // officially on the maps now
+    }
     const n = data.length;
     ship.data = [];
     state.credits += credits;
@@ -136,6 +147,7 @@ SW.ships = (function () {
     state.stats.dataSold = (state.stats.dataSold || 0) + credits;
     SW.game.emit('toast', { kind: 'good', text: '◈ ' + ship.name + ' sold ' + n + ' chart' + (n === 1 ? '' : 's') + ' at ' + sys.name + ': +' + U.fmt(credits) + '¤, +' + research + '◇.' });
     SW.game.emit('sfx', 'sell');
+    SW.game.news(state, '◈ ' + sys.name + ' cartographers log ' + n + ' new chart' + (n === 1 ? '' : 's') + ' from ' + ship.name, sys.id);
     return { ok: true, credits: credits, research: research, bundles: n };
   };
 
@@ -328,6 +340,7 @@ SW.ships = (function () {
       sys: sys.id, c: Math.round(credits), r: Math.round(research),
     });
     state.stats.surveys = (state.stats.surveys || 0) + 1;
+    rec(ship, 'surveys');
     SW.game.emit('toast', { kind: 'good', text: '⌖ ' + ship.name + ' charted ' + sys.name + ' — data worth ' + Math.round(credits) + '¤ + ' + Math.round(research) + '◇ aboard. Sell at a populated port.' });
     SW.game.emit('sfx', 'discover');
     // lore surfaces where people dig
@@ -451,6 +464,7 @@ SW.ships = (function () {
       const bounty = Math.round(D.TUNE.discoverCredits * (1 + Math.min(2, (home ? U.dist(home, sys) : 0) / D.TUNE.bubbleR)));
       ship.data = ship.data || [];
       ship.data.push({ kind: 'firstlight', sys: sysId, c: bounty, r: 0 });
+      rec(ship, 'charted');
       SW.game.emit('toast', { kind: 'good', text: '✧ ' + ship.name + ' sighted ' + sys.name + ' (data +' + bounty + '¤)' });
       SW.game.emit('sfx', 'discover');
       SW.story.onArrival(state, sysId, ship);
@@ -471,6 +485,7 @@ SW.ships = (function () {
       if (ship.mission.sellOnArrive) {
         S.sellAll(state, ship);
         state.stats.deliveries = (state.stats.deliveries || 0) + 1;
+        rec(ship, 'hauls');
         SW.game.emit('sfx', 'sell');
       }
       ship.mission = null;
@@ -544,6 +559,7 @@ SW.ships = (function () {
     if (stop.action === 'sell') {
       S.sellAll(state, ship);
       state.stats.deliveries = (state.stats.deliveries || 0) + 1;
+      rec(ship, 'hauls');
     } else if (stop.action === 'buy' && stop.c) {
       S.buy(state, ship, stop.c, 9999);
     } else if (stop.action === 'smart') {
@@ -652,6 +668,7 @@ SW.ships = (function () {
         if (cmd.c) S.sell(state, ship, cmd.c, 9999);
         else { S.sellAll(state, ship); }
         state.stats.deliveries = (state.stats.deliveries || 0) + 1;
+        rec(ship, 'hauls');
         q.shift();
         break;
       }
@@ -787,6 +804,7 @@ SW.ships = (function () {
       if (ship.at === d.sys) {
         S.sell(state, ship, d.c, carrying);
         state.stats.deliveries = (state.stats.deliveries || 0) + 1;
+        rec(ship, 'hauls');
       } else {
         const r = S.send(state, ship, d.sys, { kind: 'directive' });
         if (!r.ok) ship.retryAt = state.tick + 12;

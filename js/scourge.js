@@ -94,6 +94,7 @@ SW.scourge = (function () {
         sys.pop -= refugees;
         if (haven.discovered) {
           SW.game.emit('toast', { kind: 'info', text: '⇢ Refugees from ' + sys.name + ' reach ' + haven.name + '. Its markets swell.' });
+          SW.game.news(state, '⇢ Refugee convoys from ' + sys.name + ' swell the markets at ' + haven.name, haven.id);
         }
       }
     }

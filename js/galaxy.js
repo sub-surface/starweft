@@ -10,14 +10,15 @@ SW.galaxy = (function () {
 
   G.generate = function (state) {
     const T = D.TUNE;
+    const W = state.world || D.resolveWorld(); // run parameters: density/wealth/badlands
     SW.planets.clearCache();
 
     // ---- 1. stars: real catalog, then procedural fill ----
     const stars = [{ name: 'Sol', x: 0, y: 0, z: 0, spec: 'G2V', companions: [], knownPlanets: 8, note: 'Home. The original orchard.', real: true }];
     for (const s of SW.starcat.build()) {
-      if (s.dist <= T.bubbleR) stars.push(s);
+      if (s.dist <= W.bubbleR) stars.push(s);
     }
-    fillProcedural(state, stars, T);
+    fillProcedural(state, stars, W);
 
     state.systems = stars.map(function (s, i) {
       return {
@@ -36,10 +37,10 @@ SW.galaxy = (function () {
     state.homeId = 0;
 
     // ---- 2. regions (biomes) ----
-    makeRegions(state, T);
+    makeRegions(state, W);
 
     // ---- 3. wonders: one quiet black hole, one Dyson husk ----
-    placeWonders(state, T);
+    placeWonders(state, W);
 
     // ---- 4. lanes: 3D Gabriel graph, patched connected ----
     const edges = gabriel3D(state.systems);
@@ -65,10 +66,10 @@ SW.galaxy = (function () {
     // ---- 6. types from planets, ideologies, economies ----
     assignTypes(state);
     assignIdeologies(state);
-    initEconomies(state);
+    initEconomies(state, W);
 
     // ---- 7. the badlands: a dark shell beyond the bubble (Deep Drives) ----
-    makeBadlands(state, T);
+    makeBadlands(state, W);
 
     // ---- 8. reveal & survey home neighborhood ----
     const home = state.systems[0];
@@ -81,23 +82,24 @@ SW.galaxy = (function () {
   // Sparse, coreward-heavy, no settled worlds: untouched veins, dead stations,
   // and the long dark. Lanes exist (the Loom wove far) but only Deep Drives
   // can hold a ship together on them — gating lives in ships.findPath.
-  function makeBadlands(state, T) {
-    const innerR = T.bubbleR * 1.12;
+  function makeBadlands(state, W) {
+    const T = D.TUNE;
+    const innerR = W.bubbleR * 1.12;
     const pts = [];
     let tries = 0, id = 9000;
-    while (pts.length < T.badlandsCount && tries++ < 200000) {
+    while (pts.length < W.badlandsCount && tries++ < 200000) {
       const u = U.rnd(state), v = U.rnd(state), w = U.rnd(state);
-      const r = innerR + (T.badlandsR - innerR) * Math.cbrt(u);
+      const r = innerR + (W.badlandsR - innerR) * Math.cbrt(u);
       const th = Math.acos(2 * v - 1), ph = 2 * Math.PI * w;
       const x = r * Math.sin(th) * Math.cos(ph);
       const y = r * Math.sin(th) * Math.sin(ph);
       const z = r * Math.cos(th) * 0.5;
       if (Math.sqrt(x * x + y * y + z * z) < innerR) continue; // disk squash must not tuck points back inside
-      const coreBias = 0.15 + 0.85 * (x / T.badlandsR + 1) / 2;
+      const coreBias = 0.15 + 0.85 * (x / W.badlandsR + 1) / 2;
       if (U.rnd(state) > coreBias) continue;
       const p = { x: x, y: y, z: z };
       let ok = true;
-      for (const q of pts) { if (U.dist(q, p) < T.minSysDist * 1.6) { ok = false; break; } }
+      for (const q of pts) { if (U.dist(q, p) < W.minSysDist * 1.6) { ok = false; break; } }
       if (!ok) continue;
       p.spec = rollSpectral(state);
       p.name = 'DWS ' + (id += U.ri(state, 3, 17));
@@ -161,22 +163,22 @@ SW.galaxy = (function () {
   }
 
   // ---------- placement ----------
-  function fillProcedural(state, stars, T) {
+  function fillProcedural(state, stars, W) {
     let tries = 0, id = 1000;
-    while (stars.length < T.sysCount && tries < 120000) {
+    while (stars.length < W.sysCount && tries < 120000) {
       tries++;
       // uniform in sphere, then coreward (+x) acceptance bias
       const u = U.rnd(state), v = U.rnd(state), w = U.rnd(state);
-      const r = T.bubbleR * Math.cbrt(u);
+      const r = W.bubbleR * Math.cbrt(u);
       const th = Math.acos(2 * v - 1), ph = 2 * Math.PI * w;
       const x = r * Math.sin(th) * Math.cos(ph);
       const y = r * Math.sin(th) * Math.sin(ph);
       const z = r * Math.cos(th) * 0.62;      // thin-disk squash
-      const coreBias = 0.25 + 0.75 * (x / T.bubbleR + 1) / 2; // metallicity gradient: coreward is richer
+      const coreBias = 0.25 + 0.75 * (x / W.bubbleR + 1) / 2; // metallicity gradient: coreward is richer
       if (U.rnd(state) > coreBias) continue;
       let ok = true;
       const p = { x: x, y: y, z: z };
-      for (const s of stars) { if (U.dist(s, p) < T.minSysDist) { ok = false; break; } }
+      for (const s of stars) { if (U.dist(s, p) < W.minSysDist) { ok = false; break; } }
       if (!ok) continue;
       const spec = rollSpectral(state);
       const companions = [];
@@ -378,8 +380,9 @@ SW.galaxy = (function () {
   }
 
   // ---------- economies ----------
-  function initEconomies(state) {
+  function initEconomies(state, W) {
     const T = D.TUNE;
+    const wealth = (W && W.wealthMult) || 1; // run parameter: starting stocks, not capacity
     for (const sys of state.systems) {
       for (const c of D.COMM_IDS) { sys.stocks[c] = 0; sys.capacity[c] = T.capDefault; }
       const pr = SW.planets.profile(state, sys.id);
@@ -401,8 +404,8 @@ SW.galaxy = (function () {
       } else if (sys.type === 'pop') {
         sys.pop = pr.hab >= 2 ? U.ri(state, 10, 26) : U.ri(state, 6, 14); // garden worlds breed cities
       } else if (sys.type === 'derelict') {
-        sys.stocks.TECH = U.ri(state, 10, 30);
-        sys.stocks.CRYSTAL = U.ri(state, 10, 25);
+        sys.stocks.TECH = Math.round(U.ri(state, 10, 30) * wealth);
+        sys.stocks.CRYSTAL = Math.round(U.ri(state, 10, 25) * wealth);
       }
       // white dwarfs leak crystallized carbon regardless of type
       if (D.specClass(sys.spec) === 'D' && !sys.prod.CRYSTAL && sys.type !== 'frontier') sys.prod.CRYSTAL = 0.25;
@@ -417,8 +420,8 @@ SW.galaxy = (function () {
         sys.cons.TECH = 0.009 * sys.pop;
       }
       for (const c in sys.prod) sys.capacity[c] = T.capProducer;
-      for (const c in sys.prod) sys.stocks[c] = Math.round(sys.capacity[c] * U.rf(state, 0.5, 0.7));
-      for (const c in sys.cons) sys.stocks[c] = Math.round(sys.capacity[c] * U.rf(state, 0.15, 0.35));
+      for (const c in sys.prod) sys.stocks[c] = Math.min(sys.capacity[c], Math.round(sys.capacity[c] * U.rf(state, 0.5, 0.7) * wealth));
+      for (const c in sys.cons) sys.stocks[c] = Math.min(sys.capacity[c], Math.round(sys.capacity[c] * U.rf(state, 0.15, 0.35) * wealth));
       for (const out of sys.slots) {
         const rec = D.RECIPES.find(function (r) { return r.out === out; });
         if (rec) for (const inp in rec.inputs) sys.stocks[inp] = Math.max(sys.stocks[inp], Math.round(sys.capacity[inp] * 0.3));
@@ -437,7 +440,7 @@ SW.galaxy = (function () {
     home.cons.FUEL = 0.024 * home.pop;
     home.cons.MEDS = 0.011 * home.pop;
     home.cons.TECH = 0.009 * home.pop;
-    home.stocks.FOOD = 40; home.stocks.FUEL = 30;
+    home.stocks.FOOD = Math.round(40 * wealth); home.stocks.FUEL = Math.round(30 * wealth);
   }
 
   return G;
