@@ -309,8 +309,13 @@ pressures before the interface can explain them.
    bank exceeds `TUNE.dataSellAt`; opening-economy no-player sanity check in
    the smoke suite. Remaining: per-kind buyers, codex chart-states, sale
    headlines in the ticker.
-6. **Command grammar** (§2.1) — atomic queue + intent compiler + interrupts;
-   FETCH and EXPLORE-AND-REPORT intents; "why am I doing this" diagnostics.
+6. ✅ **Command grammar v1** (§2.1) — atomic queue on ships (move/buy/sell/
+   drop/sellData/wait), `S.intent` compiler, `A.order`/`A.clearQueue`
+   journaled actions; FETCH and GO-SELL-DATA intents; the why-line + current
+   atom + steps-left always visible in the command bar; ⇄ fetch on every
+   market row, ⤳ one-shot fetch on every opportunity. Remaining: interrupts
+   (data-full/stranded as injectable rules), more intents (patrol, escort),
+   queue editing.
 7. **UI split + ontology** (§7): per-surface modules, cockpit-style selected
    ship (queue visible, tabs), YOU tab (aptitudes home), infobox layout slot +
    hover bounding, data-info coverage test, ticker carousel.

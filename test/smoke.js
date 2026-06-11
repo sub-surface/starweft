@@ -357,6 +357,46 @@ section('Opening economy sanity (no-player run)');
   assert(ops.length >= 6, 'profitable routes exist for the taking (' + ops.length + ')');
 }
 
+// ---------- 6a3. command grammar (intents → visible queues) ----------
+section('Command grammar (FETCH intent, queue atoms)');
+{
+  const st = G.newGame({ seed: 'smoke-grammar', difficulty: 'relaxed' });
+  st.credits = 2000;
+  const ship = st.ships[0];
+  const mine = st.systems.find(function (s) { return s.type === 'mining' && !s.badlands && (s.stocks.ORE || 0) > 20; });
+  assert(!!mine, 'a stocked mining system exists');
+  mine.discovered = true;
+
+  // bad intents fail loudly
+  assert(A.order(st, ship.id, { type: 'dance' }).ok === false, 'unknown intent rejected');
+  assert(A.order(st, ship.id, { type: 'fetch', c: 'ORE', from: mine.id, to: 9999 }).ok === false, 'invalid destination rejected');
+
+  // FETCH compiles to a visible queue and runs to completion
+  const r = A.order(st, ship.id, { type: 'fetch', c: 'ORE', from: mine.id, to: st.homeId });
+  assert(r.ok, 'fetch intent accepted: ' + (r.msg || ''));
+  assert(ship.queue.length === 4 && ship.queue[0].op === 'move' && ship.queue[1].op === 'buy', 'intent compiled to atoms');
+  assert(/FETCH/.test(ship.queueNote), 'the why-line is set');
+  const deliveries0 = st.stats.deliveries || 0;
+  let guard = 0;
+  while (ship.queue.length && guard++ < 600) { G.tick(st); chooseAny(st); }
+  assert(ship.queue.length === 0 && ship.queueNote === null, 'orders completed and cleared (' + guard + ' ticks)');
+  assert(ship.at === st.homeId, 'hauler ended at the destination');
+  assert((st.stats.deliveries || 0) > deliveries0, 'fetch counted as a delivery');
+  assert(!ship.cargo.ORE, 'cargo sold on arrival');
+
+  // orders displace other assignments; journal records the intent
+  const route = SW.ships.createRoute(st, [{ sys: st.homeId, action: 'sell' }, { sys: mine.id, action: 'buy', c: 'ORE' }]);
+  SW.ships.assignToRoute(st, ship, route);
+  assert(ship.routeId === route.id, 'ship on a route');
+  A.order(st, ship.id, { type: 'fetch', c: 'ORE', from: mine.id, to: st.homeId });
+  assert(ship.routeId === null && ship.queue.length > 0, 'an order displaces the route');
+  const je = st.journal[st.journal.length - 1];
+  assert(je.a === 'order' && je.args[1].type === 'fetch', 'intent journaled for replay');
+  // cancel mid-orders
+  assert(A.clearQueue(st, ship.id).ok && ship.queue.length === 0 && ship.queueNote === null, 'orders cancellable');
+  invariants(st, 'post-grammar');
+}
+
 // ---------- 6b. scout auto-explore ----------
 section('Scout auto-explore');
 {

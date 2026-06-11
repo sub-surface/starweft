@@ -337,7 +337,8 @@ SW.ui = (function () {
     // market
     const ship = selectedShip();
     const shipHere = ship && ship.mode === 'idle' && ship.at === sys.id;
-    html += '<h4>Market</h4><table class="mkt"><tr><th>good</th><th>stock</th><th>price</th><th>Δ</th>' + (shipHere ? '<th></th>' : '') + '</tr>';
+    const canFetch = ship && ship.mode === 'idle' && !shipHere; // FETCH: one-click gather-and-deliver
+    html += '<h4>Market</h4><table class="mkt"><tr><th>good</th><th>stock</th><th>price</th><th>Δ</th>' + (shipHere || canFetch ? '<th></th>' : '') + '</tr>';
     for (const c of D.COMM_IDS) {
       if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
       const stock = Math.floor(sys.stocks[c] || 0);
@@ -356,6 +357,8 @@ SW.ui = (function () {
       if (shipHere) {
         html += '<td><button data-act="buy" data-c="' + c + '" data-q="5">+5</button> <button data-act="buy" data-c="' + c + '" data-q="999">max</button> ' +
           ((ship.cargo[c] || 0) > 0 ? '<button data-act="sellc" data-c="' + c + '">sell</button>' : '') + '</td>';
+      } else if (canFetch) {
+        html += '<td><button data-act="fetchHere" data-c="' + c + '" title="Order ' + esc(ship.name) + ': buy ' + D.COMMODITIES[c].name + ' at the cheapest charted source, deliver it here">⇄ fetch</button></td>';
       }
       html += '</tr>';
     }
@@ -511,6 +514,11 @@ SW.ui = (function () {
     } else if (ship.directiveId) status = 'directive';
     else if (ship.mission && ship.mission.kind === 'supply') status = 'supply run';
     else status = ship.at !== null ? 'holding at ' + esc(s.systems[ship.at].name) : 'in transit';
+    // the "why" line: orders are always visible, never opaque
+    const queue = ship.queue || [];
+    if (queue.length) {
+      status = esc(ship.queueNote || 'orders') + ' · ' + esc(SW.ships.describeCmd(s, queue[0])) + ' · ' + queue.length + ' step' + (queue.length === 1 ? '' : 's') + ' left';
+    }
     const load = SW.ships.cargoTotal(ship) + '/' + SW.ships.cap(s, ship);
     const idle = ship.mode === 'idle';
     const sys = idle && ship.at !== null ? s.systems[ship.at] : null;
@@ -531,6 +539,7 @@ SW.ui = (function () {
         return '<option value="' + r.id + '">' + esc(r.name) + '</option>';
       }).join('') + '</select>';
     }
+    if (queue.length) html += '<button data-act="clearQueue" title="Cancel the current orders">✕ ORDERS</button>';
     if (ship.routeId || ship.directiveId || ship.mission) html += '<button data-act="unassign">RELEASE</button>';
     const dataV = SW.ships.dataValue(ship);
     if (sys && dataV > 0 && sys.type === 'pop') {
@@ -639,6 +648,7 @@ SW.ui = (function () {
           html += '<div class="row"><span class="grow sub">' + commName(op.c) + ' · ' + esc(s.systems[op.from].name) + ' → ' + esc(s.systems[op.to].name) +
             ' <b style="color:var(--accent)" class="num">+' + Math.round(op.margin) + '/u</b></span>' +
             '<button data-act="centerSys" data-id="' + op.from + '">◎</button>' +
+            '<button data-act="fetchOp" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '" title="One-shot fetch with an idle hauler">⤳</button>' +
             '<button data-act="quickRoute" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '" title="Create this route">＋</button></div>';
         }
       }
@@ -1475,6 +1485,23 @@ SW.ui = (function () {
       case 'buildSite': { const r = A().buildSite(s, sysId, btn.dataset.body, btn.dataset.fac); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'buyPerk': { const r = A().buyPerk(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
+      case 'clearQueue': if (ship) A().clearQueue(s, ship.id); break;
+      case 'fetchHere': {
+        if (!ship || sysId === null) break;
+        const src = SW.economy.cheapestSource(s, btn.dataset.c, 5, sysId);
+        if (!src) { toast({ kind: 'bad', text: 'No charted market stocks ' + D.COMMODITIES[btn.dataset.c].name + '.' }); break; }
+        const r = A().order(s, ship.id, { type: 'fetch', c: btn.dataset.c, from: src.id, to: sysId });
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        break;
+      }
+      case 'fetchOp': {
+        const hauler = (ship && ship.mode === 'idle') ? ship :
+          s.ships.find(function (x) { return x.mode === 'idle' && !x.routeId && !x.directiveId && !x.mission && !(x.queue && x.queue.length) && !D.HULLS[x.hull].survey; });
+        if (!hauler) { toast({ kind: 'bad', text: 'No idle hauler for the job.' }); break; }
+        const r = A().order(s, hauler.id, { type: 'fetch', c: btn.dataset.c, from: parseInt(btn.dataset.from, 10), to: parseInt(btn.dataset.to, 10) });
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        break;
+      }
       case 'relocate': {
         const r = A().relocateHome(s, sysId);
         if (!r.ok) toast({ kind: 'bad', text: r.msg });

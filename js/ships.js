@@ -235,6 +235,7 @@ SW.ships = (function () {
       if (r) { const j = r.ships.indexOf(ship.id); if (j >= 0) r.ships.splice(j, 1); }
     }
     ship.routeId = null; ship.directiveId = null; ship.mission = null;
+    ship.queue = []; ship.queueNote = null;
   };
 
   // Projected profit per loop for the route editor (advisory only).
@@ -283,9 +284,10 @@ SW.ships = (function () {
         if ((D.HULLS[ship.hull].survey || 0) > 0) tickSurvey(state, ship);
         if (ship.routeId) tickRouteShip(state, ship);
         else if (ship.directiveId) tickDirectiveShip(state, ship);
+        else if (ship.queue && ship.queue.length) tickQueueShip(state, ship);
         else if (ship.autoExplore) tickAutoExplore(state, ship);
         // idle-time bookkeeping for the Tessellation Yards
-        if (!ship.routeId && !ship.directiveId && !ship.autoExplore && !ship.mission) {
+        if (!ship.routeId && !ship.directiveId && !ship.autoExplore && !ship.mission && !(ship.queue && ship.queue.length)) {
           if (ship.idleSince == null) ship.idleSince = state.tick;
         } else ship.idleSince = null;
       }
@@ -476,6 +478,8 @@ SW.ships = (function () {
       tickSupply(state, ship);
     } else if (ship.mission && ship.mission.kind === 'autoExplore' && ship.path.length === 0) {
       ship.mission = null;
+    } else if (ship.mission && ship.mission.kind === 'queue' && ship.path.length === 0) {
+      ship.mission = null;
     }
   }
 
@@ -578,6 +582,107 @@ SW.ships = (function () {
     route.totalProfit += state.credits - before;
   }
 
+  // ---- Command grammar: intents compile into visible queues of atoms ----
+  // Atoms: {op:'move',sys} {op:'buy',c,q} {op:'sell',c|null=all} {op:'drop',c|null}
+  //        {op:'sellData'} {op:'wait',until}
+  // The compiler is invisible; the queue is not. Every ship can answer
+  // "why are you doing this?" via ship.queueNote + S.describeCmd(queue[0]).
+  S.describeCmd = function (state, cmd) {
+    if (!cmd) return 'idle';
+    switch (cmd.op) {
+      case 'move': return '→ ' + (state.systems[cmd.sys] ? state.systems[cmd.sys].name : '?');
+      case 'buy': return 'load ' + (D.COMMODITIES[cmd.c] ? D.COMMODITIES[cmd.c].name : cmd.c);
+      case 'sell': return cmd.c ? 'sell ' + D.COMMODITIES[cmd.c].name : 'sell cargo';
+      case 'drop': return 'drop to depot';
+      case 'sellData': return 'sell charts';
+      case 'wait': return 'hold';
+    }
+    return cmd.op;
+  };
+
+  S.intent = function (state, ship, intent) {
+    if (!intent || !intent.type) return { ok: false, msg: 'No intent.' };
+    const q = [];
+    let note = '';
+    if (intent.type === 'fetch') {
+      const from = state.systems[intent.from], to = state.systems[intent.to];
+      if (!from || !to || !from.discovered || !to.discovered) return { ok: false, msg: 'Both ends must be charted.' };
+      if (!D.COMMODITIES[intent.c]) return { ok: false, msg: 'Unknown commodity.' };
+      if (ship.at !== intent.from) q.push({ op: 'move', sys: intent.from });
+      q.push({ op: 'buy', c: intent.c, q: intent.q || 9999 });
+      q.push({ op: 'move', sys: intent.to });
+      q.push({ op: intent.deliver === 'drop' ? 'drop' : 'sell', c: null });
+      note = 'FETCH ' + D.COMMODITIES[intent.c].name + ' · ' + from.name + ' → ' + to.name;
+    } else if (intent.type === 'goSellData') {
+      const to = state.systems[intent.to];
+      if (!to || to.type !== 'pop') return { ok: false, msg: 'Cartographers buy at populated systems.' };
+      if (ship.at !== intent.to) q.push({ op: 'move', sys: intent.to });
+      q.push({ op: 'sellData' });
+      note = 'REPORT IN · charts → ' + to.name;
+    } else {
+      return { ok: false, msg: 'Unknown intent "' + intent.type + '".' };
+    }
+    S.unassign(state, ship);
+    ship.autoExplore = false;
+    ship.retryAt = 0;
+    ship.queue = q;
+    ship.queueNote = note;
+    return { ok: true, queue: q, note: note };
+  };
+
+  function tickQueueShip(state, ship) {
+    if (state.tick < ship.retryAt) return;
+    const q = ship.queue;
+    const cmd = q[0];
+    if (!cmd) { finishQueue(state, ship); return; }
+    switch (cmd.op) {
+      case 'move': {
+        if (ship.at === cmd.sys) { q.shift(); break; }
+        const r = S.send(state, ship, cmd.sys, { kind: 'queue' });
+        if (!r.ok) { ship.retryAt = state.tick + 12; }
+        return;
+      }
+      case 'buy': {
+        const r = S.buy(state, ship, cmd.c, cmd.q || 9999);
+        if (!r.ok) SW.game.emit('toast', { kind: 'bad', text: '⚠ ' + ship.name + ': ' + (ship.queueNote || 'orders') + ' — ' + r.msg });
+        q.shift();
+        break;
+      }
+      case 'sell': {
+        if (cmd.c) S.sell(state, ship, cmd.c, 9999);
+        else { S.sellAll(state, ship); }
+        state.stats.deliveries = (state.stats.deliveries || 0) + 1;
+        q.shift();
+        break;
+      }
+      case 'drop': {
+        const sys = state.systems[ship.at];
+        if (sys && sys.depot) {
+          const keys = cmd.c ? [cmd.c] : Object.keys(ship.cargo);
+          for (const c of keys) {
+            if (!ship.cargo[c]) continue;
+            sys.depot[c] = (sys.depot[c] || 0) + ship.cargo[c];
+            delete ship.cargo[c]; delete ship.basis[c];
+          }
+        }
+        q.shift();
+        break;
+      }
+      case 'sellData': { S.sellData(state, ship); q.shift(); break; }
+      case 'wait': {
+        if (state.tick >= (cmd.until || 0)) q.shift();
+        return;
+      }
+      default: q.shift();
+    }
+    if (!q.length) finishQueue(state, ship);
+  }
+  function finishQueue(state, ship) {
+    if (ship.queueNote) SW.game.emit('toast', { kind: 'good', text: '✓ ' + ship.name + ': ' + ship.queueNote + ' — complete.' });
+    ship.queue = [];
+    ship.queueNote = null;
+  }
+
   // ---- Meta-routes (Weftworks): one route spanning a whole supply chain ----
   // Plan: buy each raw input at its cheapest source → sell at a factory →
   // buy the finished output there → sell where it's dearest.
@@ -624,7 +729,7 @@ SW.ships = (function () {
     const starving = state.routes.find(function (r) { return !r.paused && r.stops.length >= 2 && r.ships.length === 0; });
     const idlers = state.ships.filter(function (s) {
       return s.mode === 'idle' && D.HULLS[s.hull].line === 'trade' && !s.routeId && !s.directiveId &&
-        !s.autoExplore && !s.mission && !s.stranded && S.cargoTotal(s) === 0;
+        !s.autoExplore && !s.mission && !(s.queue && s.queue.length) && !s.stranded && S.cargoTotal(s) === 0;
     });
     if (starving) {
       if (idlers.length) {

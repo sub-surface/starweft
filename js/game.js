@@ -505,6 +505,20 @@ SW.game = (function () {
     if (!ship) return err('No such ship.');
     return SW.ships.sellData(state, ship);
   };
+  // Command grammar: issue an intent; it compiles to a visible queue of atoms.
+  A.order = function (state, shipId, intent) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    const r = SW.ships.intent(state, ship, intent);
+    if (r.ok) G.emit('toast', { kind: 'info', text: '▸ ' + ship.name + ': ' + r.note });
+    return r;
+  };
+  A.clearQueue = function (state, shipId) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    ship.queue = []; ship.queueNote = null;
+    return { ok: true };
+  };
 
   A.supplyMission = function (state, shipId, targetSysId, c, qty) {
     const ship = findShip(state, shipId);
