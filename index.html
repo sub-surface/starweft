@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✦ STARWEFT</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo"><i>✦</i> STARWEFT</div>
+  <div class="stat" data-info="ui:credits">¤ <span id="stCredits">0</span></div>
+  <div class="stat" data-info="ui:research">◇ <span id="stResearch">0</span></div>
+  <div class="stat" data-info="ui:fleet">▲ <span id="stFleet">0</span></div>
+  <div class="stat" data-info="ui:infamy" id="stInfamyWrap" style="display:none">☠ <span id="stInfamy">0</span></div>
+  <div class="stat">⧗ <span id="stTick">0</span></div>
+  <div id="alerts"></div>
+  <div class="spacer"></div>
+  <div id="searchWrap">
+    <input id="searchBox" placeholder="search systems…" autocomplete="off">
+    <div id="searchResults" class="hidden"></div>
+  </div>
+  <button id="btnExchange" title="Exchange Terminal (requires research)" disabled>THE MARKET</button>
+  <button id="btnCodex" title="Codex — ships, cast, chronicle">CODEX</button>
+  <div id="speedCtrls">
+    <button id="spdPause" title="Pause (Space)">⏸</button>
+    <button id="spd1" title="Normal (1)">▶</button>
+    <button id="spd3" title="Fast (2)">▶▶</button>
+    <button id="spd10" title="Very fast (3)">▶▶▶</button>
+  </div>
+  <button id="btnMute" title="Sound effects">♪</button>
+  <button id="btnMusic" title="Ambient music">∿</button>
+  <button id="btnMenu" title="Menu">☰</button>
+</div>
+
+<div id="main">
+  <canvas id="map"></canvas>
+  <button id="btnBackGalaxy" class="hidden">← THE BUBBLE</button>
+  <div id="sysPanel" class="panel hidden"></div>
+  <div id="dock" class="panel">
+    <div id="dockTabs">
+      <button data-tab="fleet" class="active">Fleet</button>
+      <button data-tab="routes">Routes</button>
+      <button data-tab="ops">Ops</button>
+      <button data-tab="tech">Tech</button>
+      <button data-tab="log">Log</button>
+    </div>
+    <div id="dockBody"></div>
+  </div>
+  <div id="shipChip" class="panel hidden"></div>
+  <div id="commandBar" class="panel hidden"></div>
+  <div id="infobox" class="panel"></div>
+  <div id="mapHint" class="hidden"></div>
+  <div id="exchange" class="hidden"></div>
+</div>
+
+<div id="bottombar">
+  <div id="objective"><b>◈</b> <span>…</span></div>
+  <div id="ticker"></div>
+</div>
+
+<div id="toasts"></div>
+
+<div id="modalShade" class="hidden">
+  <div id="eventModal" class="modal hidden"></div>
+  <div id="gameoverModal" class="modal hidden"></div>
+  <div id="titleModal" class="modal hidden"></div>
+  <div id="helpModal" class="modal hidden"></div>
+  <div id="menuModal" class="modal hidden"></div>
+  <div id="techModal" class="modal techWide hidden"></div>
+  <div id="codexModal" class="modal wide hidden"></div>
+  <div id="combatSim" class="modal hidden"></div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/perks.js"></script>
+<script src="js/starcat.js"></script>
+<script src="js/lore.js"></script>
+<script src="js/events_data.js"></script>
+<script src="js/planets.js"></script>
+<script src="js/sites.js"></script>
+<script src="js/galaxy.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/ships.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/rivals.js"></script>
+<script src="js/scourge.js"></script>
+<script src="js/tech.js"></script>
+<script src="js/story.js"></script>
+<script src="js/worldevents.js"></script>
+<script src="js/game.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/portraits.js"></script>
+<script src="js/codex.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

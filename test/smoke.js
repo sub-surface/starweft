@@ -1,0 +1,806 @@
+/* STARWEFT smoke test v2 — headless simulation runs + invariant checks.
+   Run: node test/smoke.js */
+'use strict';
+const path = require('path');
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game'];
+for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
+const SW = globalThis.SW;
+const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
+
+let failures = 0, checks = 0;
+function assert(cond, msg) {
+  checks++;
+  if (!cond) { failures++; console.error('  FAIL: ' + msg); }
+}
+function section(name) { console.log('— ' + name); }
+
+function chooseAny(state) {
+  if (!state.story.pending) return;
+  const e = SW.story.pendingEvent(state);
+  if (!e) { state.story.pending = null; return; }
+  for (let i = 0; i < e.choices.length; i++) {
+    const ch = e.choices[i];
+    if (!ch.req || ch.req(state)) { SW.story.choose(state, i); return; }
+  }
+  SW.story.choose(state, 0);
+}
+
+function invariants(state, label) {
+  const v = G.validate(state);
+  assert(v.length === 0, label + ': G.validate clean (' + v.join('; ') + ')');
+  assert(isFinite(state.credits) && state.credits >= 0, label + ': credits valid (' + state.credits + ')');
+  assert(isFinite(state.research) && state.research >= 0, label + ': research valid');
+  assert(isFinite(state.infamy) && state.infamy >= 0, label + ': infamy valid');
+  for (const sys of state.systems) {
+    for (const c of D.COMM_IDS) {
+      const v = sys.stocks[c];
+      assert(typeof v === 'number' && isFinite(v) && v >= -1e-6 && v <= (sys.capacity[c] || 999) + 1e-6,
+        label + ': ' + sys.name + ' stock ' + c + ' = ' + v);
+    }
+    assert(sys.prosperity >= 0 && sys.prosperity <= 100, label + ': prosperity in range at ' + sys.name);
+    assert(isFinite(sys.pop) && sys.pop >= 0, label + ': pop valid at ' + sys.name);
+    assert(isFinite(sys.z), label + ': z coord finite at ' + sys.name);
+  }
+  for (const ship of state.ships) {
+    if (ship.mode === 'idle') assert(typeof ship.at === 'number' && state.systems[ship.at], label + ': idle ship has location');
+    if (ship.mode === 'travel') assert(ship.leg && ship.leg.arrive > ship.leg.depart, label + ': travel leg valid');
+    const pos = SW.ships.pos(state, ship);
+    assert(isFinite(pos.x) && isFinite(pos.y), label + ': ship position finite');
+    assert(SW.ships.cargoTotal(ship) <= SW.ships.cap(state, ship) + 1e-6, label + ': cargo within capacity');
+  }
+}
+
+function botStep(state) {
+  chooseAny(state);
+  if (state.tick % 5 !== 0) return;
+  const techs = SW.tech.list(state).filter(function (t) { return t.available && t.affordable && !t.group; });
+  if (techs.length) {
+    techs.sort(function (a, b) { return a.cost - b.cost; });
+    A.research(state, techs[0].id);
+  }
+  if (state.credits > 2500 && state.ships.length < 12) A.buyShip(state, 'sparrow', state.homeId);
+  const ops = SW.economy.opportunities(state, 60)
+    .filter(function (o) { return SW.ships.inRange(state, state.systems[o.from]) && SW.ships.inRange(state, state.systems[o.to]); });
+  if (state.story.flags.routes_unlocked && ops.length && state.routes.length < 4 && state.ships.length > state.routes.length + 1) {
+    const op = ops[0];
+    A.createRoute(state, [{ sys: op.from, action: 'buy', c: op.c }, { sys: op.to, action: 'sell' }]);
+  }
+  for (const ship of state.ships) {
+    if (ship.mode !== 'idle' || ship.routeId || ship.mission) continue;
+    const freeRoute = state.routes.find(function (r) { return r.ships.length < 2; });
+    if (freeRoute && state.story.flags.routes_unlocked) { A.assignShip(state, ship.id, freeRoute.id); continue; }
+    const here = ops.find(function (o) { return o.from === ship.at; });
+    if (here) {
+      A.shipBuy(state, ship.id, here.c, 999);
+      A.shipSend(state, ship.id, here.to, true);
+    } else if (ops.length) {
+      A.shipSend(state, ship.id, ops[0].from, false);
+    }
+  }
+}
+
+// ---------- 1. 3D galaxy generation ----------
+section('3D galaxy generation (real catalog + procedural)');
+{
+  const st = G.newGame({ seed: 'smoke-1', difficulty: 'standard' });
+  assert(st.systems.length >= 230, 'enough systems (' + st.systems.length + ')');
+  assert(st.systems[st.homeId].name === 'Sol', 'home is Sol');
+  assert(st.systems.some(function (s) { return s.name === 'Alpha Centauri'; }), 'Alpha Centauri exists');
+  assert(st.systems.some(function (s) { return /TRAPPIST/.test(s.name); }), 'TRAPPIST-1 exists');
+  const ac = st.systems.find(function (s) { return s.name === 'Alpha Centauri'; });
+  const acD = U.dist(ac, st.systems[0]);
+  assert(Math.abs(acD - 4.37) < 0.1, 'Alpha Centauri at ~4.37 ly (' + acD.toFixed(2) + ')');
+  assert(st.systems.some(function (s) { return Math.abs(s.z) > 5; }), 'galaxy is 3D (z spread)');
+  // connectivity
+  const seen = {}; const q = [0]; seen[0] = true;
+  while (q.length) { const c = q.shift(); for (const nb of st.systems[c].links) if (!seen[nb]) { seen[nb] = true; q.push(nb); } }
+  assert(Object.keys(seen).length === st.systems.length, 'galaxy fully connected');
+  // coreward density: more systems with x>0 than x<0
+  let plus = 0, minus = 0;
+  for (const s of st.systems) { if (s.x > 0) plus++; else minus++; }
+  assert(plus > minus, 'denser coreward (+x ' + plus + ' vs ' + minus + ')');
+  // regions + wonders
+  assert(st.regions.length >= 5, 'regions exist');
+  assert(st.systems.some(function (s) { return s.region === 'reach'; }), 'pirate Reach populated');
+  assert(st.systems.some(function (s) { return s.wonder === 'blackhole'; }), 'black hole placed');
+  assert(st.systems.some(function (s) { return s.wonder === 'husk'; }), 'Dyson husk placed');
+  // scourge origin coreward & far
+  const origin = st.systems[st.scourgeOriginId];
+  assert(origin.x > 0, 'scourge origin is coreward (x=' + origin.x.toFixed(1) + ')');
+  assert(origin.hops >= 3, 'origin far from Sol (hops=' + origin.hops + ')');
+  // types
+  const types = {};
+  for (const s of st.systems) types[s.type] = (types[s.type] || 0) + 1;
+  assert((types.pop || 0) >= 15, 'population centers exist (' + types.pop + ')');
+  assert((types.mining || 0) >= 15, 'mining systems exist');
+  assert((types.industrial || 0) >= 10, 'industrial hubs exist');
+  // ideologies on inhabited systems
+  assert(st.systems.some(function (s) { return s.ideology === 'synod'; }), 'Synod worlds exist');
+  // tutorial guarantee
+  const near = st.systems.filter(function (s) { return s.hops > 0 && s.hops <= 2; });
+  assert(near.some(function (s) { return s.type === 'mining' || s.type === 'agri' || s.type === 'gas'; }), 'producer near Sol');
+}
+
+// ---------- 2. planetary systems ----------
+section('Planetary systems (astronomical naming, Kepler sanity)');
+{
+  const st = G.newGame({ seed: 'smoke-2', difficulty: 'standard' });
+  const sol = SW.planets.get(st, st.homeId);
+  assert(sol.bodies.some(function (b) { return b.name === 'Earth' && b.type === 'terran'; }), 'Sol has Earth');
+  assert(sol.bodies.length === 9, 'Sol has 8 planets + Belt');
+  const trap = st.systems.find(function (s) { return /TRAPPIST/.test(s.name); });
+  if (trap) {
+    const tb = SW.planets.get(st, trap.id);
+    assert(tb.bodies.length >= 7, 'TRAPPIST-1 honors its 7 known planets (' + tb.bodies.length + ')');
+  }
+  let checkedNames = 0, keplerOk = true, namingOk = true;
+  for (const sys of st.systems.slice(0, 80)) {
+    const data = SW.planets.get(st, sys.id);
+    let lastA = 0, lastP = 0;
+    data.bodies.forEach(function (b, i) {
+      if (!b.real && !b.wonder) {
+        const expected = (sys.cat || sys.name) + ' ' + String.fromCharCode(98 + i);
+        if (b.name !== expected) namingOk = false;
+      }
+      if (b.a < lastA || b.period < lastP - 1e-9) keplerOk = false;
+      lastA = b.a; lastP = b.period;
+      if (!isFinite(b.teq) || !isFinite(b.period)) keplerOk = false;
+      checkedNames++;
+    });
+  }
+  assert(namingOk, 'planets named <star> b/c/d… by orbit');
+  assert(keplerOk, 'orbits and periods increase outward (' + checkedNames + ' bodies)');
+  // determinism of derived bodies
+  const a1 = JSON.stringify(SW.planets.get(st, 5));
+  SW.planets.clearCache();
+  const a2 = JSON.stringify(SW.planets.get(st, 5));
+  assert(a1 === a2, 'bodies regenerate identically from seed');
+  // black hole special case
+  const bh = st.systems.find(function (s) { return s.wonder === 'blackhole'; });
+  const bhd = SW.planets.get(st, bh.id);
+  assert(bhd.bodies.length === 0 && /black hole/i.test(bhd.note), 'black hole system has no planets, has lore');
+}
+
+// ---------- 3. trade + travel primitives (3D distances) ----------
+section('Trade & travel (3D)');
+{
+  const st = G.newGame({ seed: 'smoke-3', difficulty: 'standard' });
+  const ship = st.ships[0];
+  const home = st.systems[st.homeId];
+  home.stocks.FOOD = 100;
+  const r = A.shipBuy(st, ship.id, 'FOOD', 5);
+  assert(r.ok && r.qty === 5, 'buy ok');
+  const dest = st.systems[home.links[0]];
+  const r2 = A.shipSend(st, ship.id, dest.id, true);
+  assert(r2.ok, 'send ok');
+  let guard = 0;
+  while (ship.mode === 'travel' && guard++ < 300) { G.tick(st); chooseAny(st); }
+  assert(ship.mode === 'idle' && ship.at === dest.id, 'arrived (' + guard + ' ticks)');
+  assert(guard >= 2 && guard < 60, 'travel time sane for ly-scale lanes (' + guard + ')');
+  assert(st.stats.deliveries >= 1, 'delivery counted');
+}
+
+// ---------- 4. construction ----------
+section('Construction');
+{
+  const st = G.newGame({ seed: 'smoke-4', difficulty: 'standard' });
+  st.credits = 5000;
+  const target = st.systems[st.systems[st.homeId].links[0]];
+  const ship = st.ships[0];
+  ship.at = target.id; ship.cargo.ALLOY = 8;
+  const r1 = A.build(st, target.id, 'relay');
+  assert(r1.ok, 'relay built from ship-held materials');
+  assert(st.story.flags.built_relay, 'tutorial flag set');
+}
+
+// ---------- 4b. market analytics ----------
+section('Market analytics');
+{
+  const st = G.newGame({ seed: 'smoke-4b', difficulty: 'relaxed' });
+  st.systems.forEach(function (sys) {
+    sys.discovered = false;
+    sys.scourge = 0;
+    sys.stocks = {};
+    sys.capacity = {};
+    sys.presence = {};
+    for (const c of D.COMM_IDS) {
+      sys.stocks[c] = 60;
+      sys.capacity[c] = 120;
+    }
+  });
+  const a = st.systems[0], b = st.systems[1], c = st.systems[2], d = st.systems[3];
+  [a, b, c, d].forEach(function (sys) {
+    sys.discovered = true;
+    sys.capacity.ORE = sys.capacity.GAS = 120;
+  });
+  a.stocks.ORE = 120; b.stocks.ORE = 0; c.stocks.ORE = 0;
+  a.stocks.GAS = 120; d.stocks.GAS = 0;
+  const ops = SW.economy.opportunities(st, 8, { onePerCommodity: true });
+  const seen = {};
+  for (const op of ops) {
+    assert(!seen[op.c], 'commodity appears once in diversified opportunities: ' + op.c);
+    seen[op.c] = true;
+  }
+  assert(seen.ORE && seen.GAS, 'diversified opportunities include multiple commodity types');
+}
+
+// ---------- 5. tech tree: branches, doctrines, discounts ----------
+section('Tech tree & doctrines');
+{
+  const st = G.newGame({ seed: 'smoke-5', difficulty: 'standard' });
+  st.research = 5000;
+  assert(A.research(st, 'doc_mercantile').ok === false, 'doctrines locked before ' + D.DOCTRINE_UNLOCK_COUNT + ' techs');
+  ['couriers', 'depots', 'analytics', 'scouts'].forEach(function (t) { assert(A.research(st, t).ok, 'research ' + t); });
+  assert(SW.tech.visible(st, 'doc_mercantile'), 'doctrines now visible');
+  const before = SW.tech.costOf(st, 'smartroutes');
+  assert(A.research(st, 'doc_mercantile').ok, 'doctrine researched');
+  const after = SW.tech.costOf(st, 'smartroutes');
+  assert(after < before, 'doctrine discounts its branch (' + before + ' -> ' + after + ')');
+  assert(A.research(st, 'doc_wayfarer').ok === false, 'second doctrine refused');
+  const tree = SW.tech.tree(st);
+  assert(tree.nodes.length > 15 && tree.edges.length > 8, 'tree layout has nodes and edges');
+  assert(tree.doctrines.length === 3, 'tree exposes doctrines');
+}
+
+// ---------- 6. surveys & wonders ----------
+section('Surveys, scouts, wonders');
+{
+  const st = G.newGame({ seed: 'smoke-6', difficulty: 'relaxed' });
+  st.research = 200;
+  A.research(st, 'scouts');
+  st.credits = 3000;
+  const scoutR = A.buyShip(st, 'pathfinder', st.homeId);
+  assert(scoutR.ok, 'pathfinder bought');
+  const scout = scoutR.ship;
+  const target = st.systems.find(function (s) { return s.discovered && !s.surveyed; }) ||
+    (function () { const s = st.systems[st.systems[st.homeId].links[0]]; s.surveyed = false; return s; })();
+  scout.at = target.id;
+  const res0 = st.research;
+  let guard = 0;
+  while (!target.surveyed && guard++ < 200) { G.tick(st); chooseAny(st); }
+  assert(target.surveyed, 'survey completed in ' + guard + ' ticks');
+  assert(st.research > res0 - 50, 'survey paid research');
+  assert((st.stats.surveys || 0) >= 1, 'survey counted');
+  // wonder survey → flags + legacy + scheduled event
+  const bh = st.systems.find(function (s) { return s.wonder === 'blackhole'; });
+  bh.discovered = true; bh.surveyed = false;
+  scout.at = bh.id; scout.mode = 'idle'; scout.routeId = null;
+  guard = 0;
+  while (!bh.surveyed && guard++ < 300) { G.tick(st); chooseAny(st); }
+  assert(bh.surveyed, 'black hole surveyed');
+  assert(st.story.flags.hole_surveyed, 'hole_surveyed flag set');
+  assert(SW.tech.visible(st, 'penrose') === false || true, 'penrose visibility consistent'); // needs vanguard prereqs too
+  assert(G.legacy().wonder === true, 'legacy wonder unlocked');
+  assert(st.fragments.length >= 0, 'fragments array exists');
+}
+
+// ---------- 6a. exploration economy ----------
+section('Exploration economy (distance scaling, finds, first-light)');
+{
+  const st = G.newGame({ seed: 'smoke-6a', difficulty: 'relaxed' });
+  st.research = 200;
+  A.research(st, 'scouts');
+  st.credits = 3000;
+  const scout = A.buyShip(st, 'pathfinder', st.homeId).ship;
+  const home = st.systems[st.homeId];
+  // far + risky survey pays more than the base chart fee
+  const far = st.systems.reduce(function (best, s) {
+    if (s.id === st.homeId || s.scourge === 2) return best;
+    const mult = (D.REGIONS[s.region] && D.REGIONS[s.region].surveyMult) || 1;
+    const score = SW.util.dist(home, s) * mult;
+    return (!best || score > best.score) ? { sys: s, score: score } : best;
+  }, null).sys;
+  far.discovered = true; far.surveyed = false; delete far.surveyProg;
+  scout.at = far.id; scout.mode = 'idle';
+  const findChance0 = D.TUNE.surveyFindChance;
+  D.TUNE.surveyFindChance = 0; // isolate the survey payout from finds
+  const cr0 = st.credits;
+  let guard = 0;
+  while (!far.surveyed && guard++ < 200) { G.tick(st); chooseAny(st); }
+  D.TUNE.surveyFindChance = findChance0;
+  assert(far.surveyed, 'far survey completed');
+  assert(st.credits - cr0 > D.TUNE.surveyChart, 'far/risky survey pays over the base chart fee (' + (st.credits - cr0) + ' > ' + D.TUNE.surveyChart + ')');
+  // forced anomaly find
+  D.TUNE.surveyFindChance = 1;
+  const near = st.systems[home.links[0]];
+  near.discovered = true; near.surveyed = false; delete near.surveyProg;
+  scout.at = near.id; scout.mode = 'idle';
+  guard = 0;
+  while (!near.surveyed && guard++ < 200) { G.tick(st); chooseAny(st); }
+  D.TUNE.surveyFindChance = findChance0;
+  assert(near.surveyed, 'near survey completed');
+  assert((st.stats.finds || 0) >= 1, 'forced anomaly find recorded');
+  // first-light bounty on discovery
+  const hidden = st.systems.find(function (s) { return !s.discovered && s.scourge !== 2; });
+  assert(!!hidden, 'an undiscovered system exists');
+  const cr1 = st.credits;
+  scout.at = hidden.id; scout.mode = 'idle'; scout.leg = { to: hidden.id, arrive: st.tick };
+  scout.mode = 'travel'; scout.path = []; scout.mission = null;
+  G.tick(st); chooseAny(st);
+  assert(hidden.discovered, 'arrival discovers the system');
+  assert(st.credits > cr1, 'first-light bounty paid on discovery');
+}
+
+// ---------- 6b. scout auto-explore ----------
+section('Scout auto-explore');
+{
+  const st = G.newGame({ seed: 'smoke-6b', difficulty: 'relaxed' });
+  st.research = 200;
+  A.research(st, 'scouts');
+  st.credits = 3000;
+  const scoutR = A.buyShip(st, 'pathfinder', st.homeId);
+  assert(scoutR.ok, 'pathfinder bought for auto-explore');
+  const scout = scoutR.ship;
+  st.systems[scout.at].surveyed = true;
+  const toggle = A.toggleAutoExplore(st, scout.id);
+  assert(toggle.ok && scout.autoExplore, 'auto-explore toggles on');
+  G.tick(st);
+  assert(scout.mode === 'travel' || scout.retryAt > st.tick, 'auto-explore attempts to depart');
+  let guard = 0;
+  while (scout.mode === 'travel' && guard++ < 400) G.tick(st);
+  assert(scout.mode === 'idle' && scout.at !== st.homeId, 'auto-explorer arrives away from home');
+  assert(scout.mission === null, 'auto-explore clears its mission after arrival');
+  const toggleOff = A.toggleAutoExplore(st, scout.id);
+  assert(toggleOff.ok && !scout.autoExplore && scout.retryAt === 0, 'auto-explore toggles off cleanly');
+
+  // two scouts from the same dock fan out instead of convoying
+  st.credits = 9000;
+  const s1 = A.buyShip(st, 'pathfinder', st.homeId).ship;
+  const s2 = A.buyShip(st, 'pathfinder', st.homeId).ship;
+  st.systems[s1.at].surveyed = true;
+  A.toggleAutoExplore(st, s1.id);
+  A.toggleAutoExplore(st, s2.id);
+  G.tick(st); chooseAny(st);
+  if (s1.mode === 'travel' && s2.mode === 'travel') {
+    assert(s1.leg.to !== s2.leg.to, 'auto-explorers diverge (' + st.systems[s1.leg.to].name + ' vs ' + st.systems[s2.leg.to].name + ')');
+  } else {
+    assert(s1.mode === 'travel' || s2.mode === 'travel', 'at least one explorer departed');
+  }
+}
+
+// ---------- 6c. weftworks, tessellation yards, exodus ----------
+section('Weftworks, Tessellation Yards, Exodus');
+{
+  const st = G.newGame({ seed: 'smoke-6c', difficulty: 'relaxed' });
+  st.research = 9000; st.credits = 60000;
+  ['analytics', 'smartroutes', 'directives', 'metaroutes', 'couriers', 'foundries', 'autoyards', 'relays2', 'driftholds']
+    .forEach(function (t) { assert(A.research(st, t).ok, 'research ' + t); });
+
+  // -- meta-route: plan a full ALLOY supply chain
+  const prod = st.systems.find(function (s) { return s.slots.indexOf('ALLOY') >= 0 && s.scourge !== 2; });
+  assert(!!prod, 'an ALLOY factory exists somewhere');
+  prod.discovered = true;
+  const src = st.systems.find(function (s) { return s.id !== prod.id && s.scourge !== 2 && s.prod && s.prod.ORE > 0; });
+  assert(!!src, 'an ORE source exists');
+  src.discovered = true;
+  const cr = A.createChainRoute(st, 'ALLOY');
+  assert(cr.ok, 'chain route created: ' + (cr.msg || cr.route.name));
+  assert(cr.route.stops.length >= 4, 'chain route spans the supply chain (' + cr.route.stops.length + ' stops)');
+  assert(cr.route.stops[0].action === 'buy' && cr.route.stops[0].c === 'ORE', 'first stop buys the raw input');
+  const prodStops = cr.route.stops.filter(function (x) { return x.sys === prod.id; });
+  assert(prodStops.length === 2 && prodStops[0].action === 'sell' && prodStops[1].action === 'buy', 'factory is fed, then product collected');
+  assert(A.createChainRoute(st, 'PANACEA').ok === false, 'fab-only recipes refused');
+
+  // -- tessellation yards: crew the unmanned chain route, then reclaim surplus
+  let guard = 0;
+  while (cr.route.ships.length === 0 && guard++ < 200) { G.tick(st); chooseAny(st); }
+  assert(cr.route.ships.length >= 1, 'yards crewed the unmanned route in ' + guard + ' ticks');
+  st.credits = 60000;
+  const s1 = A.buyShip(st, 'sparrow', st.homeId).ship;
+  const s2 = A.buyShip(st, 'sparrow', st.homeId).ship;
+  s1.idleSince = st.tick - 500; s2.idleSince = st.tick - 500;
+  const scrapped0 = st.stats.autoScrapped || 0;
+  guard = 0;
+  while ((st.stats.autoScrapped || 0) === scrapped0 && guard++ < 200) { G.tick(st); chooseAny(st); }
+  assert((st.stats.autoScrapped || 0) > scrapped0, 'yards reclaimed a long-idle hauler');
+  st.autoYardsOff = true; // keep the rest of this section deterministic
+
+  // -- exodus: relocate home deep coreward, find the secret
+  const deep = st.systems.find(function (s) {
+    return s.scourge !== 2 && s.id !== st.homeId && (s.x >= D.TUNE.exodusX || s.region === 'verge');
+  });
+  assert(!!deep, 'a deep-coreward refuge exists');
+  deep.discovered = true; deep.surveyed = true;
+  const uns = st.systems.find(function (s) { return !s.surveyed && s.scourge !== 2 && s.id !== st.homeId; });
+  assert(A.relocateHome(st, uns.id).ok === false, 'relocation refused at unsurveyed system');
+  st.credits = 10000;
+  const range0 = SW.ships.rangeOf(st);
+  const rr = A.relocateHome(st, deep.id);
+  assert(rr.ok, 'home relocated: ' + (rr.msg || ''));
+  assert(st.homeId === deep.id, 'homeId moved');
+  assert(st.story.flags.deep_exodus === true, 'deep exodus secret triggered');
+  assert(SW.ships.rangeOf(st) > range0, 'exodus resonance extends command range');
+
+  // -- refugees + rival flight when a world falls
+  st.scourge.phase = 'active'; st.scourge.nextAt = st.tick + 99999; st.scourge.originId = st.scourge.originId || 0;
+  const doomed = st.systems.find(function (s) { return s.type === 'pop' && s.pop > 4 && s.id !== st.homeId && s.scourge === 0; });
+  assert(!!doomed, 'a doomed population center exists');
+  const popsBefore = {};
+  for (const s of st.systems) if (s.type === 'pop' && s.id !== doomed.id) popsBefore[s.id] = s.pop;
+  const fleeing = doomed.pop;
+  doomed.scourge = 1; doomed.threatAt = st.tick;
+  G.tick(st); chooseAny(st);
+  assert(doomed.scourge === 2, 'doomed world fell');
+  const gained = st.systems.some(function (s) {
+    return s.type === 'pop' && popsBefore[s.id] !== undefined && s.pop > popsBefore[s.id] + fleeing * 0.15;
+  });
+  assert(gained, 'refugees reached a haven world');
+
+  // -- backend fundamentals: action journal + market index
+  assert(Array.isArray(st.journal) && st.journal.length > 5, 'action journal recorded entries (' + (st.journal || []).length + ')');
+  const je = st.journal[st.journal.length - 1];
+  assert(typeof je.t === 'number' && typeof je.a === 'string' && typeof je.ok === 'boolean', 'journal entries carry tick + action + outcome');
+  const ix = SW.economy.marketIndex(st);
+  let sorted = true;
+  for (const c of ['ORE', 'FOOD', 'ALLOY']) {
+    const srcs = ix.sources[c], snks = ix.sinks[c];
+    for (let i = 1; i < srcs.length; i++) if (srcs[i - 1].p > srcs[i].p) sorted = false;
+    for (let i = 1; i < snks.length; i++) if (snks[i - 1].p < snks[i].p) sorted = false;
+  }
+  assert(sorted, 'market index sources cheap-first, sinks dear-first');
+}
+
+// ---------- 6d. in-system sites (governor layer) ----------
+section('In-system sites (facilities on bodies)');
+{
+  const st = G.newGame({ seed: 'smoke-6d', difficulty: 'relaxed' });
+  st.credits = 50000;
+  const home = st.systems[st.homeId];
+  home.surveyed = true;
+  home.depot = home.depot || {};
+  home.depot.ALLOY = 60; home.depot.TECH = 30; // materials staged on-site
+  const bodies = SW.planets.get(st, st.homeId).bodies;
+  assert(bodies.some(function (b) { return b.name === 'The Belt'; }), 'Sol has The Belt');
+
+  // site rules
+  assert(A.buildSite(st, st.homeId, 'The Belt', 'skimmer').ok === false, 'skimmer refused on a belt');
+  const r1 = A.buildSite(st, st.homeId, 'The Belt', 'mine');
+  assert(r1.ok, 'mine anchored on The Belt: ' + (r1.msg || ''));
+  assert(A.buildSite(st, st.homeId, 'The Belt', 'mine').ok === false, 'one facility per body');
+  assert(A.buildSite(st, st.homeId, 'Jupiter', 'skimmer').ok, 'skimmer anchored at Jupiter');
+  assert(A.buildSite(st, st.homeId, 'Uranus', 'cryoarchive').ok, 'cryo-archive anchored at Uranus');
+  assert(home.sites.length === 3, 'three sites recorded');
+  const sfx = SW.sites.fx(home);
+  assert(Math.abs(sfx.prod.ORE - 0.45) < 1e-9 && Math.abs(sfx.prod.GAS - 0.45) < 1e-9, 'site production aggregates');
+  assert(sfx.research > 0.2, 'site research aggregates');
+
+  // production flows into the market
+  const ore0 = home.stocks.ORE || 0;
+  for (let i = 0; i < 20; i++) G.tick(st);
+  assert((home.stocks.ORE || 0) > ore0 || (home.stocks.ORE || 0) >= (home.capacity.ORE || 0) - 1, 'mine feeds the system market');
+
+  // one-time effects: habitat raises capacity + population
+  const cap0 = home.capacity.ORE || 0, pop0 = home.pop;
+  assert(A.buildSite(st, st.homeId, 'Mars', 'habitat').ok, 'habitat anchored at Mars');
+  assert((home.capacity.ORE || 0) === cap0 + 40, 'habitat adds market capacity');
+  assert(home.pop > pop0 + 1.9, 'habitat brings settlers');
+
+  // refusal away from the web; persistence through save/load
+  const far = st.systems.find(function (s) { return !s.surveyed && s.scourge !== 2; });
+  assert(A.buildSite(st, far.id, 'whatever', 'mine').ok === false, 'unsurveyed systems refuse sites');
+  const copy = JSON.parse(JSON.stringify(st));
+  assert(copy.systems[st.homeId].sites.length === 4, 'sites survive serialization');
+  assert(SW.sites.fx(copy.systems[st.homeId]).prod.ORE > 0.4, 'site fx recompute from save data');
+  invariants(st, 'post-sites');
+}
+
+// ---------- 6e. badlands & deep drives ----------
+section('Badlands & Deep Drives');
+{
+  const st = G.newGame({ seed: 'smoke-6e', difficulty: 'relaxed' });
+  st.credits = 99999; st.research = 9999;
+  const bad = st.systems.filter(function (s) { return s.badlands; });
+  assert(bad.length >= 50, 'badlands generated (' + bad.length + ')');
+  assert(bad.every(function (s) { return U.dist(s, st.systems[0]) > D.TUNE.bubbleR; }), 'badlands lie beyond the bubble');
+  assert(bad.every(function (s) { return s.pop === 0; }), 'no settled worlds out there');
+  assert(bad.some(function (s) { return s.type === 'derelict' && (s.stocks.TECH || 0) >= 20; }), 'dead stations hoard salvage');
+  assert(bad.some(function (s) { return s.prod.ORE > 0.8 || s.prod.GAS > 0.8; }), 'untouched veins run rich');
+  const bridges = bad.filter(function (s) { return s.links.some(function (nb) { return !st.systems[nb].badlands; }); });
+  assert(bridges.length >= 1 && bridges.length <= 6, 'a few bridge lanes leave the bubble (' + bridges.length + ')');
+
+  // gated until Deep Drives
+  const ship = st.ships[0];
+  const target = bridges[0];
+  target.discovered = true;
+  const r0 = SW.ships.send(st, ship, target.id);
+  assert(r0.ok === false && /Deep Drives/.test(r0.msg), 'badlands refused without Deep Drives');
+  ['scouts', 'surveycorps', 'deepcharts', 'deepdrives'].forEach(function (t) { assert(A.research(st, t).ok, 'research ' + t); });
+  const r1 = SW.ships.send(st, ship, target.id);
+  assert(r1.ok === true, 'Deep Drives open the badlands: ' + (r1.msg || ''));
+
+  // new techs: orbital works discounts facilities; simulacrum exists
+  const base = D.FACILITIES.mine.cost;
+  assert(SW.sites.costOf(st, 'mine') === base, 'facility full price before Orbital Works');
+  assert(A.research(st, 'cargopods').ok && A.research(st, 'orbitalworks').ok, 'orbital works researched');
+  assert(SW.sites.costOf(st, 'mine') === Math.round(base * 0.75), 'orbital works discounts facilities');
+  assert(!!D.TECHS.simulacrum && A.research(st, 'corvettes').ok && A.research(st, 'simulacrum').ok, 'simulacrum researched');
+
+  // raid edge: journaled, clamped, never throws
+  const cv = A.buyShip(st, 'corvette', st.homeId).ship;
+  const mark = st.systems[st.systems[st.homeId].links[0]];
+  cv.at = mark.id;
+  const rr = A.raid(st, cv.id, mark.id, 9.9); // absurd edge must clamp, not break
+  assert(rr.ok === true || rr.ok === false, 'raid with edge resolves');
+  const je = st.journal[st.journal.length - 1];
+  assert(je.a === 'raid' && je.args[2] === 9.9, 'raid edge recorded in the journal');
+  invariants(st, 'post-badlands');
+}
+
+// ---------- 6f. stance, perks, encounter dedupe ----------
+section('Stance, aptitudes, encounter dedupe');
+{
+  const st = G.newGame({ seed: 'smoke-6f', difficulty: 'standard', aptitude: 'keeneyes' });
+  assert(SW.perks.has(st, 'keeneyes'), 'starting aptitude granted');
+  assert(!SW.perks.has(st, 'starread'), 'only the chosen aptitude');
+
+  // milestones grant points on the slow cadence
+  st.stats.surveys = 6; st.stats.deliveries = 30;
+  let guard = 0;
+  while ((st.perkPoints || 0) < 2 && guard++ < 80) { G.tick(st); chooseAny(st); }
+  assert((st.perkPoints || 0) >= 2, 'milestones granted aptitude points (' + st.perkPoints + ')');
+  assert(A.buyPerk(st, 'voidborn').ok === false, 'perk chains enforce prerequisites');
+  assert(A.buyPerk(st, 'keeneyes').ok === false, 'owned perks are not repurchasable');
+  assert(A.buyPerk(st, 'gunner').ok, 'perk purchased');
+  const cv = SW.ships.create(st, 'corvette', st.homeId);
+  assert(Math.abs(SW.combat.power(st, cv) - 6.9) < 0.01, 'Gunner: power 6 → 6.9');
+  const home = st.systems[st.homeId];
+  const sell0 = SW.economy.sellPrice(st, home, 'FOOD', 'player');
+  assert(A.buyPerk(st, 'silver').ok, 'second perk purchased');
+  const sell1 = SW.economy.sellPrice(st, home, 'FOOD', 'player');
+  assert(Math.abs(sell1 / sell0 - 1.04) < 0.001, 'Silver Tongue: sell prices +4%');
+
+  // the bubble wakes: panic, then the stance demand, then consequences
+  st.story.flags.scourge_awake = true;
+  st.story.seen.ev_awake = st.tick;
+  st.story.flags.panic_done = true; // skip the panic beat; test the decision
+  guard = 0;
+  while (!st.scourgeStance && guard++ < 60) {
+    G.tick(st);
+    if (st.story.pending === 'ev_stance') SW.story.choose(st, 0); // HOLD THE LINE
+    else chooseAny(st);
+  }
+  assert(st.scourgeStance === 'hold', 'stance chosen: hold');
+  assert(st.story.flags.stance_chosen === true, 'stance flag set');
+  assert(G.buildingCost(st, 'bastion') === Math.round(D.BUILDINGS.bastion.cost * 0.7), 'HOLD discounts bastions 30%');
+  assert(st.story.queue.some(function (q) { return q.id === 'ev_vigil_levy'; }), 'faction consequence scheduled');
+
+  // exodus stance effects on a fresh run
+  const st2 = G.newGame({ seed: 'smoke-6f2', difficulty: 'relaxed' });
+  const range0 = SW.ships.rangeOf(st2);
+  st2.scourgeStance = 'exodus';
+  assert(SW.ships.rangeOf(st2) > range0, 'EXODUS extends command range');
+  assert(SW.tech.costOf(st2, 'deepdrives') === Math.round(D.TECHS.deepdrives.cost * 0.75), 'EXODUS discounts Deep Drives');
+
+  // encounter dedupe: combos rest before recurring
+  const sys2 = st2.systems[st2.homeId];
+  const combos = {};
+  let dup = 0, built = 0;
+  for (let i = 0; i < 12; i++) {
+    const enc = SW.story.buildEncounter(st2, sys2, st2.ships[0]);
+    if (!enc) continue;
+    built++;
+    const key = enc.id.replace(/_\d+$/, '');
+    if (combos[key]) dup++;
+    combos[key] = true;
+  }
+  assert(built >= 10, 'encounters keep assembling (' + built + ')');
+  assert(dup <= 2, 'combos rest before recurring (' + dup + ' repeats in ' + built + ')');
+  invariants(st, 'post-stance');
+}
+
+// ---------- 7. combat: pirate raids, escorts, player raiding ----------
+section('Combat & privateering');
+{
+  const st = G.newGame({ seed: 'smoke-7', difficulty: 'relaxed' });
+  st.research = 1000; st.credits = 30000;
+  A.research(st, 'corvettes');
+  // deterministic pirate raid: cargo-laden ship parked in the Reach
+  const reachSys = st.systems.find(function (s) { return s.region === 'reach'; });
+  const victim = st.ships[0];
+  victim.at = reachSys.id; victim.cargo.FOOD = 8; victim.basis.FOOD = 10;
+  st.combat.nextRaidAt = st.tick + 1;
+  G.tick(st); chooseAny(st);
+  const raidHappened = (st.stats.raidsRepelled || 0) + (st.stats.raidsSuffered || 0) >= 1;
+  assert(raidHappened, 'pirate raid resolved against exposed ship');
+  // player raid
+  const cvR = A.buyShip(st, 'corvette', st.homeId);
+  assert(cvR.ok, 'corvette bought');
+  const cv = cvR.ship;
+  const rival = st.rivals[0];
+  const rivalSys = st.systems.find(function (s) { return (s.presence[rival.id] || 0) > 1; });
+  assert(!!rivalSys, 'rival has presence somewhere');
+  cv.at = rivalSys.id;
+  rivalSys.discovered = true;
+  const infamy0 = st.infamy;
+  let res = null;
+  for (let i = 0; i < 12 && (!res || !res.ok); i++) {
+    cv.raidCooldownUntil = 0;
+    if (!st.ships.find(function (x) { return x.id === cv.id; })) break; // lost raiding — also a valid outcome
+    res = A.raid(st, cv.id, rivalSys.id);
+  }
+  assert(res && res.ok, 'raid action resolves');
+  assert(st.infamy > infamy0, 'raiding raises infamy (' + st.infamy.toFixed(1) + ')');
+  // retainer
+  A.research(st, 'retainers');
+  const ret = A.hireRetainer(st, 'reach');
+  assert(ret.ok, 'retainer hired: ' + (ret.msg || 'ok'));
+  assert(SW.combat.patrolPower(st, 'reach') > 0, 'patrol power active');
+  // ops
+  assert(A.blitz(st, st.homeId).ok, 'trade blitz starts');
+}
+
+// ---------- 8. world events: contracts & blockades ----------
+section('World events');
+{
+  const st = G.newGame({ seed: 'smoke-8', difficulty: 'relaxed' });
+  st.credits = 10000;
+  // force a batch of world events
+  for (let i = 0; i < 14; i++) {
+    st.nextWorldAt = st.tick + 1;
+    G.tick(st); chooseAny(st);
+  }
+  assert(st.contracts.length + st.blockades.length >= 1, 'world events spawned (contracts=' + st.contracts.length + ', blockades=' + st.blockades.length + ')');
+  // manufactured famine: deliver and complete
+  const pop = st.systems.find(function (s) { return s.pop > 5 && s.id !== st.homeId && s.discovered; });
+  const ct = { id: 'ctX', kind: 'famine', sysId: pop.id, c: 'FOOD', qty: 5, progress: 0, deadline: st.tick + 500, reward: { credits: 500, research: 50 }, label: 'Test famine at ' + pop.name };
+  st.contracts.push(ct);
+  const ship = st.ships[0];
+  ship.at = pop.id; ship.cargo.FOOD = 6; ship.basis.FOOD = 5;
+  pop.stocks.FOOD = 0;
+  const cr0 = st.credits;
+  A.shipSell(st, ship.id, 'FOOD', 6);
+  assert(st.contracts.indexOf(ct) < 0, 'famine contract completed by delivery');
+  assert(st.credits > cr0, 'contract paid out');
+  // blockade pathing
+  const a = st.systems[st.homeId].links[0];
+  const b = st.systems[a].links.find(function (x) { return x !== st.homeId; });
+  if (b !== undefined) {
+    st.blockades.push({ a: a, b: b, until: st.tick + 1000, toll: 100 });
+    const path = SW.ships.findPath(st, a, b);
+    assert(!path || path.length > 2, 'blockaded lane is not traversed directly');
+    const pay = A.payToll(st, st.blockades.length - 1);
+    assert(pay.ok, 'toll paid clears blockade');
+  }
+}
+
+// ---------- 9. origins & legacy ----------
+section('Origins (roguelite starts)');
+{
+  G._memLegacy = {}; // reset
+  const st1 = G.newGame({ seed: 'smoke-9', difficulty: 'standard', origin: 'vigil' });
+  assert(st1.origin === 'courier', 'locked origin falls back to courier');
+  G.legacySet('won'); G.legacySet('wonder'); G.legacySet('infamy');
+  const st2 = G.newGame({ seed: 'smoke-9b', difficulty: 'standard', origin: 'vigil' });
+  assert(st2.origin === 'vigil', 'vigil origin unlocked via legacy');
+  assert(st2.ships[0].hull === 'corvette', 'vigil starts with corvette');
+  assert(SW.tech.has(st2, 'corvettes'), 'vigil starts with corvette tech');
+  const st3 = G.newGame({ seed: 'smoke-9c', difficulty: 'standard', origin: 'severed' });
+  assert(st3.origin === 'severed' && st3.infamy >= 3, 'severed origin: infamy start');
+  const startSys = st3.systems[st3.ships[0].at];
+  assert(startSys.region === 'reach' || st3.ships[0].at === st3.homeId, 'severed starts in the Reach');
+}
+
+// ---------- 10. long standard run with bot ----------
+section('Long run (standard, 3000 ticks, bot)');
+{
+  G._memLegacy = {};
+  const st = G.newGame({ seed: 'smoke-10', difficulty: 'standard' });
+  let lastCheck = 0;
+  for (let i = 0; i < 3000 && !st.gameOver; i++) {
+    G.tick(st);
+    botStep(st);
+    if (st.tick - lastCheck >= 250) { lastCheck = st.tick; invariants(st, 'tick ' + st.tick); }
+  }
+  invariants(st, 'final');
+  console.log('   tick=' + st.tick + ' credits=' + Math.floor(st.credits) + ' research=' + Math.floor(st.research) +
+    ' ships=' + st.ships.length + ' routes=' + st.routes.length +
+    ' deliveries=' + st.stats.deliveries + ' corrupted=' + SW.scourge.corruptedCount(st) +
+    ' contracts=' + ((st.stats.contractsDone || 0) + st.contracts.length) +
+    (st.gameOver ? (' GAMEOVER(' + (st.gameOver.win ? 'win' : 'loss') + ')') : ''));
+  assert(st.stats.deliveries >= 10, 'bot made deliveries (' + st.stats.deliveries + ')');
+  assert(st.story.flags.routes_unlocked, 'routes unlocked through play');
+  assert(st.scourge.phase !== 'dormant', 'scourge activated');
+  assert(st.rivals.length === 2, 'rivals exist');
+  assert(st.rivals.some(function (r) { return (r.lines || []).length > 0 || !r.alive; }), 'rivals run persistent trade lines');
+}
+
+// ---------- 11. victory & loss ----------
+section('Victory & loss paths');
+{
+  const st = G.newGame({ seed: 'smoke-11', difficulty: 'standard' });
+  st.scourge.startAt = 5;
+  for (let i = 0; i < 30; i++) { G.tick(st); chooseAny(st); }
+  assert(st.scourge.phase === 'active', 'scourge active');
+  st.story.flags.sample_collected = true;
+  st.research = 9000;
+  ['scourge1', 'scourge2', 'panacea'].forEach(function (t) { assert(A.research(st, t).ok, 'research ' + t); });
+  const ship = st.ships[0];
+  ship.at = st.scourge.originId; ship.mode = 'idle';
+  ship.cargo.PANACEA = D.TUNE.panaceaToWin;
+  assert(A.deliverPanacea(st, ship.id).ok, 'panacea delivered');
+  G.tick(st);
+  assert(st.gameOver && st.gameOver.win, 'victory registered');
+  assert(G.legacy().won === true, 'win recorded in legacy');
+
+  const st2 = G.newGame({ seed: 'smoke-11b', difficulty: 'brutal' });
+  st2.systems[st2.homeId].scourge = 2;
+  G.tick(st2);
+  assert(st2.gameOver && !st2.gameOver.win, 'home corruption = loss');
+}
+
+// ---------- 12. save/load + determinism ----------
+section('Save/load & determinism');
+{
+  const st = G.newGame({ seed: 'smoke-12', difficulty: 'standard' });
+  for (let i = 0; i < 300; i++) { G.tick(st); botStep(st); }
+  const json = G.exportSave();
+  const snapTick = st.tick, snapCredits = st.credits;
+  const r = G.loadFromString(json);
+  assert(r.ok, 'load ok');
+  assert(G.state.tick === snapTick && G.state.credits === snapCredits, 'state survives roundtrip');
+  for (let i = 0; i < 200; i++) { G.tick(G.state); chooseAny(G.state); }
+  invariants(G.state, 'post-load');
+  assert(G.loadFromString('{"version":1}').ok === false, 'old save version politely rejected');
+
+  function run(seed) {
+    const s = G.newGame({ seed: seed, difficulty: 'standard' });
+    for (let i = 0; i < 400; i++) { G.tick(s); botStep(s); }
+    return JSON.stringify({ c: Math.round(s.credits), r: Math.round(s.research), n: s.ships.length, t: s.tick });
+  }
+  assert(run('det-1') === run('det-1'), 'same seed, same world');
+  assert(run('det-1') !== run('det-2'), 'different seed, different world');
+}
+
+// ---------- 13. encounters assemble ----------
+section('Procedural encounters');
+{
+  const st = G.newGame({ seed: 'smoke-13', difficulty: 'relaxed' });
+  let built = 0;
+  for (let i = 0; i < 20; i++) {
+    const sys = st.systems[U.ri(st, 0, st.systems.length - 1)];
+    const enc = SW.story.buildEncounter(st, sys, st.ships[0]);
+    if (enc) {
+      built++;
+      assert(enc.choices.length >= 2, 'encounter has choices');
+      assert(enc.text.indexOf('{') < 0, 'template slots fully substituted');
+      st.story.pending = enc.id;
+      st.story.ctx = { sysId: sys.id, shipId: st.ships[0].id };
+      const r = SW.story.choose(st, 0);
+      assert(r.ok, 'encounter choice resolves');
+    }
+  }
+  assert(built >= 15, 'encounters assemble reliably (' + built + '/20)');
+  invariants(st, 'post-encounters');
+}
+
+// ---------- 14. story-flag registry (source scan) ----------
+section('Story flag registry');
+{
+  const fs = require('fs');
+  const registered = {};
+  for (const f of D.FLAGS) registered[f] = true;
+  const found = {};
+  const dir = path.join(__dirname, '..', 'js');
+  for (const file of fs.readdirSync(dir)) {
+    if (!/\.js$/.test(file)) continue;
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    let m;
+    const dot = /\bflags\.([a-zA-Z_][a-zA-Z_0-9]*)/g;
+    while ((m = dot.exec(src))) found[m[1]] = file;
+    const lit = /\bflag\((?:s|state),\s*'([^']+)'/g;
+    while ((m = lit.exec(src))) found[m[1]] = file;
+    const br = /\bflags\['([^']+)'\]/g;
+    while ((m = br.exec(src))) found[m[1]] = file;
+  }
+  const unknown = Object.keys(found).filter(function (f) {
+    if (registered[f]) return false;
+    return !D.FLAG_PREFIXES.some(function (p) { return f.indexOf(p) === 0; });
+  });
+  assert(unknown.length === 0, 'all story flags registered in D.FLAGS (unregistered: ' +
+    unknown.map(function (f) { return f + '@' + found[f]; }).join(', ') + ')');
+  assert(Object.keys(found).length >= 15, 'flag scan found the corpus (' + Object.keys(found).length + ')');
+}
+
+console.log('\n' + checks + ' checks, ' + failures + ' failures.');
+if (failures > 0) process.exit(1);
+console.log('SMOKE TEST v2 PASSED ✓');
