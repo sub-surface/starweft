@@ -299,8 +299,22 @@ section('Exploration economy (distance scaling, finds, first-light)');
   while (!far.surveyed && guard++ < 200) { G.tick(st); chooseAny(st); }
   D.TUNE.surveyFindChance = findChance0;
   assert(far.surveyed, 'far survey completed');
-  assert(st.credits - cr0 > D.TUNE.surveyChart, 'far/risky survey pays over the base chart fee (' + (st.credits - cr0) + ' > ' + D.TUNE.surveyChart + ')');
-  // forced anomaly find
+  // cartography data: value banked aboard, not paid instantly
+  const bundle = (scout.data || []).find(function (b) { return b.sys === far.id && b.kind !== 'firstlight'; });
+  assert(!!bundle, 'survey banked a data bundle aboard');
+  assert(bundle.c > D.TUNE.surveyChart, 'far/risky charts beat the base fee (' + bundle.c + ' > ' + D.TUNE.surveyChart + ')');
+  // sale only at populated ports
+  const notPop = st.systems.find(function (s) { return s.type !== 'pop' && s.discovered && s.scourge !== 2; });
+  scout.at = notPop.id; scout.mode = 'idle';
+  assert(A.sellData(st, scout.id).ok === false, 'no cartographer at unpopulated systems');
+  scout.at = st.homeId;
+  const cr1 = st.credits, res1 = st.research;
+  const sale = A.sellData(st, scout.id);
+  assert(sale.ok === true, 'cartographer buys at a populated port');
+  assert(st.credits > cr1 && st.research > res1, 'sale pays credits + research');
+  assert((scout.data || []).length === 0, 'charts leave the ship on sale');
+  assert(A.sellData(st, scout.id).ok === false, 'cannot sell the same charts twice');
+  // forced anomaly find: physical loot stays instant
   D.TUNE.surveyFindChance = 1;
   const near = st.systems[home.links[0]];
   near.discovered = true; near.surveyed = false; delete near.surveyProg;
@@ -310,15 +324,37 @@ section('Exploration economy (distance scaling, finds, first-light)');
   D.TUNE.surveyFindChance = findChance0;
   assert(near.surveyed, 'near survey completed');
   assert((st.stats.finds || 0) >= 1, 'forced anomaly find recorded');
-  // first-light bounty on discovery
+  // first-light: discovery banks data aboard too
   const hidden = st.systems.find(function (s) { return !s.discovered && s.scourge !== 2; });
   assert(!!hidden, 'an undiscovered system exists');
-  const cr1 = st.credits;
+  const dn0 = (scout.data || []).length;
   scout.at = hidden.id; scout.mode = 'idle'; scout.leg = { to: hidden.id, arrive: st.tick };
   scout.mode = 'travel'; scout.path = []; scout.mission = null;
   G.tick(st); chooseAny(st);
   assert(hidden.discovered, 'arrival discovers the system');
-  assert(st.credits > cr1, 'first-light bounty paid on discovery');
+  assert((scout.data || []).length > dn0 && scout.data.some(function (b) { return b.kind === 'firstlight'; }), 'first-light banked as data');
+}
+
+// ---------- 6a2. opening economy sanity (seed validation) ----------
+section('Opening economy sanity (no-player run)');
+{
+  const st = G.newGame({ seed: 'smoke-seed-check', difficulty: 'standard' });
+  for (let i = 0; i < 150; i++) G.tick(st);
+  const v = G.validate(st);
+  assert(v.length === 0, 'no-player world stays valid (' + v.join('; ') + ')');
+  let prodTotal = 0, shortages = 0, fed = 0;
+  for (const sys of st.systems) {
+    for (const c in sys.prod) prodTotal += sys.prod[c];
+    if (sys.pop > 0 && sys.satNeed < 0.85) shortages++;
+    if (sys.pop > 0 && sys.satNeed > 0.5) fed++;
+  }
+  assert(prodTotal > 10, 'the world produces (' + prodTotal.toFixed(1) + '/t)');
+  assert(shortages >= 3, 'real shortage pressure exists — prompts, not comfort (' + shortages + ')');
+  assert(fed >= 1, 'not everything starves instantly (' + fed + ' worlds coping)');
+  const copy = JSON.parse(JSON.stringify(st));
+  for (const s of copy.systems) s.discovered = true;
+  const ops = SW.economy.opportunities(copy, 12);
+  assert(ops.length >= 6, 'profitable routes exist for the taking (' + ops.length + ')');
 }
 
 // ---------- 6b. scout auto-explore ----------

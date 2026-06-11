@@ -47,10 +47,15 @@ scale of automation:
 | A policy | directives ("keep X stocked"), chain routes (Weftworks), auto-yards | ✅ |
 | A fleet | Exchange bulk-assign, employ-idle | ✅ |
 
-v3 closes the gap at the top: the **FETCH order** (pick commodity + source +
-destination from the command bar or market row; ship plans both legs). Every
-market row and every shortage in the ticker should be one click from "a ship
-is now handling this."
+v3 closes the gap with a **command grammar** (per the design-research report):
+a small set of atomic verbs — MOVE, DOCK, BUY, SELL, SURVEY, SCAN, SELL_DATA,
+PATROL, WAIT — that **intents compile into visible queues**. The player issues
+intents ("fetch X from A to B", "explore and report"); the compiler is
+invisible, the queue is not. **Interrupts** add conditional self-care without
+opacity: "data bank full → route to vendor and sell", "stranded-risk → hold".
+Rules: never remove manual control (the Avorion lesson); every ship can answer
+*"why are you doing this?"* in one line. FETCH is the first intent; every
+market row and ticker shortage is one click from "a ship is handling this."
 
 ### 2.2 The two open branches
 
@@ -154,6 +159,12 @@ dynamics per run:
   profiles) but **deprivation is curved**: Sol-adjacent systems start poorer
   in stocks but sound in production, so the early game is about *connecting*
   capacity, not finding it.
+- **Seeds are validated, not hoped for** (per the research report: internal
+  economies are hypersensitive to small numbers). After generation, a
+  headless no-player simulation of the opening stretch must show: no
+  deadlocked inhabited worlds, real shortage pressure (prompts), and a
+  healthy count of profitable routes — reject and reroll otherwise. The
+  smoke-test bot infrastructure already exists to enforce this as a test.
 
 ---
 
@@ -175,9 +186,11 @@ and the *Stationwright* origin. Sites tick only in hot systems (§10.3).
 payouts with a held asset:
 
 - Every first-discovery, survey completion, body scan, anomaly find, and
-  wonder accumulates **CARTOGRAPHY DATA aboard that ship** (not credits).
-  Value scales with distance from the *seller's* market, region danger,
-  rarity (wonders ≫ derelicts ≫ M-dwarfs), and first-ever bonuses.
+  wonder accumulates **CARTOGRAPHY DATA aboard that ship** (not credits) —
+  typed bundles, not a number: `firstlight` (discovery), `survey`,
+  `anomalyTrace`, `deepFieldMap` (badlands), `wonderRecord`. Value is fixed at
+  collection (distance, region danger, rarity, first-ever bonus, deepcharts)
+  and **paid only at sale**; different buyers can favor different kinds later.
 - Data is **cashed at a Cartographer's vendor in any populated system** —
   paying credits *and* research, and *only then* revealing the fine detail to
   the player's map (until sold, systems show as "charted — data unsold").
@@ -283,17 +296,29 @@ The §3.4 progression curve gets tuned against bot curves, not vibes.
 
 ## 13. Migration Plan v3 (each step lands green on both test suites)
 
+Sequencing follows the research report's argument: **simulation first, command
+expression second, UI third, narrative last** — the world must produce legible
+pressures before the interface can explain them.
+
 1. ✅ Render perf + galactic LOD · 2. ✅ price index · 3. ✅ action journal ·
 4. ✅ dev fundamentals · *(v2 steps 5–9 fold into below)*
-5. **UI split + ontology** (§7): per-surface modules, YOU tab (aptitudes
-   home), infobox layout slot + hover bounding, data-info coverage test.
-6. **FETCH order + ticker carousel** (§2.1, §7) — small, high-leverage.
-7. **Cartography data** (§6) — converts existing reward sites to data
-   accrual + vendor; auto-explore sell-policy.
-8. **Main menu + intro + Sol tutorial** (§3.1–3.3) — needs 5's modules.
+5. ✅ **Cartography data** (§6) — surveys/discoveries bank typed bundles
+   (`firstlight`/`survey`/`deepFieldMap`/`wonderRecord`) aboard the ship;
+   sold via `A.sellData` at populated ports for credits + research; lost with
+   the ship; auto-explore sells opportunistically and routes home when the
+   bank exceeds `TUNE.dataSellAt`; opening-economy no-player sanity check in
+   the smoke suite. Remaining: per-kind buyers, codex chart-states, sale
+   headlines in the ticker.
+6. **Command grammar** (§2.1) — atomic queue + intent compiler + interrupts;
+   FETCH and EXPLORE-AND-REPORT intents; "why am I doing this" diagnostics.
+7. **UI split + ontology** (§7): per-surface modules, cockpit-style selected
+   ship (queue visible, tabs), YOU tab (aptitudes home), infobox layout slot +
+   hover bounding, data-info coverage test, ticker carousel.
+8. **Main menu + intro + Sol tutorial** (§3.1–3.3) — needs 7's modules.
 9. **World genesis v3 + run parameters** (§3.5, §4) — density presets,
-   voids/clusters, ¤/tick metrics.
-10. **Market terminal** (§8) and **Encounters v2** (§9) — parallel tracks.
+   voids/clusters, ¤/tick metrics, full seed validator.
+10. **Market terminal** (§8) and **Encounters v2** (§9 — stateful predicates,
+    hailing chips) — parallel tracks.
 11. **Rival convoys raidable** (§10.4); **sim LOD + badlands growth** (§10.3).
 12. SoA core only if profiling demands.
 

@@ -487,10 +487,12 @@ SW.ui = (function () {
       (hull.power ? ' · pwr ' + SW.combat.power(s, ship) : '') +
       (ship.stranded ? ' · <span style="color:var(--danger)">stranded</span>' : '') + '</div>';
     const cargo = Object.keys(ship.cargo);
-    if (cargo.length) {
+    const chipDataV = SW.ships.dataValue(ship);
+    if (cargo.length || chipDataV > 0) {
       html += '<div class="row">' + cargo.map(function (c) {
         return '<span class="tag" data-info="commodity:' + c + '">' + D.COMMODITIES[c].icon + ' ' + Math.floor(ship.cargo[c]) + '</span>';
-      }).join('') + '</div>';
+      }).join('') +
+      (chipDataV > 0 ? '<span class="tag acc" title="Unsold cartography data — worth ' + U.fmt(chipDataV) + '¤ at a populated port, lost if the ship is.">◈ ' + U.fmt(chipDataV) + '¤</span>' : '') + '</div>';
     }
     chip.innerHTML = html; // the chip is status + cargo; all commands live in the command bar
   }
@@ -530,6 +532,10 @@ SW.ui = (function () {
       }).join('') + '</select>';
     }
     if (ship.routeId || ship.directiveId || ship.mission) html += '<button data-act="unassign">RELEASE</button>';
+    const dataV = SW.ships.dataValue(ship);
+    if (sys && dataV > 0 && sys.type === 'pop') {
+      html += '<button class="primary" data-act="sellData" title="Sell cartography data to the local Cartographer">◈ SELL DATA (+' + U.fmt(dataV) + '¤)</button>';
+    }
     if (sys && SW.combat.power(s, ship) >= 3 && sys.id !== s.homeId && sys.scourge !== 2) {
       const cd = Math.max(0, (ship.raidCooldownUntil || 0) - s.tick);
       html += '<button class="danger" data-act="raidHere" ' + (cd ? 'disabled' : '') + ' title="Raid this system\'s commerce. Infamy will follow.">☠ RAID' + (cd ? ' (' + cd + ')' : '') + '</button>';
@@ -1468,6 +1474,7 @@ SW.ui = (function () {
       case 'yardsToggle': { const r = A().toggleAutoYards(s); if (r.ok) toast({ kind: 'info', text: 'Tessellation Yards: ' + (r.enabled ? 'auto' : 'off') + '.' }); break; }
       case 'buildSite': { const r = A().buildSite(s, sysId, btn.dataset.body, btn.dataset.fac); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'buyPerk': { const r = A().buyPerk(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
+      case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'relocate': {
         const r = A().relocateHome(s, sysId);
         if (!r.ok) toast({ kind: 'bad', text: r.msg });

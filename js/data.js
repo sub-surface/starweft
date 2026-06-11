@@ -287,7 +287,8 @@ SW.data = (function () {
     surveyDistFactor: 1.0,     // survey rewards scale up to +100% at the bubble edge
     surveyFindChance: 0.10,    // chance a completed survey turns up an anomaly find
     surveyFindChanceDeep: 0.22,// ...with Deep Charts researched
-    discoverCredits: 30,       // first-light bounty for charting a new system (distance-scaled)
+    discoverCredits: 30,       // first-light data value for charting a new system (distance-scaled)
+    dataSellAt: 500,           // auto-explorers head home to sell once charts are worth this
     relocateCost: 2500,        // credits to move the Home anchorage (driftholds)
     badlandsCount: 90,         // systems in the dark shell beyond the bubble
     badlandsR: 120,            // outer radius of the badlands shell, ly

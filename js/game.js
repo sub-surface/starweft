@@ -500,6 +500,11 @@ SW.game = (function () {
   A.buyPerk = function (state, perkId) {
     return SW.perks.buy(state, perkId);
   };
+  A.sellData = function (state, shipId) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    return SW.ships.sellData(state, ship);
+  };
 
   A.supplyMission = function (state, shipId, targetSysId, c, qty) {
     const ship = findShip(state, shipId);

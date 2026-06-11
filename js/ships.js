@@ -109,8 +109,34 @@ SW.ships = (function () {
       if (r) { const j = r.ships.indexOf(ship.id); if (j >= 0) r.ships.splice(j, 1); }
     }
     state.stats.shipsLost = (state.stats.shipsLost || 0) + 1;
-    SW.game.emit('toast', { kind: 'bad', text: '☠ ' + ship.name + ' lost — ' + reason });
+    const dataLost = S.dataValue(ship);
+    SW.game.emit('toast', { kind: 'bad', text: '☠ ' + ship.name + ' lost — ' + reason + (dataLost ? ' ' + U.fmt(dataLost) + '¤ of unsold charts went with her.' : '') });
     SW.game.emit('sfx', 'loss');
+  };
+
+  // ---- Cartography data: the explorer's cargo ----
+  S.dataValue = function (ship) {
+    let v = 0;
+    for (const b of (ship.data || [])) v += b.c;
+    return v;
+  };
+  S.sellData = function (state, ship) {
+    if (ship.mode !== 'idle' || ship.at === null) return { ok: false, msg: ship.name + ' is in flight.' };
+    const sys = state.systems[ship.at];
+    if (!sys || sys.type !== 'pop' || sys.scourge === 2) return { ok: false, msg: 'Cartographers buy at populated systems.' };
+    const data = ship.data || [];
+    if (!data.length) return { ok: false, msg: 'No charts aboard.' };
+    let credits = 0, research = 0;
+    for (const b of data) { credits += b.c; research += b.r; }
+    const n = data.length;
+    ship.data = [];
+    state.credits += credits;
+    state.research += research;
+    state.stats.creditsEarned = (state.stats.creditsEarned || 0) + credits;
+    state.stats.dataSold = (state.stats.dataSold || 0) + credits;
+    SW.game.emit('toast', { kind: 'good', text: '◈ ' + ship.name + ' sold ' + n + ' chart' + (n === 1 ? '' : 's') + ' at ' + sys.name + ': +' + U.fmt(credits) + '¤, +' + research + '◇.' });
+    SW.game.emit('sfx', 'sell');
+    return { ok: true, credits: credits, research: research, bundles: n };
   };
 
   // ---- Trade primitives (ship at a market) ----
@@ -292,10 +318,15 @@ SW.ships = (function () {
     if (sys.region === 'oldstream') research *= 1.5;
     // synergy: a Surveyor origin under Wayfarer doctrine sells charts dear
     if (state.origin === 'surveyor' && hasTech(state, 'doc_wayfarer')) credits *= 1.5;
-    state.research += research;
-    state.credits += Math.round(credits);
+    // cartography data: value is fixed here, paid only when sold at a
+    // populated port. Until then it rides aboard — and dies with the ship.
+    ship.data = ship.data || [];
+    ship.data.push({
+      kind: sys.wonder ? 'wonderRecord' : (sys.badlands ? 'deepFieldMap' : 'survey'),
+      sys: sys.id, c: Math.round(credits), r: Math.round(research),
+    });
     state.stats.surveys = (state.stats.surveys || 0) + 1;
-    SW.game.emit('toast', { kind: 'good', text: '⌖ ' + ship.name + ' completed the survey of ' + sys.name + ' (+' + Math.round(research) + '◇, +' + Math.round(credits) + '¤).' });
+    SW.game.emit('toast', { kind: 'good', text: '⌖ ' + ship.name + ' charted ' + sys.name + ' — data worth ' + Math.round(credits) + '¤ + ' + Math.round(research) + '◇ aboard. Sell at a populated port.' });
     SW.game.emit('sfx', 'discover');
     // lore surfaces where people dig
     const fragChance = sys.region === 'oldstream' ? 0.5 : (sys.type === 'derelict' ? 0.6 : 0.2);
@@ -347,6 +378,22 @@ SW.ships = (function () {
     const here = state.systems[ship.at];
     if (!here || here.scourge === 2) return;
     if (!here.surveyed) return; // finish the local survey before moving on
+    // sell-policy: cash the charts at any populated port we're already in,
+    // and head home deliberately once the bank is worth the trip
+    if ((ship.data || []).length && here.type === 'pop') S.sellData(state, ship);
+    if (S.dataValue(ship) >= D.TUNE.dataSellAt) {
+      let vendor = null, vd = Infinity;
+      for (const sys of state.systems) {
+        if (sys.type !== 'pop' || !sys.discovered || sys.scourge === 2) continue;
+        const path = S.findPath(state, ship.at, sys.id);
+        if (path && path.length < vd) { vd = path.length; vendor = sys; }
+      }
+      if (vendor) {
+        const rv = S.send(state, ship, vendor.id, { kind: 'autoExplore' });
+        if (!rv.ok) ship.retryAt = state.tick + 18;
+        return;
+      }
+    }
     const target = autoExploreTarget(state, ship);
     if (!target) {
       ship.retryAt = state.tick + 40;
@@ -397,11 +444,12 @@ SW.ships = (function () {
     if (!sys.discovered) {
       sys.discovered = true;
       state.stats.discovered = (state.stats.discovered || 0) + 1;
-      // first-light bounty: new charts sell even before a full survey
+      // first-light: the sighting itself is data, banked aboard until sold
       const home = state.systems[state.homeId];
       const bounty = Math.round(D.TUNE.discoverCredits * (1 + Math.min(2, (home ? U.dist(home, sys) : 0) / D.TUNE.bubbleR)));
-      state.credits += bounty;
-      SW.game.emit('toast', { kind: 'good', text: '✧ ' + ship.name + ' charted ' + sys.name + ' (+' + bounty + '¤)' });
+      ship.data = ship.data || [];
+      ship.data.push({ kind: 'firstlight', sys: sysId, c: bounty, r: 0 });
+      SW.game.emit('toast', { kind: 'good', text: '✧ ' + ship.name + ' sighted ' + sys.name + ' (data +' + bounty + '¤)' });
       SW.game.emit('sfx', 'discover');
       SW.story.onArrival(state, sysId, ship);
     }
