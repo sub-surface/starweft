@@ -263,7 +263,7 @@ SW.uiModals = (function () {
       '<canvas id="simCanvas" width="520" height="320" style="display:block;margin:8px auto;border:1px solid var(--line,#2a2f36)"></canvas>' +
       '<div class="row"><span class="sub grow">←/→ or A/D to fly · guns are automatic · clear the wave, keep your hull</span>' +
       '<button data-act="simAuto">AUTO-RESOLVE</button><button class="danger" data-act="simAbort">ABORT</button></div></div>';
-    modal.classList.remove('hidden');
+    SW.ui.showModal('combatSim');
     const cv = document.getElementById('simCanvas');
     const wasPaused = s.paused;
     s.paused = true;
@@ -283,7 +283,7 @@ SW.uiModals = (function () {
   function closeCombatSim(autoResolve) {
     const s = st();
     const wasSim = sim;
-    $('#combatSim').classList.add('hidden');
+    SW.ui.hideModals();
     $('#combatSim').innerHTML = '';
     sim = null;
     if (!wasSim) return;
@@ -299,7 +299,7 @@ SW.uiModals = (function () {
     const kills = w.inv.filter(function (i) { return !i.alive; }).length;
     const performance = (kills / w.total) * 0.6 + (Math.max(0, w.hp) / 3) * 0.4;
     const edge = Math.max(-0.25, Math.min(0.25, (performance - 0.5) * 0.5));
-    $('#combatSim').classList.add('hidden');
+    SW.ui.hideModals();
     $('#combatSim').innerHTML = '';
     sim = null;
     if (s) {

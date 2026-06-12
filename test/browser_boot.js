@@ -256,6 +256,33 @@ step('combat simulacrum entry points exist', function () {
   if (!SW.data.TECHS.simulacrum || !SW.data.TECHS.deepdrives || !SW.data.TECHS.orbitalworks) throw new Error('new techs missing');
 });
 
+step('raid button resolves immediately; sim button opens visible modal', function () {
+  const s = G.state;
+  if (s.tech.unlocked.indexOf('corvettes') < 0) s.tech.unlocked.push('corvettes');
+  if (s.tech.unlocked.indexOf('simulacrum') < 0) s.tech.unlocked.push('simulacrum');
+  s.credits = 20000;
+  const target = s.systems.find(function (sys) { return sys.id !== s.homeId && sys.discovered && sys.scourge !== 2; }) || s.systems[s.systems[s.homeId].links[0]];
+  target.discovered = true;
+  SW.ui.hideModals();
+  const cv = SW.ships.create(s, 'corvette', target.id);
+  cv.raidCooldownUntil = 0;
+  SW.render.selectedShip = cv.id;
+  SW.render.selectedSys = target.id;
+  const inf0 = s.infamy || 0;
+  const paused0 = s.paused;
+  fireClick('raidHere');
+  if ((s.infamy || 0) <= inf0) throw new Error('raidHere did not resolve a raid immediately');
+  if (s.paused !== paused0) throw new Error('raidHere changed pause state');
+
+  SW.ui.hideModals();
+  const cv2 = SW.ships.create(s, 'corvette', target.id);
+  cv2.raidCooldownUntil = 0;
+  SW.render.selectedShip = cv2.id;
+  fireClick('simRaid');
+  if (elCache['#modalShade'].classList.contains('hidden') || elCache['#combatSim'].classList.contains('hidden')) throw new Error('simRaid did not open visible simulacrum modal');
+  fireClick('simAbort');
+});
+
 step('galactic LOD: frames render at every zoom scale', function () {
   for (const d of [30, 150, 700, 1600, 5000, 20000, 90000]) {
     SW.render.cam.dist = d; SW.render.cam.distTarget = d;

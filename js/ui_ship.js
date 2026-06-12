@@ -101,6 +101,10 @@ SW.uiShip = (function () {
       const cd = Math.max(0, (ship.raidCooldownUntil || 0) - s.tick);
       html += '<button class="danger" data-act="raidHere" ' + (cd ? 'disabled' : '') + ' title="Raid this system\'s commerce. Infamy will follow.">☠ RAID' + (cd ? ' (' + cd + ')' : '') + '</button>';
     }
+    if (sys && SW.tech.has(s, 'simulacrum') && SW.combat.power(s, ship) >= 3 && sys.id !== s.homeId && sys.scourge !== 2) {
+      const cd = Math.max(0, (ship.raidCooldownUntil || 0) - s.tick);
+      html += '<button data-act="simRaid" ' + (cd ? 'disabled' : '') + ' title="Practice the raid in the Tactical Simulacrum for a small odds edge">SIM</button>';
+    }
     if (sys && sys.id === s.scourge.originId && (ship.cargo.PANACEA || 0) > 0) {
       html += '<button class="primary" data-act="deliverPanacea">✺ DELIVER PANACEA</button>';
     }

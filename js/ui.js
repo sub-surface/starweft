@@ -519,9 +519,12 @@ SW.ui = (function () {
       case 'inoculate': if (ship) { const r = A().inoculate(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'raidHere':
         if (ship && ship.at !== null) {
-          if (SW.tech.has(s, 'simulacrum')) SW.uiModals.openCombatSim(ship, s.systems[ship.at]);
-          else { const r = A().raid(s, ship.id, ship.at); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else SW.audio.sfx('raid'); }
+          const r = A().raid(s, ship.id, ship.at);
+          if (!r.ok) toast({ kind: 'bad', text: r.msg }); else SW.audio.sfx('raid');
         }
+        break;
+      case 'simRaid':
+        if (ship && ship.at !== null) SW.uiModals.openCombatSim(ship, s.systems[ship.at]);
         break;
       case 'followShip': if (ship) SW.render.followShip = SW.render.followShip === ship.id ? null : ship.id; break;
       case 'focusSys': if (sysId !== null) SW.render.centerOn(sysId); break;
