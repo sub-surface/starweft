@@ -736,12 +736,14 @@ section('In-system sites (facilities on bodies)');
   assert(A.buildSite(st, st.homeId, 'The Belt', 'skimmer').ok === false, 'skimmer refused on a belt');
   const r1 = A.buildSite(st, st.homeId, 'The Belt', 'mine');
   assert(r1.ok, 'mine anchored on The Belt: ' + (r1.msg || ''));
-  assert(A.buildSite(st, st.homeId, 'The Belt', 'mine').ok === false, 'one facility per body');
+  assert(A.buildSite(st, st.homeId, 'The Belt', 'mine').ok === true, 'facilities stack up to body anchorage');
+  assert(A.buildSite(st, st.homeId, 'The Belt', 'mine').ok === true, 'belt anchors a third site');
+  assert(A.buildSite(st, st.homeId, 'The Belt', 'mine').ok === false, 'anchorage cap enforced');
   assert(A.buildSite(st, st.homeId, 'Jupiter', 'skimmer').ok, 'skimmer anchored at Jupiter');
   assert(A.buildSite(st, st.homeId, 'Uranus', 'cryoarchive').ok, 'cryo-archive anchored at Uranus');
-  assert(home.sites.length === 3, 'three sites recorded');
+  assert(home.sites.length === 5, 'five sites recorded');
   const sfx = SW.sites.fx(home);
-  assert(Math.abs(sfx.prod.ORE - 0.45) < 1e-9 && Math.abs(sfx.prod.GAS - 0.45) < 1e-9, 'site production aggregates');
+  assert(Math.abs(sfx.prod.ORE - 1.35) < 1e-9 && Math.abs(sfx.prod.GAS - 0.45) < 1e-9, 'site production aggregates (stacked mines)');
   assert(sfx.research > 0.2, 'site research aggregates');
 
   // production flows into the market
@@ -759,7 +761,7 @@ section('In-system sites (facilities on bodies)');
   const far = st.systems.find(function (s) { return !s.surveyed && s.scourge !== 2; });
   assert(A.buildSite(st, far.id, 'whatever', 'mine').ok === false, 'unsurveyed systems refuse sites');
   const copy = JSON.parse(JSON.stringify(st));
-  assert(copy.systems[st.homeId].sites.length === 4, 'sites survive serialization');
+  assert(copy.systems[st.homeId].sites.length === 6, 'sites survive serialization');
   assert(SW.sites.fx(copy.systems[st.homeId]).prod.ORE > 0.4, 'site fx recompute from save data');
   invariants(st, 'post-sites');
 }
@@ -1176,6 +1178,29 @@ section('Procedural encounters');
 }
 
 // ---------- 14a. source integrity (mojibake scan) ----------
+section('Multi-site bodies & orbital spindles');
+{
+  const st = G.newGame({ seed: 'smoke-sites', difficulty: 'relaxed' });
+  const home = st.systems[st.homeId];
+  home.depot = home.depot || {};
+  home.depot.ALLOY = 60; home.depot.TECH = 20;
+  st.credits = 99999;
+  const r1 = A.buildSite(st, st.homeId, 'The Belt', 'mine');
+  assert(r1.ok, 'first mine anchors on The Belt (' + (r1.msg || 'ok') + ')');
+  const r2 = A.buildSite(st, st.homeId, 'The Belt', 'mine');
+  assert(r2.ok, 'second mine stacks on The Belt (' + (r2.msg || 'ok') + ')');
+  const capBefore = home.capacity.ORE;
+  const r3 = A.buildSite(st, st.homeId, 'The Belt', 'spindle');
+  assert(r3.ok, 'spindle anchors in belt orbit (' + (r3.msg || 'ok') + ')');
+  assert(home.capacity.ORE === capBefore + 30, 'spindle capacity bonus applied');
+  const r4 = A.buildSite(st, st.homeId, 'The Belt', 'mine');
+  assert(!r4.ok, 'fourth facility refused: anchorage full');
+  const r5 = A.buildSite(st, st.homeId, 'Jupiter', 'spindle');
+  assert(r5.ok, 'spindle anchors at a gas giant (' + (r5.msg || 'ok') + ')');
+  const fx = SW.sites.fx(home);
+  assert(fx.prod.ORE > 0.8, 'stacked mines stack production (' + fx.prod.ORE + ')');
+}
+
 section('Sol prologue (tutorial)');
 {
   // Full prologue, driven exactly as a player would via actions

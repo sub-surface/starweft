@@ -13,13 +13,23 @@ SW.sites = (function () {
   S.at = function (sys, bodyName) {
     return (sys.sites || []).find(function (x) { return x.body === bodyName; }) || null;
   };
+  S.listAt = function (sys, bodyName) {
+    return (sys.sites || []).filter(function (x) { return x.body === bodyName; });
+  };
+  S.slotCap = function (body) {
+    return D.SITE_SLOTS[body.type] || D.SITE_SLOTS_DEFAULT;
+  };
+  function hosts(fac, body) {
+    return fac.orbital || fac.sites.indexOf(body.type) >= 0;
+  }
 
-  // Facilities this body could host (excluding its current one).
+  // Facilities this body could still anchor. Duplicates are allowed —
+  // stacking farms is honest logistics; the price curve self-corrects.
   S.options = function (state, sys, body) {
-    if (!body || S.at(sys, body.name)) return [];
+    if (!body || S.listAt(sys, body.name).length >= S.slotCap(body)) return [];
     const out = [];
     for (const id in D.FACILITIES) {
-      if (D.FACILITIES[id].sites.indexOf(body.type) >= 0) out.push(id);
+      if (hosts(D.FACILITIES[id], body)) out.push(id);
     }
     return out;
   };
@@ -55,8 +65,8 @@ SW.sites = (function () {
     if (!SW.ships.inRange(state, sys)) return { ok: false, msg: 'Outside command range — relays first.' };
     const body = SW.planets.get(state, sysId).bodies.find(function (b) { return b.name === bodyName; });
     if (!body) return { ok: false, msg: 'No such body.' };
-    if (f.sites.indexOf(body.type) < 0) return { ok: false, msg: f.name + ' cannot anchor at a ' + body.type + ' body.' };
-    if (S.at(sys, bodyName)) return { ok: false, msg: bodyName + ' already hosts a facility.' };
+    if (!hosts(f, body)) return { ok: false, msg: f.name + ' cannot anchor at a ' + body.type + ' body.' };
+    if (S.listAt(sys, bodyName).length >= S.slotCap(body)) return { ok: false, msg: bodyName + ' has no anchorage left.' };
     const cost = S.costOf(state, facId);
     if (state.credits < cost) return { ok: false, msg: 'Needs ' + U.fmt(cost) + '¤.' };
 

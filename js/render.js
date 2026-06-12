@@ -53,6 +53,39 @@ SW.render = (function () {
     return 'hsla(' + hue + ',55%,72%,' + (a === undefined ? 1 : a) + ')';
   }
 
+  // System view: a body's facilities. Ground sites stack their icons above
+  // the body; orbital stations circle it on a squashed ellipse, slowly.
+  function drawBodySites(sys, b, bx, by, br) {
+    const all = sys.sites ? sys.sites.filter(function (x) { return x.body === b.name; }) : [];
+    if (!all.length) return;
+    const ground = [], orbital = [];
+    for (const site of all) {
+      const f = D.FACILITIES[site.fac];
+      if (f) (f.orbital ? orbital : ground).push(f);
+    }
+    if (ground.length) {
+      ctx.fillStyle = accent(0.9);
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      for (let i = 0; i < ground.length; i++) {
+        ctx.fillText(ground[i].icon, bx + (i - (ground.length - 1) / 2) * 10, by - br - 6);
+      }
+      ctx.textAlign = 'left';
+    }
+    const st = SW.game.state;
+    for (let i = 0; i < orbital.length; i++) {
+      const ang = (st ? st.tick : 0) * 0.045 + i * 2.1 + b.name.length * 0.7;
+      const orad = br + 7 + i * 4;
+      const ox = bx + Math.cos(ang) * orad, oy = by + Math.sin(ang) * orad * 0.45;
+      ctx.strokeStyle = 'rgba(200,210,224,0.18)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.ellipse(bx, by, orad, orad * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = accent(0.95);
+      ctx.save(); ctx.translate(ox, oy); ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-1.6, -1.6, 3.2, 3.2);
+      ctx.restore();
+    }
+  }
+
   // ---------- setup ----------
   R.init = function (cv) {
     canvas = cv;
@@ -1397,13 +1430,7 @@ SW.render = (function () {
           const pp = orbitPoint(ba, orad + jitter);
           ctx.fillRect(pp.x, pp.y, 1, 1);
         }
-        const beltSite = sys.sites && sys.sites.find(function (x) { return x.body === b.name; });
-        if (beltSite && D.FACILITIES[beltSite.fac]) {
-          ctx.fillStyle = accent(0.9);
-          ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-          ctx.fillText(D.FACILITIES[beltSite.fac].icon, bx, by - 10);
-          ctx.textAlign = 'left';
-        }
+        drawBodySites(sys, b, bx, by, 8);
         bodyPickables.push({ x: bx, y: by, r: 8, body: b });
         continue;
       }
@@ -1423,13 +1450,7 @@ SW.render = (function () {
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(bx, by, br + 3, 0, Math.PI * 2); ctx.stroke();
       }
-      const site = sys.sites && sys.sites.find(function (x) { return x.body === b.name; });
-      if (site && D.FACILITIES[site.fac]) {
-        ctx.fillStyle = accent(0.9);
-        ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(D.FACILITIES[site.fac].icon, bx, by - br - 6);
-        ctx.textAlign = 'left';
-      }
+      drawBodySites(sys, b, bx, by, br);
       if (sel || hov) {
         ctx.strokeStyle = 'rgba(240,246,252,' + (sel ? 0.95 : 0.5) + ')';
         ctx.lineWidth = 1.2;

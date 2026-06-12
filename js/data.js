@@ -91,7 +91,12 @@ SW.data = (function () {
     crucible:   { name: 'Crystal Crucible', icon: '◆', cost: 2200, mats: { ALLOY: 8, TECH: 3 }, sites: ['lava', 'carbon'],          fx: { prod: { CRYSTAL: 0.22 } }, desc: 'Lattices grown in the melt, pulled out glowing.' },
     cryoarchive:{ name: 'Cryo-Archive',     icon: '❄', cost: 1800, mats: { TECH: 5 },           sites: ['ice', 'icegiant'],         fx: { research: 0.25 },          desc: 'Cold storage for warm knowledge.' },
     habitat:    { name: 'Orbital Habitat',  icon: '◍', cost: 2600, mats: { ALLOY: 12, TECH: 4 },sites: ['terran', 'ocean', 'desert', 'rock', 'gas', 'icegiant'], fx: { cap: 40, pop: 2 }, desc: 'A ring of lights. People follow.' },
+    spindle:    { name: 'Orbital Spindle',  icon: '✶', cost: 1600, mats: { ALLOY: 8, TECH: 2 }, sites: [], orbital: true, fx: { cap: 30 }, desc: 'A dock, a customs desk, and one bar with no name. Anchors in any orbit.' },
   };
+
+  // How many facilities a body can anchor (stations orbit, the rest dig in)
+  D.SITE_SLOTS = { belt: 3, terran: 3 };
+  D.SITE_SLOTS_DEFAULT = 2;
 
   // ---- Aptitude perks (the captain, not the network; SPEC §character) ----
   // Earned via milestones, one point each. Chains within four disciplines.

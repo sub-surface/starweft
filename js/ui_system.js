@@ -157,12 +157,13 @@ SW.uiSystem = (function () {
     const selBody = (SW.render.mode === 'system' && SW.render.systemId === sys.id) ? SW.render.selectedBody : null;
     if (selBody && sys.surveyed && sys.scourge !== 2) {
       const opts = SW.sites.options(s, sys, selBody);
-      const cur = SW.sites.at(sys, selBody.name);
-      if (cur || opts.length) {
-        html += '<h4>' + esc(selBody.name) + '</h4>';
-        if (cur) {
+      const curList = SW.sites.listAt(sys, selBody.name);
+      if (curList.length || opts.length) {
+        const cap = SW.sites.slotCap(selBody);
+        html += '<h4>' + esc(selBody.name) + ' <span class="sub">anchorage ' + curList.length + '/' + cap + '</span></h4>';
+        for (const cur of curList) {
           const cf = D.FACILITIES[cur.fac];
-          html += '<div class="sub">' + cf.icon + ' ' + cf.name + ' anchored here.</div>';
+          html += '<div class="sub">' + cf.icon + ' ' + cf.name + (cf.orbital ? ' (in orbit)' : '') + ' anchored here.</div>';
         }
         for (const fid of opts) {
           const f = D.FACILITIES[fid];
