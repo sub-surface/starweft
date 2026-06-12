@@ -359,6 +359,12 @@ SW.data = (function () {
     // Living Weave: lane flow heat
     laneFlowDecay: 0.9985,          // per-tick decay multiplier (~460 tick half-life ≈ several in-game weeks)
     laneFlowSaturation: 400,        // flow value where visual t reaches 1
+    // Weave Health composite (market terminal headline)
+    weaveWeightProsperity: 0.35,
+    weaveWeightSupply: 0.30,
+    weaveWeightIndustry: 0.20,
+    weaveWeightCoverage: 0.15,
+    weaveCoverageFlow: 2,           // min lane flow for a system to count as 'on the weave'
   };
 
   D.RIVAL_DEFS = [

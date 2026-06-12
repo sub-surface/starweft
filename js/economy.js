@@ -203,6 +203,22 @@ SW.economy = (function () {
     return m;
   }
 
+  // Public: would this factory slot produce right now? Mirrors runSlot's gates
+  // (inputs on hand, output not at capacity) without mutating anything.
+  E.slotRunnable = function (state, sys, slot) {
+    if (slot === 'ANY') {
+      for (const r of D.RECIPES) {
+        if (r.tech && state.tech.unlocked.indexOf(r.tech) < 0) continue;
+        if (canRun(sys, r) && (sys.stocks[r.out] || 0) < sys.capacity[r.out]) return true;
+      }
+      return false;
+    }
+    const rec = D.RECIPES.find(function (r) { return r.out === slot; });
+    if (!rec || rec.playerFabOnly) return false;
+    if (!canRun(sys, rec)) return false;
+    return (sys.stocks[rec.out] || 0) < sys.capacity[rec.out];
+  };
+
   // ---- Analytics ----
   // Market index: per commodity, discovered live systems ranked cheap-first
   // (sources, stock ≥5) and dear-first (sinks, space ≥5) by base price.

@@ -235,21 +235,43 @@ SW.uiMarket = (function () {
     ctx.stroke();
   }
 
+  // Weave Health: one diegetic phrase per weakest component
+  const WEAVE_WEAKNESS = {
+    prosperity: 'the worlds beneath the weave are poor',
+    supply: 'hunger moves faster than freight',
+    industry: 'the weave frays where factories starve',
+    coverage: 'far reaches hang slack and silent',
+  };
+  function weaveWeakest(components) {
+    let worst = 'prosperity';
+    for (const k in components) if (components[k] < components[worst]) worst = k;
+    return worst;
+  }
+
   function renderExchangeV2() {
     const s = st();
     const ex = $('#exchange');
-    let html = '<header><h2><i style="color:var(--accent)">â–¦</i> THE MARKET</h2>';
+    let html = '<header><h2><i style="color:var(--accent)">▦</i> THE MARKET</h2>';
     for (const c of D.COMM_IDS) {
       if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
       html += '<span class="commChip' + (c === exchangeComm ? ' sel' : '') + '" data-exc="' + c + '" data-info="commodity:' + c + '">' + commName(c) + '</span>';
     }
-    html += '<div style="flex:1"></div><button data-act="closeExchange">âœ•</button></header>';
+    html += '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
     html += '<div id="exGrid"><div id="exMain">';
 
     const report = SW.market.buildCommodityReport(s, exchangeComm);
     const totalWealth = SW.market.knownWealth(s);
     const activeRoutes = s.routes.filter(function (r) { return r.ships && r.ships.length > 0; }).length;
     const totalFleetValue = s.ships.reduce(function (sum, sh) { const h = D.HULLS[sh.hull]; return sum + (h.cost || 0); }, 0);
+
+    const wh = SW.market.weaveHealth(s);
+    const weakest = weaveWeakest(wh.components);
+    html += '<h4 data-info="ui:weaveHealth">Weave Health</h4>';
+    html += '<div class="row"><span class="num" style="font-size:22px;color:var(--accent)">' + wh.score + '</span>' +
+      '<span class="sub">' + WEAVE_WEAKNESS[weakest] + '</span></div>';
+    html += '<div class="row sub">worlds ' + Math.round(wh.components.prosperity) + ' · supply ' + Math.round(wh.components.supply) +
+      ' · industry ' + Math.round(wh.components.industry) + ' · threads ' + Math.round(wh.components.coverage) + '</div>';
+
     html += '<h4>Known Economy</h4>';
     html += '<div class="row"><span class="sub">wealth</span><span class="num">' + U.fmt(totalWealth) + ' cr</span></div>';
     html += '<div class="row"><span class="sub">fleet value</span><span class="num">' + U.fmt(totalFleetValue) + ' cr</span></div>';
@@ -263,7 +285,7 @@ SW.uiMarket = (function () {
         '<td class="num" style="color:' + (row.gap > 0 ? 'var(--danger)' : 'var(--ink-dim)') + '">' + (row.gap || '-') + '</td>' +
         '<td class="num" style="color:' + pc + '">' + Math.round(row.price) + '</td>' +
         '<td>' + sparkHtmlV2(row.hist, row.deltaPct) + '<span class="sub">' + (row.deltaPct > 0 ? '+' : '') + Math.round(row.deltaPct) + '%</span></td>' +
-        '<td><button data-act="centerSys" data-id="' + row.sys.id + '">â—Ž</button></td></tr>';
+        '<td><button data-act="centerSys" data-id="' + row.sys.id + '">◎</button></td></tr>';
     }
     html += '</table>';
 
@@ -302,9 +324,9 @@ SW.uiMarket = (function () {
     html += '<h4>Best opportunities</h4>';
     const ops = SW.economy.opportunities(s, 8);
     for (const op of ops) {
-      html += '<div class="row"><span class="grow sub">' + commName(op.c) + ' ' + esc(s.systems[op.from].name.split(' ')[0]) + 'â†’' + esc(s.systems[op.to].name.split(' ')[0]) +
+      html += '<div class="row"><span class="grow sub">' + commName(op.c) + ' ' + esc(s.systems[op.from].name.split(' ')[0]) + '→' + esc(s.systems[op.to].name.split(' ')[0]) +
         ' <b class="num" style="color:var(--accent)">+' + Math.round(op.margin) + '</b></span>' +
-        '<button data-act="quickRoute" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '">ï¼‹ route</button></div>';
+        '<button data-act="quickRoute" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '">＋ route</button></div>';
     }
     const recipe = D.RECIPES.find(function (r) { return r.out === exchangeComm && (!r.tech || SW.tech.has(s, r.tech)); });
     if (recipe) {
@@ -317,7 +339,7 @@ SW.uiMarket = (function () {
     if (!mv.length) html += '<div class="sub">Markets becalmed. Suspicious in its own way.</div>';
     for (const mover of mv) {
       html += '<div class="row"><span class="grow sub" data-info="system:' + mover.sys.id + '">' + esc(mover.sys.name) + '</span>' +
-        '<span class="num" style="color:' + (mover.deltaPct > 0 ? '#ffb070' : '#7fe0a8') + '">' + (mover.deltaPct > 0 ? 'â–² +' : 'â–¼ ') + Math.round(mover.deltaPct) + '%</span>' +
+        '<span class="num" style="color:' + (mover.deltaPct > 0 ? '#ffb070' : '#7fe0a8') + '">' + (mover.deltaPct > 0 ? '▲ +' : '▼ ') + Math.round(mover.deltaPct) + '%</span>' +
         '<button data-act="centerSys" data-id="' + mover.sys.id + '">view</button></div>';
     }
     html += '<h4 title="The terminal carries advertising. The terminal regrets nothing.">Bulletins</h4>';
@@ -330,7 +352,7 @@ SW.uiMarket = (function () {
       html += '<div class="row"><button data-act="employAll">employ all idle</button></div>';
       if (s.routes.length) {
         html += '<div class="row"><select id="bulkRoute">' + s.routes.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('') + '</select>' +
-          '<button data-act="bulkAssign">assign idle â†’</button></div>';
+          '<button data-act="bulkAssign">assign idle →</button></div>';
       }
     }
     html += '<h4>Routes</h4>';

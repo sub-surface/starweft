@@ -310,6 +310,35 @@ section('SW.market module');
     assert(Number.isFinite(w2), 'knownWealth is finite');
   }
 
+  // weaveHealth: composite in range, pure, coverage responds to laneFlow
+  {
+    const st = G.newGame({ seed: 'smoke-4c-weave', difficulty: 'relaxed' });
+    const wh = M.weaveHealth(st);
+    assert(wh.score >= 0 && wh.score <= 100, 'weaveHealth score in [0,100] (got ' + wh.score + ')');
+    for (const k of ['prosperity', 'supply', 'industry', 'coverage']) {
+      const v = wh.components[k];
+      assert(Number.isFinite(v) && v >= 0 && v <= 100, 'weaveHealth component ' + k + ' in [0,100] (got ' + v + ')');
+    }
+    const wh2 = M.weaveHealth(st);
+    assert(wh2.score === wh.score, 'weaveHealth is pure (same tick, same score)');
+
+    // coverage responds to laneFlow on a discovered system's lane
+    const home = st.systems[st.homeId];
+    const nb = home.links[0];
+    const key = Math.min(home.id, nb) + '-' + Math.max(home.id, nb);
+    st.laneFlow = {};
+    const before = M.weaveHealth(st).components.coverage;
+    st.laneFlow[key] = D.TUNE.weaveCoverageFlow + 5;
+    const after = M.weaveHealth(st).components.coverage;
+    assert(after > before, 'weaveHealth coverage rises when a lane carries flow (' + before + ' -> ' + after + ')');
+
+    // undiscovered systems never counted: hiding everything zeroes pop components' inputs
+    st.systems.forEach(function (s2) { s2.discovered = false; });
+    const whHidden = M.weaveHealth(st);
+    assert(whHidden.components.coverage === 0, 'weaveHealth coverage is 0 with nothing discovered');
+    assert(whHidden.components.prosperity === 0, 'weaveHealth prosperity is 0 with nothing discovered');
+  }
+
   // buildInboundMap: single-pass produces correct totals
   {
     const st = G.newGame({ seed: 'smoke-4c-map', difficulty: 'relaxed' });
@@ -1151,8 +1180,12 @@ section('Source integrity');
 {
   const fs = require('fs');
   const jsDir = path.join(__dirname, '..', 'js');
-  const BAD_SEQS = ['Â', 'Ã', '�']; // Â, Ã, replacement char
-  const BAD_LABELS = ['Â (0xC2)', 'Ã (0xC3)', 'U+FFFD replacement char'];
+  // Double-encoded UTF-8 leaves these telltale lead pairs; none are legitimate
+  // here (intended glyphs are written directly, e.g. ▦ → ◎ ·).
+  const BAD_SEQS = ['Â', 'Ã', '�', 'â€', 'â–', 'â—', 'âœ', 'â†', 'ï¼'];
+  const BAD_LABELS = ['Â (0xC2)', 'Ã (0xC3)', 'U+FFFD replacement char',
+    'â€ (mangled punctuation)', 'â– (mangled box glyph)', 'â— (mangled circle glyph)',
+    'âœ (mangled dingbat)', 'â† (mangled arrow)', 'ï¼ (mangled fullwidth char)'];
   for (const file of fs.readdirSync(jsDir)) {
     if (!/\.js$/.test(file)) continue;
     const src = fs.readFileSync(path.join(jsDir, file), 'utf8');

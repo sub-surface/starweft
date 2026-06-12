@@ -115,6 +115,56 @@ SW.market = (function () {
     return { delta: delta, deltaPct: first > 0 ? delta / first * 100 : 0, hist: h };
   };
 
+  // ---- WEAVE HEALTH: one number for the state of the weave ----
+  // Four components, each 0-100: how well the known worlds live, whether
+  // essentials reach them, whether known factories can run, and how much of
+  // the known map a working thread actually touches.
+  M.weaveHealth = function (state) {
+    const T = D().TUNE;
+    const clamp = function (v) { return Math.max(0, Math.min(100, v)); };
+    const live = M.liveKnownSystems(state);
+    const pops = live.filter(function (s) { return s.pop > 0; });
+
+    let prosperity = 0, supply = 0;
+    if (pops.length) {
+      prosperity = pops.reduce(function (a, s) { return a + (s.prosperity || 0); }, 0) / pops.length;
+      supply = 100 * pops.reduce(function (a, s) { return a + (s.satNeed != null ? s.satNeed : 1); }, 0) / pops.length;
+    }
+
+    let slots = 0, running = 0;
+    for (const sys of live) {
+      for (const slot of sys.slots || []) {
+        slots++;
+        if (SW.economy.slotRunnable(state, sys, slot)) running++;
+      }
+    }
+    const industry = slots ? 100 * running / slots : 100;
+
+    const lf = state.laneFlow || {};
+    let covered = 0;
+    for (const sys of live) {
+      for (const nb of sys.links) {
+        const k = Math.min(sys.id, nb) + '-' + Math.max(sys.id, nb);
+        if ((lf[k] || 0) >= T.weaveCoverageFlow) { covered++; break; }
+      }
+    }
+    const coverage = live.length ? 100 * covered / live.length : 0;
+
+    const components = {
+      prosperity: clamp(prosperity),
+      supply: clamp(supply),
+      industry: clamp(industry),
+      coverage: clamp(coverage),
+    };
+    const score = clamp(Math.round(
+      components.prosperity * T.weaveWeightProsperity +
+      components.supply * T.weaveWeightSupply +
+      components.industry * T.weaveWeightIndustry +
+      components.coverage * T.weaveWeightCoverage
+    ));
+    return { score: score, components: components };
+  };
+
   M.buildCommodityReport = function (state, c) {
     const live = M.liveKnownSystems(state);
     const inboundMap = M.buildInboundMap(state);
