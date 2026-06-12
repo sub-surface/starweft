@@ -67,9 +67,10 @@ Brutal.
   bridge weftlines, all gated behind Deep Drives; survey rewards scale up to
   3× out there). Still open: badlands-specific secrets/encounters, sim-LOD
   cohorts if the shell grows, neutron-star wonders.
-- Tech tree rebuild from first principles: stable pan/zoom canvas, legible
-  branch identity, clearer dependency paths, build synergies, and fewer cramped
-  text/list hybrids.
+- Research constellation overhaul landed: purchased technologies become stars,
+  unresearched technologies remain planets, dependency threads radiate through
+  five branch constellations, doctrines orbit the central loom, and one focused
+  inspector replaces the cramped canvas-plus-card-list hybrid.
 - 100x-dev wish list: scalable map LOD for thousands of visible stars, robust
   command queue UX, inspectable economy/supply-chain solver, automated balance
   telemetry, and richer quest hooks for ship/system-specific actions.
