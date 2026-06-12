@@ -114,6 +114,7 @@ SW.game = (function () {
     SW.ships.tick(state);
     SW.combat.tick(state);
     SW.rivals.tick(state);
+    SW.civics.tick(state);
     // Living Weave: decay lane flow after ships and rivals have contributed this tick
     (function () {
       const lf = state.laneFlow || (state.laneFlow = {});

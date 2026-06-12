@@ -371,6 +371,11 @@ SW.data = (function () {
     weaveWeightIndustry: 0.20,
     weaveWeightCoverage: 0.15,
     weaveCoverageFlow: 2,           // min lane flow for a system to count as 'on the weave'
+    // Civic Works: NPC infrastructure ambition
+    civicCreditFloor: 800,          // a system never civic-spends below this wallet
+    civicEvery: 25,                 // ticks between civic accumulation passes
+    civicProsperityMin: 68,         // minimum prosperity to start accumulating civic momentum
+    civicMomentum: 12,              // momentum needed to attempt a civic build
   };
 
   D.RIVAL_DEFS = [

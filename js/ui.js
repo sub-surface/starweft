@@ -135,15 +135,32 @@ SW.ui = (function () {
   }
 
   // ============ modal helpers (exposed for all modules) ============
+  let _modalOpener = null; // element that had focus when a modal was opened
   function showModal(id) {
+    // Remember the element that opened this modal so we can restore focus on close.
+    // Guard: stub DOM in test/browser_boot.js may not implement activeElement.
+    _modalOpener = (typeof document !== 'undefined' && document.activeElement) ? document.activeElement : null;
     $('#modalShade').classList.remove('hidden');
     document.querySelectorAll('.modal').forEach(function (m) { m.classList.add('hidden'); });
     $('#' + id).classList.remove('hidden');
+    // Move focus into the modal so keyboard users don't get stranded behind the shade.
+    // Every call is guarded: querySelector and focus may be stubs in the test environment.
+    var modal = $('#' + id);
+    var b = modal && modal.querySelector && modal.querySelector('button');
+    if (b && b.focus) b.focus();
   }
   ui.showModal = showModal;
   function hideModals() {
     $('#modalShade').classList.add('hidden');
     document.querySelectorAll('.modal').forEach(function (m) { m.classList.add('hidden'); });
+    // Restore focus to the element that triggered the modal, if it is still in the DOM.
+    // Every step guarded: stub DOM may not implement focus or body.contains.
+    if (_modalOpener && _modalOpener.focus &&
+        typeof document !== 'undefined' && document.body && document.body.contains &&
+        document.body.contains(_modalOpener)) {
+      _modalOpener.focus();
+    }
+    _modalOpener = null;
   }
   ui.hideModals = hideModals;
   ui.modalOpen = function () { return !$('#modalShade').classList.contains('hidden'); };
@@ -231,19 +248,25 @@ SW.ui = (function () {
     $('#spd10').addEventListener('click', function () { A().setSpeed(st(), 10); syncSpeedButtons(); });
     $('#btnMute').addEventListener('click', function () {
       const m = SW.audio.toggleMute();
-      $('#btnMute').style.opacity = m ? 0.35 : 1;
+      const el = $('#btnMute');
+      el.style.opacity = m ? 0.35 : 1;
+      // aria-pressed: true when muted (button is in its "pressed/active mute" state)
+      if (el && el.setAttribute) el.setAttribute('aria-pressed', m ? 'true' : 'false');
     });
     $('#btnMusic').addEventListener('click', function () {
       SW.audio.ensure();
       const m = SW.audio.toggleMusic();
-      $('#btnMusic').style.opacity = m ? 0.35 : 1;
+      const el = $('#btnMusic');
+      el.style.opacity = m ? 0.35 : 1;
+      // aria-pressed: true when music is muted
+      if (el && el.setAttribute) el.setAttribute('aria-pressed', m ? 'true' : 'false');
     });
     $('#btnMenu').addEventListener('click', function () { SW.uiModals.showMenu(); });
     $('#btnCodex').addEventListener('click', function () { SW.uiModals.showCodex(); });
     $('#btnExchange').addEventListener('click', function () { SW.uiMarket.toggleExchange(); });
     $('#btnBackGalaxy').addEventListener('click', function () { ui.exitSystem(); });
-    if (SW.audio.muted) $('#btnMute').style.opacity = 0.35;
-    if (SW.audio.musicMuted) $('#btnMusic').style.opacity = 0.35;
+    if (SW.audio.muted) { $('#btnMute').style.opacity = 0.35; var bm = $('#btnMute'); if (bm && bm.setAttribute) bm.setAttribute('aria-pressed', 'true'); }
+    if (SW.audio.musicMuted) { $('#btnMusic').style.opacity = 0.35; var bmm = $('#btnMusic'); if (bmm && bmm.setAttribute) bmm.setAttribute('aria-pressed', 'true'); }
 
     // search
     const sb = $('#searchBox');

@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'civics', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -1252,6 +1252,98 @@ section('Sol prologue (tutorial)');
   assert(!sk.tutorial, 'no tutorial state on skip path');
   G.tick(sk);
   assert(sk.story.pending === 'ev_wake', 'ev_wake fires normally without tutorial');
+}
+
+// ---------- 14b. civic works ----------
+section('Civic works');
+{
+  // -- vigil builds bastion when scourge_known + prosperous + player dominant --
+  {
+    const st = G.newGame({ seed: 'smoke-civic-vigil', difficulty: 'relaxed' });
+    const vigil = st.systems.find(function (s) { return s.ideology === 'vigil' && s.pop > 0; }) ||
+      (function () {
+        const s = st.systems.find(function (s) { return s.pop > 0 && s.scourge !== 2; });
+        s.ideology = 'vigil'; return s;
+      })();
+    vigil.discovered = true;
+    vigil.prosperity = 90;
+    vigil.credits = 5000;
+    vigil.stocks.ALLOY = (vigil.stocks.ALLOY || 0) + 30;
+    vigil.stocks.TECH  = (vigil.stocks.TECH  || 0) + 10;
+    // remove any pre-existing bastion so the build can fire
+    vigil.buildings = vigil.buildings.filter(function (b) { return b !== 'bastion'; });
+    st.story.flags.scourge_known = true;
+    // make player dominant: set player presence well above any rival
+    vigil.presence = vigil.presence || {};
+    vigil.presence.player = 5;
+    for (const f in vigil.presence) { if (f !== 'player') vigil.presence[f] = 0; }
+    // civic threshold = civicMomentum * civicEvery ticks = 12 * 25 = 300 ticks worst case
+    // with +2 per civic pass (player dominant), it fires after 6 civic passes = 150 ticks
+    const bastionsBefore = vigil.buildings.filter(function (b) { return b === 'bastion'; }).length;
+    let built = false, guard = 0;
+    while (!built && guard++ < 600) {
+      G.tick(st);
+      if (vigil.buildings.indexOf('bastion') >= 0) built = true;
+    }
+    assert(built, 'vigil system built a bastion (' + guard + ' ticks, prosperity=' + vigil.prosperity.toFixed(0) + ')');
+    const creditsDeducted = vigil.credits < 5000;
+    assert(creditsDeducted, 'bastion deducted system credits (' + vigil.credits.toFixed(0) + ' remaining)');
+    assert(vigil.stocks.ALLOY < 30, 'bastion consumed ALLOY from system stocks (' + vigil.stocks.ALLOY.toFixed(1) + ' remaining)');
+    assert(vigil.civic === 0, 'civic momentum reset after successful build');
+    assert((st.news || []).some(function (n) { return /bastion/.test(n.text) || /Vigil/.test(n.text); }),
+      'bastion build published a news item');
+    // bastion not duplicated by another civic tick
+    const bastionsAfter = vigil.buildings.filter(function (b) { return b === 'bastion'; }).length;
+    for (let i = 0; i < 600; i++) G.tick(st);
+    const bastionsFinal = vigil.buildings.filter(function (b) { return b === 'bastion'; }).length;
+    assert(bastionsFinal === bastionsAfter, 'vigil does not build a second bastion (' + bastionsFinal + ')');
+  }
+
+  // -- free system never builds --
+  {
+    const st = G.newGame({ seed: 'smoke-civic-free', difficulty: 'relaxed' });
+    const free = st.systems.find(function (s) { return (!s.ideology || s.ideology === 'free') && s.pop > 0; });
+    if (free) {
+      free.discovered = true;
+      free.prosperity = 100;
+      free.credits = 99999;
+      for (const c of D.COMM_IDS) free.stocks[c] = 999;
+      const bldgsBefore = free.buildings.slice();
+      for (let i = 0; i < 600; i++) G.tick(st);
+      const newBldgs = free.buildings.filter(function (b) { return bldgsBefore.indexOf(b) < 0; });
+      assert(newBldgs.length === 0, 'free-ideology system never builds autonomously (new: ' + newBldgs.join(',') + ')');
+    }
+  }
+
+  // -- mariners builds exactly one relay; no duplicates on long run --
+  {
+    const st = G.newGame({ seed: 'smoke-civic-mariners', difficulty: 'relaxed' });
+    const mar = st.systems.find(function (s) { return s.ideology === 'mariners' && s.pop > 0 && s.buildings.indexOf('relay') < 0; }) ||
+      (function () {
+        const s = st.systems.find(function (s) { return s.pop > 0 && s.scourge !== 2 && s.buildings.indexOf('relay') < 0; });
+        if (s) s.ideology = 'mariners';
+        return s;
+      })();
+    if (mar) {
+      mar.discovered = true;
+      mar.prosperity = 90;
+      mar.credits = 5000;
+      mar.stocks.ALLOY = (mar.stocks.ALLOY || 0) + 20;
+      mar.buildings = mar.buildings.filter(function (b) { return b !== 'relay'; });
+      let guard = 0;
+      while (mar.buildings.indexOf('relay') < 0 && guard++ < 600) G.tick(st);
+      assert(mar.buildings.indexOf('relay') >= 0, 'mariners built a relay (' + guard + ' ticks)');
+      // long run — must not add a second relay
+      for (let i = 0; i < 1200; i++) G.tick(st);
+      const relayCount = mar.buildings.filter(function (b) { return b === 'relay'; }).length;
+      assert(relayCount === 1, 'mariners relay not duplicated after long run (' + relayCount + ')');
+    }
+  }
+
+  // -- TUNE constants present --
+  assert(typeof D.TUNE.civicEvery === 'number' && D.TUNE.civicEvery > 0, 'civicEvery TUNE constant present');
+  assert(typeof D.TUNE.civicProsperityMin === 'number', 'civicProsperityMin TUNE constant present');
+  assert(typeof D.TUNE.civicMomentum === 'number' && D.TUNE.civicMomentum > 0, 'civicMomentum TUNE constant present');
 }
 
 section('Source integrity');

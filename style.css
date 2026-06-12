@@ -307,3 +307,22 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 .frag { border-left: 2px solid var(--line-bright); padding: 4px 10px; margin: 5px 0; font-size: 12px; }
 .frag .ftitle { color: var(--ink); font-weight: 600; font-size: 11.5px; }
 .frag.locked { color: var(--ink-faint); border-left-color: var(--line); font-family: var(--mono); font-size: 10px; letter-spacing: 2px; }
+
+/* ---- accessibility ---- */
+
+/* Respect reduced-motion preference. Canvas motion is handled separately in render.js. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Visible focus ring for keyboard navigation using the game's accent colour. */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
