@@ -1,0 +1,323 @@
+/* STARWEFT research constellation — orbital nodes, not cards. */
+
+.techDockHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.techEyebrow {
+  color: var(--ink-dim);
+  font-size: 8.5px;
+  letter-spacing: .18em;
+  line-height: 1.2;
+}
+.techResearch {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+.techDockLegend,
+.techMapKey {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-dim);
+  font-size: 9.5px;
+  letter-spacing: .03em;
+}
+.techDockLegend { margin: 2px 0 7px; }
+.planetMark { color: var(--ink-dim); font-weight: 400; }
+.starMark { color: var(--accent); font-weight: 400; }
+.orbitMark { color: var(--accent); font-weight: 400; }
+
+#techCanvas {
+  width: 100%;
+  display: block;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(201,209,217,.035), transparent 48%),
+    rgba(255,255,255,.006);
+  cursor: crosshair;
+}
+.techDockFoot {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  margin-top: 6px;
+}
+.techAptitudeNote {
+  color: var(--accent);
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  margin-top: 8px;
+  padding-top: 7px;
+}
+
+.modal.techWide {
+  width: min(1180px, 95vw);
+  height: min(780px, 90vh);
+  padding: 18px 20px;
+}
+.techHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.techHead h2 {
+  margin: 1px 0 0;
+  letter-spacing: .18em;
+}
+.techHeadCount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 88px;
+  margin-right: 4px;
+}
+.techHeadCount > span { color: var(--accent); }
+.techHeadCount small {
+  color: var(--ink-faint);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+.techToolbar {
+  display: flex;
+  gap: 18px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 5px 1px;
+  margin-bottom: 10px;
+}
+.techToolbar span::before {
+  content: '·';
+  color: var(--accent);
+  margin-right: 6px;
+}
+.techGrid {
+  height: calc(100% - 78px);
+  display: grid;
+  grid-template-columns: minmax(520px, 1.55fr) minmax(285px, .7fr);
+  gap: 0;
+  min-height: 0;
+}
+.techMap {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 50% 52%, rgba(201,209,217,.035), transparent 42%),
+    linear-gradient(rgba(255,255,255,.008), rgba(255,255,255,.002));
+}
+#techCanvasFull {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+#techCanvasFull:active { cursor: grabbing; }
+.techMapKey {
+  position: absolute;
+  left: 12px;
+  bottom: 9px;
+  pointer-events: none;
+  padding: 4px 7px;
+  background: rgba(4,5,7,.76);
+}
+.techSide {
+  min-height: 0;
+  overflow-y: auto;
+  display: block;
+  padding: 0 4px 0 18px;
+}
+.techDetail {
+  border: 0;
+  border-left: 1px solid var(--line-bright);
+  padding: 3px 0 4px 13px;
+  background: transparent;
+}
+.techDetailTop {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.techDetailGlyph {
+  width: 42px;
+  flex: 0 0 42px;
+  text-align: center;
+  font-size: 33px;
+  line-height: 42px;
+  color: var(--ink-dim);
+}
+.techDetailGlyph.owned {
+  color: var(--accent);
+  text-shadow: 0 0 16px var(--accent);
+}
+.techDetailGlyph.available { color: var(--ink); }
+.techDetailGlyph.locked { color: var(--ink-faint); }
+.techStatus {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  margin-bottom: 2px;
+}
+.techDetail h3 {
+  font-size: 16px;
+  letter-spacing: .04em;
+  margin: 0 0 2px;
+}
+.techDetail p {
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 13px 0;
+  max-width: 44ch;
+}
+.techResearchButton {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  letter-spacing: .08em;
+}
+.techWhyLocked,
+.techSignalNote {
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  line-height: 1.45;
+  padding: 6px 0;
+}
+.techSignalNote {
+  border-top: 1px dotted var(--line-bright);
+  margin-top: 8px;
+}
+.techRelation h4 { margin-top: 11px; }
+.techRelations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+button.techLink {
+  border: 0;
+  padding: 2px 0;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  text-align: left;
+}
+button.techLink:hover { color: var(--ink); background: transparent; }
+button.techLink.owned { color: var(--accent); }
+.techEmptyGlyph {
+  color: var(--ink-faint);
+  font-size: 38px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.techSideSection {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 7px;
+}
+.techSectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.techSectionHead h4 {
+  border: 0;
+  margin: 0 0 4px;
+  padding: 0;
+}
+.techSectionHead > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.techSignalList,
+.techBranchProgress {
+  display: flex;
+  flex-direction: column;
+}
+button.techSignal,
+button.techBranchLine {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px dotted rgba(110,118,129,.24);
+  border-radius: 0;
+  padding: 5px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  color: var(--ink-dim);
+}
+button.techSignal:hover,
+button.techBranchLine:hover {
+  background: transparent;
+  color: var(--ink);
+  border-bottom-color: var(--ink-dim);
+}
+button.techSignal.sel { color: var(--accent); }
+.techSignalIcon {
+  width: 15px;
+  color: var(--accent);
+  text-align: center;
+}
+.techSignal b,
+.techBranchLine b {
+  display: block;
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 600;
+}
+.techSignal small,
+.techBranchLine small {
+  display: block;
+  color: var(--ink-faint);
+  font-size: 8.5px;
+  letter-spacing: .04em;
+}
+.techBranchLine > span:first-child { min-width: 104px; }
+.techBranchMeter {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.techBranchMeter i {
+  display: block;
+  height: 1px;
+  background: var(--accent);
+}
+.techBranchLine.doctrine { margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .modal.techWide { padding: 14px; }
+  .techGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(330px, 52vh) minmax(180px, 1fr);
+    overflow-y: auto;
+  }
+  .techMap { border-right: 0; border-bottom: 1px solid var(--line); }
+  .techSide { padding: 14px 4px 0; overflow: visible; }
+  .techMapKey { display: none; }
+}
+
+@media (max-width: 620px) {
+  .techToolbar { gap: 8px; font-size: 9px; }
+  .techHead .techEyebrow { display: none; }
+  .techHeadCount { min-width: 64px; }
+  .techGrid { grid-template-rows: minmax(300px, 48vh) minmax(180px, 1fr); }
+}
