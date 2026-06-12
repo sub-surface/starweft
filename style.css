@@ -326,3 +326,27 @@ input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ===== WEFT MERCANTILE WIRE — market terminal re-skin ===== */
+#exchange header h2 { letter-spacing: 1.5px; }
+.mastheadEst { font-style: italic; opacity: .6; margin: 0 8px; align-self: center; }
+#exTape {
+  display: flex; gap: 14px; padding: 4px 12px; font-size: 11px;
+  border-top: 1px solid rgba(160,175,195,.16); border-bottom: 1px solid rgba(160,175,195,.16);
+  overflow-x: auto; white-space: nowrap;
+}
+.tapeItem { cursor: pointer; opacity: .75; }
+.tapeItem:hover { opacity: 1; }
+.tapeItem.sel { opacity: 1; border-bottom: 1px solid var(--accent); }
+.tapeCursor { color: var(--accent); animation: wireBlink 1.1s steps(1) infinite; }
+@keyframes wireBlink { 50% { opacity: 0; } }
+.wireAd {
+  font-size: 11px; color: var(--ink-dim);
+  padding: 3px 0 3px 8px; margin: 2px 0;
+  border-left: 1px solid rgba(160,175,195,.25);
+}
+.wireAd .wireGlyph { color: var(--accent); }
+.wire-wanted { border-left-color: #ffb070; }
+.wire-surplus { border-left-color: #7fe0a8; }
+.wire-numbers { opacity: .6; font-style: italic; }
+.wire-bar { font-style: italic; }

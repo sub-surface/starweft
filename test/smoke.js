@@ -339,6 +339,27 @@ section('SW.market module');
     assert(whHidden.components.prosperity === 0, 'weaveHealth prosperity is 0 with nothing discovered');
   }
 
+  // classifieds (The Wire): deterministic, grounded, bounded
+  {
+    const st = G.newGame({ seed: 'smoke-4c-wire', difficulty: 'relaxed' });
+    const ads = M.classifieds(st, 9);
+    assert(Array.isArray(ads) && ads.length > 0 && ads.length <= 9, 'classifieds returns 1..limit ads (' + ads.length + ')');
+    const ads2 = M.classifieds(st, 9);
+    assert(JSON.stringify(ads) === JSON.stringify(ads2), 'classifieds deterministic for same state');
+    for (const ad of ads) {
+      assert(typeof ad.text === 'string' && ad.text.length > 0, 'classified has text');
+      if (ad.kind === 'wanted') {
+        const sys = st.systems[ad.to];
+        assert(sys && sys.discovered, 'WANTED ad targets a discovered system');
+        assert(M.marketTarget(sys, ad.c) > Math.floor(sys.stocks[ad.c] || 0), 'WANTED ad reflects a real gap');
+      }
+      if (ad.kind === 'surplus') {
+        const sys = st.systems[ad.from];
+        assert(sys && sys.discovered, 'SURPLUS ad references a discovered system');
+      }
+    }
+  }
+
   // buildInboundMap: single-pass produces correct totals
   {
     const st = G.newGame({ seed: 'smoke-4c-map', difficulty: 'relaxed' });

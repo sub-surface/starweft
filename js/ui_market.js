@@ -251,12 +251,28 @@ SW.uiMarket = (function () {
   function renderExchangeV2() {
     const s = st();
     const ex = $('#exchange');
-    let html = '<header><h2><i style="color:var(--accent)">▦</i> THE MARKET</h2>';
+    let html = '<header><h2><i style="color:var(--accent)">▦</i> WEFT MERCANTILE WIRE</h2>' +
+      '<span class="sub mastheadEst">all prices final · all futures uncertain</span>';
     for (const c of D.COMM_IDS) {
       if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
       html += '<span class="commChip' + (c === exchangeComm ? ' sel' : '') + '" data-exc="' + c + '" data-info="commodity:' + c + '">' + commName(c) + '</span>';
     }
     html += '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
+
+    // The tape: median known price per commodity, ticking heartbeat of the weave
+    html += '<div id="exTape">';
+    const tapeLive = SW.market.liveKnownSystems(s);
+    for (const c of D.COMM_IDS) {
+      if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
+      const prices = tapeLive.map(function (sys) { return SW.economy.price(s, sys, c); }).sort(function (a, b) { return a - b; });
+      const med = prices.length ? prices[Math.floor(prices.length / 2)] : D.COMMODITIES[c].base;
+      const rel = med / D.COMMODITIES[c].base;
+      const col = rel < 0.85 ? '#7fe0a8' : rel > 1.2 ? '#ffb070' : 'var(--ink-dim)';
+      html += '<span class="tapeItem' + (c === exchangeComm ? ' sel' : '') + '" data-exc="' + c + '" data-info="commodity:' + c + '">' +
+        D.COMMODITIES[c].icon + ' <b style="color:' + col + '">' + Math.round(med) + '</b>' + (rel > 1.2 ? '▴' : rel < 0.85 ? '▾' : '') + '</span>';
+    }
+    html += '<span class="tapeCursor">▮</span></div>';
+
     html += '<div id="exGrid"><div id="exMain">';
 
     const report = SW.market.buildCommodityReport(s, exchangeComm);
@@ -342,9 +358,20 @@ SW.uiMarket = (function () {
         '<span class="num" style="color:' + (mover.deltaPct > 0 ? '#ffb070' : '#7fe0a8') + '">' + (mover.deltaPct > 0 ? '▲ +' : '▼ ') + Math.round(mover.deltaPct) + '%</span>' +
         '<button data-act="centerSys" data-id="' + mover.sys.id + '">view</button></div>';
     }
-    html += '<h4 title="The terminal carries advertising. The terminal regrets nothing.">Bulletins</h4>';
-    html += '<div class="sub">' + esc(TICKER_FLAVOR[Math.floor(s.tick / 40) % TICKER_FLAVOR.length]) + '</div>';
-    html += '<div class="sub">' + esc(TICKER_FLAVOR[(Math.floor(s.tick / 40) + 5) % TICKER_FLAVOR.length]) + '</div>';
+    html += '<h4 title="The terminal carries advertising. The terminal regrets nothing.">The Wire</h4>';
+    for (const ad of SW.market.classifieds(s, 9)) {
+      const glyph = ad.kind === 'wanted' ? '⊳' : ad.kind === 'surplus' ? '⊲' : ad.kind === 'charter' ? '⇄' :
+        ad.kind === 'numbers' ? '∴' : ad.kind === 'bar' ? '✶' : '◦';
+      let act = '';
+      if (ad.kind === 'wanted' && ad.from !== null && ad.to !== null) {
+        act = ' <button data-act="fetchOp" data-from="' + ad.from + '" data-to="' + ad.to + '" data-c="' + ad.c + '" class="textBtn">' + '>' + 'take it' + '<' + '</button>';
+      } else if (ad.kind === 'charter' && s.story.flags.routes_unlocked) {
+        act = ' <button data-act="quickRoute" data-from="' + ad.from + '" data-to="' + ad.to + '" data-c="' + ad.c + '" class="textBtn">' + '>' + 'sign on' + '<' + '</button>';
+      } else if (ad.kind === 'surplus') {
+        act = ' <button data-act="centerSys" data-id="' + ad.from + '" class="textBtn">' + '>' + 'look' + '<' + '</button>';
+      }
+      html += '<div class="wireAd wire-' + ad.kind + '"><span class="wireGlyph">' + glyph + '</span> ' + esc(ad.text) + act + '</div>';
+    }
     const idle = SW.ui.logisticsShips(s);
     html += '<h4>Fleet</h4>';
     html += '<div class="sub">' + s.ships.length + ' ships - ' + idle.length + ' idle - ' + s.routes.length + ' routes</div>';

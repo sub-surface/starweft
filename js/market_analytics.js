@@ -202,5 +202,82 @@ SW.market = (function () {
     return { c: c, rows: sorted, sources: sources, sinks: sinks, movers: movers, inboundMap: inboundMap };
   };
 
+  // ---- The Wire: deterministic classifieds generated from real state ----
+  // Shortages become WANTED ads, gluts become SURPLUS, the best route is a
+  // CHARTER; flavor, the bar, and stranger things fill the column inches.
+  const WIRE_FLAVOR = [
+    'LOST: one cat, gray, answers to Bilge. Last seen boarding a freighter. Reward: gratitude.',
+    'The Anchorage Provisioners’ Co-op thanks its haulers. The soup is for you.',
+    'NOTICE: lane tolls are NOT collected by the Vigil. If someone charged you, write us.',
+    'Apprentice wanted, dockside ropework. Must not fear vacuum. Or knots.',
+    'In memoriam: the crew of the Long Patience. The weave remembers.',
+    'SWAP: half a hold of regret for literally anything else. Slip 9.',
+    'Found: prayer beads, crystal, humming faintly. Claim at any Loom shrine.',
+    'The customs desk apologizes for Tuesday. The customs desk does not elaborate.',
+  ];
+  const WIRE_BAR = [
+    'The bar with no name has a new stool. It remembers the old one.',
+    'Tonight at the bar with no name: nothing, gloriously, as usual.',
+    'The bartender pours one out for every lane that went quiet this week.',
+    'A spindle without a bar is just scaffolding, says everyone here.',
+  ];
+
+  M.classifieds = function (state, limit) {
+    limit = limit || 9;
+    const D0 = D();
+    const out = [];
+    const live = M.liveKnownSystems(state);
+    const bucket = Math.floor(state.tick / 60); // the page turns every ~30s at 1x
+
+    const wants = [];
+    const gluts = [];
+    for (const c of D0.COMM_IDS) {
+      if (D0.COMMODITIES[c].locked) continue;
+      for (const sys of live) {
+        const stock = Math.floor(sys.stocks[c] || 0);
+        const target = M.marketTarget(sys, c);
+        const price = SW.economy.price(state, sys, c);
+        const gap = Math.max(0, target - stock);
+        if (gap >= 5) wants.push({ sys: sys, c: c, gap: gap, price: price });
+        if (stock >= 25 && price <= D0.COMMODITIES[c].base * 0.75) gluts.push({ sys: sys, c: c, stock: stock, price: price });
+      }
+    }
+    wants.sort(function (a, b) { return b.gap * b.price - a.gap * a.price; });
+    for (const w of wants.slice(0, 3)) {
+      const src = SW.economy.cheapestSource(state, w.c, Math.min(5, w.gap), w.sys.id);
+      out.push({
+        kind: 'wanted', c: w.c, from: src ? src.id : null, to: w.sys.id,
+        text: 'WANTED: ' + w.gap + ' ' + D0.COMMODITIES[w.c].name.toUpperCase() + ', ' + w.sys.name + '. Pays ~' + Math.round(w.price) + '¤. Ask for the quartermaster.',
+      });
+    }
+    gluts.sort(function (a, b) { return a.price / D0.COMMODITIES[a.c].base - b.price / D0.COMMODITIES[b.c].base; });
+    for (const g of gluts.slice(0, 2)) {
+      out.push({
+        kind: 'surplus', c: g.c, from: g.sys.id, to: null,
+        text: 'SURPLUS: ' + g.sys.name + ' is drowning in ' + D0.COMMODITIES[g.c].name + '. ' + Math.round(g.price) + '¤ and falling. No questions.',
+      });
+    }
+    const ops = SW.economy.opportunities ? SW.economy.opportunities(state, 1) : [];
+    if (ops.length) {
+      const op = ops[0];
+      out.push({
+        kind: 'charter', c: op.c, from: op.from, to: op.to, route: true,
+        text: 'CHARTER: ' + D0.COMMODITIES[op.c].name + ' run, ' + state.systems[op.from].name.split(' ')[0] + ' to ' + state.systems[op.to].name.split(' ')[0] + '. Margin +' + Math.round(op.margin) + '¤. Apply within.',
+      });
+    }
+    const barOpen = live.some(function (sys) { return (sys.sites || []).some(function (x) { return x.fac === 'spindle'; }); });
+    if (barOpen) out.push({ kind: 'bar', text: WIRE_BAR[bucket % WIRE_BAR.length] });
+    if (live.some(function (sys) { return sys.ideology === 'loom'; })) {
+      const a = (bucket * 7919) % 89, b = (bucket * 104729) % 97, c = (bucket * 1299709) % 83;
+      out.push({ kind: 'numbers', text: '∴ ' + a + ' ' + b + ' ' + c + ' ' + ((a + b + c) % 100) + ' — the Loom counts. Signal origin unknown.' });
+    }
+    let i = 0;
+    while (out.length < limit && i < WIRE_FLAVOR.length) {
+      out.push({ kind: 'notice', text: WIRE_FLAVOR[(bucket + i) % WIRE_FLAVOR.length] });
+      i++;
+    }
+    return out.slice(0, limit);
+  };
+
   return M;
 }());
