@@ -351,6 +351,11 @@ SW.data = (function () {
     priceHistoryLen: 24,       // samples kept (600 ticks of memory)
     flareDamageChance: 0.25,
     wonderResearch: 400,       // research for surveying a wonder
+    // market analytics
+    marketReserveMin: 12,           // absolute floor for consumer reserve target
+    marketReserveCapFraction: 0.25, // fraction of capacity used as reserve floor
+    marketConsumerReserveTicks: 160,// consumption ticks to cover as reserve
+    marketFactoryReserveTicks: 24,  // factory input ticks to cover as reserve
   };
 
   D.RIVAL_DEFS = [

@@ -86,7 +86,11 @@ SW.rivals = (function () {
               if (b.id === a.id) continue;
               const margin = E().sellPrice(state, b, c, rival.id) - E().buyPrice(state, a, c, rival.id);
               const score = margin * (rival.preferred.indexOf(c) >= 0 ? 1.35 : 1);
-              if (margin > 3 && (!best || score > best.score)) best = { a: a.id, b: b.id, c: c, margin: margin, score: score };
+              if (margin > 3 && (!best || score > best.score)) {
+                // FIX: only establish a line if a lane path actually exists (no severed routes)
+                const lp = U.findPath(state.systems, a.id, b.id, function (s) { return s.scourge !== 2; });
+                if (lp) best = { a: a.id, b: b.id, c: c, margin: margin, score: score };
+              }
             }
           }
         }
@@ -101,8 +105,19 @@ SW.rivals = (function () {
         const qty = Math.min(Math.round(T.rivalQty * rival.qtyMult), Math.floor(a.stocks[L.c] || 0));
         if (qty < 4) continue;
         const buy = E().marketBuy(state, a, L.c, qty, rival.id);
+        // FIX: skip shipment if the rival cannot afford it (prevents negative credits)
+        if (buy.cost > rival.credits) continue;
+        // FIX: use lane-graph BFS hop count for travel time instead of Euclidean distance.
+        // Each hop is scaled by ~12 ticks (tuned so adjacent systems ~12t, 3 hops ~36t —
+        // matches the old Euclidean formula's typical range for nearby systems).
+        const path = U.findPath(state.systems, L.a, L.b, function (s) { return s.scourge !== 2; });
+        // path is null only if severed by corruption; line-prune above already catches
+        // corrupted endpoints, but a mid-path corruption can split the graph after a line
+        // was established — in that case skip the dispatch rather than send through the void.
+        if (!path) continue;
+        const hops = path.length - 1;
+        const ticks = Math.max(3, hops * 12);
         rival.credits -= buy.cost;
-        const ticks = Math.max(3, Math.round(U.dist(a, b) / 30));
         rival.ships.push({ from: L.a, to: L.b, depart: state.tick, arrive: state.tick + ticks, c: L.c, qty: buy.qty });
       }
 

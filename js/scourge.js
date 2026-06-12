@@ -49,14 +49,26 @@ SW.scourge = (function () {
       sc.nextAt = state.tick + Math.max(T.scourgeMinInterval, sc.interval);
       sc.interval = Math.max(T.scourgeMinInterval, sc.interval - sc.accel);
 
-      const sources = state.systems.filter(function (s) { return s.scourge === 2; });
-      if (sources.length) {
-        const src = U.pick(state, sources);
-        const targets = src.links
-          .map(function (id) { return state.systems[id]; })
-          .filter(function (s) { return s.scourge === 0 && state.tick >= (s.immuneUntil || 0); });
-        if (targets.length) {
-          const tgt = U.pick(state, targets);
+      // FIX: frontier-weighted spread. Accumulate all (corrupted -> eligible-neighbor) edges,
+      // then pick one weighted by target attractiveness rather than random source + random target.
+      // Weight = 1 + pop_bonus + pincer_bonus. Overall spread rate is unchanged (one attempt per interval).
+      const frontier = [];
+      for (const src of state.systems) {
+        if (src.scourge !== 2) continue;
+        for (const nid of src.links) {
+          const tgt = state.systems[nid];
+          if (tgt.scourge !== 0 || state.tick < (tgt.immuneUntil || 0)) continue;
+          // count how many of tgt's neighbors are already corrupted (pincer pressure)
+          let corruptedNeighbors = 0;
+          for (const nid2 of tgt.links) { if (state.systems[nid2].scourge === 2) corruptedNeighbors++; }
+          const weight = 1 + (tgt.pop > 0 ? 1 : 0) + (corruptedNeighbors >= 2 ? 1 : 0);
+          frontier.push({ tgt: tgt, weight: weight });
+        }
+      }
+      if (frontier.length) {
+        const chosen = U.weightedPick(state, frontier, function (e) { return e.weight; });
+        if (chosen) {
+          const tgt = chosen.tgt;
           if (tgt.buildings.indexOf('bastion') >= 0 && U.chance(state, T.bastionBlock)) {
             SW.game.emit('toast', { kind: 'good', text: '🛡 The bastion at ' + tgt.name + ' held the line.' });
             SW.game.emit('sfx', 'shield');
@@ -81,11 +93,27 @@ SW.scourge = (function () {
     // exodus: a quarter of the population flees down the lanes ahead of the end
     const refugees = Math.round(sys.pop * 0.25);
     if (refugees > 0) {
-      let haven = null, hd = Infinity;
+      // FIX: choose nearest haven by BFS lane hops, treating corrupted systems as impassable,
+      // so refugees cannot teleport across a corrupted gap. Fall back to Euclidean if no
+      // lane-reachable safe population center exists (refugees flee rather than vanish).
+      let haven = null;
+      let bestHops = Infinity;
       for (const s of state.systems) {
         if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
-        const d = U.dist(s, sys);
-        if (d < hd) { hd = d; haven = s; }
+        const lp = U.findPath(state.systems, sys.id, s.id, function (ns) { return ns.scourge !== 2; });
+        if (lp) {
+          const hops = lp.length - 1;
+          if (hops < bestHops) { bestHops = hops; haven = s; }
+        }
+      }
+      if (!haven) {
+        // fallback: Euclidean nearest (lane severed by total corruption)
+        let hd = Infinity;
+        for (const s of state.systems) {
+          if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
+          const d = U.dist(s, sys);
+          if (d < hd) { hd = d; haven = s; }
+        }
       }
       if (haven) {
         const ratio = (haven.pop + refugees) / Math.max(1, haven.pop);

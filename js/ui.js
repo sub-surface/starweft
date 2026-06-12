@@ -1259,40 +1259,7 @@ SW.ui = (function () {
   }
 
   // ============ exchange (market dashboard) ============
-  function marketTarget(sys, c) {
-    const cap = sys.capacity[c] || D.TUNE.capDefault;
-    let target = 0;
-    if ((sys.cons[c] || 0) > 0) {
-      target = Math.max(target, Math.min(cap, Math.max(12, Math.ceil(cap * 0.25), Math.ceil(sys.cons[c] * 160))));
-    }
-    for (const out of sys.slots || []) {
-      const rec = D.RECIPES.find(function (r) { return r.out === out; });
-      if (rec && rec.inputs[c]) target = Math.max(target, Math.min(cap, rec.inputs[c] * 24));
-    }
-    return Math.ceil(target);
-  }
-  function inboundCargo(s, sysId, c) {
-    let n = 0;
-    for (const sh of s.ships) {
-      const cargo = sh.cargo[c] || 0;
-      if (sh.mission && sh.mission.kind === 'supply' && sh.mission.target === sysId && sh.mission.c === c) {
-        n += Math.max(cargo, sh.mission.stage === 'deliver' ? (sh.mission.qty || 0) : 0);
-        continue;
-      }
-      if (sh.directiveId && cargo > 0) {
-        const d = s.directives.find(function (x) { return x.id === sh.directiveId; });
-        if (d && d.sys === sysId && d.c === c) n += cargo;
-      }
-    }
-    return Math.floor(n);
-  }
-  function marketRole(sys, c, target, gap) {
-    if (gap > 0) return 'needs';
-    if (target > 0) return 'covered';
-    if ((sys.prod[c] || 0) > 0) return 'producer';
-    if ((sys.stocks[c] || 0) >= 5) return 'stock';
-    return 'watch';
-  }
+  // marketTarget, inboundCargo, marketRole live in js/market_analytics.js (SW.market).
   function toggleExchange() {
     const ex = $('#exchange');
     if (ex.classList.contains('hidden')) { ex.classList.remove('hidden'); renderExchange(); }
@@ -1309,9 +1276,9 @@ SW.ui = (function () {
     html += '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
     html += '<div id="exGrid"><div id="exMain">';
 
-    // Known Economy index
+    // Known Economy index — only discovered, non-corrupted systems (no hidden leakage)
     html += '<h4>Known Economy</h4>';
-    const totalWealth = s.systems.reduce(function (sum, sys) { return sum + (sys.credits || 0) + Object.keys(sys.stocks || {}).reduce(function (s2, c) { return s2 + (sys.stocks[c] || 0) * SW.economy.price(s, sys, c); }, 0); }, 0);
+    const totalWealth = SW.market.knownWealth(s);
     const activeRoutes = s.routes.filter(function (r) { return r.ships && r.ships.length > 0; }).length;
     const totalFleetValue = s.ships.reduce(function (sum, sh) { const h = D.HULLS[sh.hull]; return sum + (h.cost || 0); }, 0);
     html += '<div class="row"><span class="sub">wealth</span><span class="num">' + U.fmt(totalWealth) + '¤</span></div>';
@@ -1334,12 +1301,12 @@ SW.ui = (function () {
     html += '</table>';
 
     const depth = rows.map(function (row) {
-      const target = marketTarget(row.sys, exchangeComm);
-      const inbound = inboundCargo(s, row.sys.id, exchangeComm);
+      const target = SW.market.marketTarget(row.sys, exchangeComm);
+      const inbound = SW.market.inboundCargo(s, row.sys.id, exchangeComm);
       const gap = Math.max(0, target - row.stock - inbound);
       return {
         sys: row.sys, price: row.price, stock: row.stock, target: target,
-        inbound: inbound, gap: gap, role: marketRole(row.sys, exchangeComm, target, gap),
+        inbound: inbound, gap: gap, role: SW.market.marketRole(row.sys, exchangeComm, target, gap),
       };
     }).filter(function (row) {
       return row.stock > 0 || row.target > 0 || row.inbound > 0 || (row.sys.prod[exchangeComm] || 0) > 0;
@@ -1357,9 +1324,9 @@ SW.ui = (function () {
       if (row.target > 0 && SW.tech.has(s, 'directives')) actions += ' <button data-act="marketKeep" data-sys="' + row.sys.id + '" data-c="' + exchangeComm + '" data-target="' + row.target + '">keep</button>';
       html += '<tr data-info="system:' + row.sys.id + '"><td>' + esc(row.sys.name) + '</td>' +
         '<td>' + row.role + '</td><td class="num">' + row.stock + '</td>' +
-        '<td class="num">' + (row.target || 'Â·') + '</td>' +
-        '<td class="num" style="color:' + (row.gap > 0 ? 'var(--danger)' : 'var(--ink-dim)') + '">' + (row.gap || 'Â·') + '</td>' +
-        '<td class="num">' + (row.inbound || 'Â·') + '</td><td>' +
+        '<td class="num">' + (row.target || '·') + '</td>' +
+        '<td class="num" style="color:' + (row.gap > 0 ? 'var(--danger)' : 'var(--ink-dim)') + '">' + (row.gap || '·') + '</td>' +
+        '<td class="num">' + (row.inbound || '·') + '</td><td>' +
         actions + '</td></tr>';
     }
     if (!depth.length) html += '<tr><td colspan="7" class="sub">No discovered demand or supply yet.</td></tr>';

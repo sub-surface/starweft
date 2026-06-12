@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -222,6 +222,110 @@ section('Market analytics');
     seen[op.c] = true;
   }
   assert(seen.ORE && seen.GAS, 'diversified opportunities include multiple commodity types');
+}
+
+// ---------- 4c. SW.market module ----------
+section('SW.market module');
+{
+  const M = SW.market;
+
+  // marketTarget: consumer system with cons > 0 should have a non-zero target
+  {
+    const st = G.newGame({ seed: 'smoke-4c', difficulty: 'relaxed' });
+    const sys = st.systems[st.homeId];
+    sys.cons = sys.cons || {};
+    sys.cons.FOOD = 0.5;
+    sys.capacity.FOOD = 120;
+    const t = M.marketTarget(sys, 'FOOD');
+    assert(t > 0, 'marketTarget returns positive for consumer system (got ' + t + ')');
+    assert(t >= D.TUNE.marketReserveMin, 'marketTarget >= marketReserveMin');
+    assert(t <= sys.capacity.FOOD, 'marketTarget <= capacity');
+    assert(Number.isFinite(t), 'marketTarget is finite');
+  }
+
+  // marketTarget: non-consumer, non-factory system returns 0
+  {
+    const sys = { cons: {}, slots: [], capacity: { ORE: 120 }, stocks: { ORE: 60 }, prod: {}, pop: 0 };
+    const t = M.marketTarget(sys, 'ORE');
+    assert(t === 0, 'marketTarget is 0 for system with no consumers or factories (got ' + t + ')');
+  }
+
+  // inboundCargo: counts a ship en route via supply mission
+  {
+    const st = G.newGame({ seed: 'smoke-4c-ib', difficulty: 'relaxed' });
+    const home = st.systems[st.homeId];
+    const src = st.systems[home.links[0]];
+    const ship = st.ships[0];
+    ship.cargo = { FOOD: 7 };
+    ship.mission = { kind: 'supply', stage: 'deliver', c: 'FOOD', qty: 7, source: src.id, target: home.id };
+    const before = M.inboundCargo(st, home.id, 'FOOD');
+    assert(before === 7, 'inboundCargo counts supply-mission ship (got ' + before + ')');
+    const other = M.inboundCargo(st, src.id, 'FOOD');
+    assert(other === 0, 'inboundCargo does not count wrong destination (got ' + other + ')');
+  }
+
+  // inboundCargo: counts a directive ship
+  {
+    const st = G.newGame({ seed: 'smoke-4c-dir', difficulty: 'relaxed' });
+    const home = st.systems[st.homeId];
+    const ship = st.ships[0];
+    ship.directiveId = 'dir-test';
+    ship.cargo = { MEDS: 5 };
+    ship.mission = null;
+    st.directives.push({ id: 'dir-test', sys: home.id, c: 'MEDS', target: 40 });
+    const ib = M.inboundCargo(st, home.id, 'MEDS');
+    assert(ib === 5, 'inboundCargo counts directive ship (got ' + ib + ')');
+  }
+
+  // marketRole classifications
+  {
+    const sys = { cons: { FOOD: 0.3 }, prod: {}, stocks: { FOOD: 10 }, slots: [] };
+    assert(M.marketRole(sys, 'FOOD', 30, 15) === 'needs', 'marketRole: needs when gap > 0');
+    assert(M.marketRole(sys, 'FOOD', 30, 0) === 'covered', 'marketRole: covered when target > 0 and gap = 0');
+    const prodSys = { cons: {}, prod: { ORE: 0.5 }, stocks: { ORE: 3 }, slots: [] };
+    assert(M.marketRole(prodSys, 'ORE', 0, 0) === 'producer', 'marketRole: producer when prod > 0');
+    const stockSys = { cons: {}, prod: {}, stocks: { ORE: 10 }, slots: [] };
+    assert(M.marketRole(stockSys, 'ORE', 0, 0) === 'stock', 'marketRole: stock when stocks >= 5');
+    const emptySys = { cons: {}, prod: {}, stocks: {}, slots: [] };
+    assert(M.marketRole(emptySys, 'ORE', 0, 0) === 'watch', 'marketRole: watch otherwise');
+  }
+
+  // knownWealth: only counts discovered non-corrupted systems
+  {
+    const st = G.newGame({ seed: 'smoke-4c-wlth', difficulty: 'relaxed' });
+    st.systems.forEach(function (s) { s.discovered = false; s.scourge = 0; });
+    const a = st.systems[0], b = st.systems[1], c = st.systems[2];
+    a.discovered = true; b.discovered = true; c.discovered = true;
+    c.scourge = 2; // corrupted — excluded from wealth
+    const hidden = st.systems[3];
+    hidden.discovered = false;
+    hidden.stocks.FOOD = 9999;
+    const w1 = M.knownWealth(st);
+    hidden.stocks.FOOD = 0;
+    const w2 = M.knownWealth(st);
+    assert(w1 === w2, 'knownWealth does not change when hidden system stock changes');
+    c.stocks.FOOD = 9999;
+    const w3 = M.knownWealth(st);
+    assert(w3 === w2, 'knownWealth excludes corrupted systems');
+    assert(Number.isFinite(w2), 'knownWealth is finite');
+  }
+
+  // buildInboundMap: single-pass produces correct totals
+  {
+    const st = G.newGame({ seed: 'smoke-4c-map', difficulty: 'relaxed' });
+    const home = st.systems[st.homeId];
+    const ship = st.ships[0];
+    ship.cargo = { FOOD: 9 };
+    ship.mission = { kind: 'supply', stage: 'deliver', c: 'FOOD', qty: 9, source: 0, target: home.id };
+    const map = M.buildInboundMap(st);
+    assert(map[home.id] && map[home.id].FOOD === 9, 'buildInboundMap records supply mission (got ' + (map[home.id] && map[home.id].FOOD) + ')');
+  }
+
+  // TUNE constants
+  assert(typeof D.TUNE.marketReserveMin === 'number' && D.TUNE.marketReserveMin > 0, 'marketReserveMin tuning constant present');
+  assert(typeof D.TUNE.marketReserveCapFraction === 'number', 'marketReserveCapFraction tuning constant present');
+  assert(typeof D.TUNE.marketConsumerReserveTicks === 'number', 'marketConsumerReserveTicks tuning constant present');
+  assert(typeof D.TUNE.marketFactoryReserveTicks === 'number', 'marketFactoryReserveTicks tuning constant present');
 }
 
 // ---------- 5. tech tree: branches, doctrines, discounts ----------
@@ -829,6 +933,62 @@ section('Long run (standard, 3000 ticks, bot)');
   assert(st.rivals.length >= 4, 'many rivals exist (' + st.rivals.length + ')');
   assert(new Set(st.rivals.map(function (r) { return r.archetype; })).size >= 4, 'rival archetypes stay diverse');
   assert(st.rivals.some(function (r) { return (r.lines || []).length > 0 || !r.alive; }), 'rivals run persistent trade lines');
+
+  // FIX assertions: rival credits never negative; lines only between lane-connected systems
+  for (const rv of st.rivals) {
+    assert(rv.credits >= 0, 'rival ' + rv.name + ' credits never negative (' + rv.credits + ')');
+    for (const L of (rv.lines || [])) {
+      const lp = U.findPath(st.systems, L.a, L.b, function (s) { return s.scourge !== 2; });
+      assert(!!lp, 'rival line ' + st.systems[L.a].name + '->' + st.systems[L.b].name + ' is lane-connected');
+    }
+  }
+}
+
+// ---------- 10b. scourge / refugee BFS assertions ----------
+section('Scourge & refugee path-aware assertions');
+{
+  // Run a shorter sim with early scourge to generate refugees
+  const st = G.newGame({ seed: 'smoke-10b', difficulty: 'standard' });
+  st.scourge.startAt = 10;
+  // track refugeeHavens as we corrupt systems
+  const refugeeHavens = [];
+  const origCorrupt = SW.scourge._testCorrupt || null;
+  // Intercept: run until scourge is active and a pop system has fallen
+  for (let i = 0; i < 600 && !st.gameOver; i++) {
+    G.tick(st);
+    botStep(st);
+  }
+  // Verify: for all corrupted systems that had refugees, the haven should be
+  // lane-reachable from a safe pop center OR no safe pop center exists.
+  // Since we cannot retroactively track havens, we verify structural invariant:
+  // every safe pop system is reachable from Sol via non-corrupted lanes
+  // (confirming BFS has valid candidates to pick from).
+  const safePop = st.systems.filter(function (s) { return s.type === 'pop' && s.scourge !== 2 && s.pop > 0; });
+  const home = st.systems[st.homeId];
+  // BFS from Sol through non-corrupted systems
+  const reachable = {};
+  const bfsQ = [st.homeId];
+  reachable[st.homeId] = true;
+  while (bfsQ.length) {
+    const cur = bfsQ.shift();
+    for (const nb of st.systems[cur].links) {
+      if (reachable[nb]) continue;
+      if (st.systems[nb].scourge === 2) continue;
+      reachable[nb] = true;
+      bfsQ.push(nb);
+    }
+  }
+  const reachableSafePop = safePop.filter(function (s) { return reachable[s.id]; });
+  assert(reachableSafePop.length > 0 || safePop.length === 0,
+    'at least one safe pop center is lane-reachable (refugee BFS has valid targets), reachable=' + reachableSafePop.length + ' total=' + safePop.length);
+  // Structural: no alive rival line uses a corrupted system as endpoint
+  for (const rv of st.rivals) {
+    if (!rv.alive) continue;
+    for (const L of (rv.lines || [])) {
+      const a = st.systems[L.a], b = st.systems[L.b];
+      assert(a.scourge !== 2 && b.scourge !== 2, 'no alive rival line has corrupted endpoint (' + a.name + '->' + b.name + ')');
+    }
+  }
 }
 
 // ---------- 11. victory & loss ----------
@@ -898,6 +1058,29 @@ section('Procedural encounters');
   }
   assert(built >= 15, 'encounters assemble reliably (' + built + '/20)');
   invariants(st, 'post-encounters');
+}
+
+// ---------- 14a. source integrity (mojibake scan) ----------
+section('Source integrity');
+{
+  const fs = require('fs');
+  const jsDir = path.join(__dirname, '..', 'js');
+  const BAD_SEQS = ['Â', 'Ã', '�']; // Â, Ã, replacement char
+  const BAD_LABELS = ['Â (0xC2)', 'Ã (0xC3)', 'U+FFFD replacement char'];
+  for (const file of fs.readdirSync(jsDir)) {
+    if (!/\.js$/.test(file)) continue;
+    const src = fs.readFileSync(path.join(jsDir, file), 'utf8');
+    for (let i = 0; i < BAD_SEQS.length; i++) {
+      const seq = BAD_SEQS[i];
+      const idx = src.indexOf(seq);
+      if (idx >= 0) {
+        const lineNum = src.slice(0, idx).split('\n').length;
+        assert(false, 'mojibake ' + BAD_LABELS[i] + ' in js/' + file + ' line ' + lineNum);
+      } else {
+        assert(true, 'no ' + BAD_LABELS[i] + ' in js/' + file);
+      }
+    }
+  }
 }
 
 // ---------- 14. story-flag registry (source scan) ----------
