@@ -1351,18 +1351,15 @@ SW.ui = (function () {
     html += '<h4>Supply map</h4><table class="mkt"><tr><th>system</th><th>role</th><th>stock</th><th>target</th><th>gap</th><th>in-flight</th><th>actions</th></tr>';
     for (const row of depth.slice(0, 18)) {
       const src = row.gap > 0 ? SW.economy.cheapestSource(s, exchangeComm, Math.min(5, row.gap), row.sys.id) : null;
-      let actions = '<span class="sub">' + '>' + 'focus' + '<' + '</span>';
-      if (src) actions += ' <span class="sub">' + '>' + 'fetch' + '<' + '</span>';
-      if (src && s.story.flags.routes_unlocked) actions += ' <span class="sub">' + '>' + 'route' + '<' + '</span>';
+      let actions = '<button data-act="centerSys" data-id="' + row.sys.id + '" class="textBtn">' + '>' + 'focus' + '<' + '</button>';
+      if (src) actions += ' <button data-act="fetchOp" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" class="textBtn">' + '>' + 'fetch' + '<' + '</button>';
+      if (src && s.story.flags.routes_unlocked) actions += ' <button data-act="quickRoute" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" class="textBtn">' + '>' + 'route' + '<' + '</button>';
       if (row.target > 0 && SW.tech.has(s, 'directives')) actions += ' <button data-act="marketKeep" data-sys="' + row.sys.id + '" data-c="' + exchangeComm + '" data-target="' + row.target + '">keep</button>';
       html += '<tr data-info="system:' + row.sys.id + '"><td>' + esc(row.sys.name) + '</td>' +
         '<td>' + row.role + '</td><td class="num">' + row.stock + '</td>' +
         '<td class="num">' + (row.target || 'Â·') + '</td>' +
         '<td class="num" style="color:' + (row.gap > 0 ? 'var(--danger)' : 'var(--ink-dim)') + '">' + (row.gap || 'Â·') + '</td>' +
         '<td class="num">' + (row.inbound || 'Â·') + '</td><td>' +
-        '<button data-act="centerSys" data-id="' + row.sys.id + '" style="display:none"></button>' +
-        (src ? '<button data-act="fetchOp" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" style="display:none"></button>' : '') +
-        (src && s.story.flags.routes_unlocked ? '<button data-act="quickRoute" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" style="display:none"></button>' : '') +
         actions + '</td></tr>';
     }
     if (!depth.length) html += '<tr><td colspan="7" class="sub">No discovered demand or supply yet.</td></tr>';

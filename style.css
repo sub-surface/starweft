@@ -183,6 +183,8 @@ table.mkt td:first-child, table.mkt th:first-child { text-align: left; font-fami
 table.mkt tr { border-bottom: 1px solid rgba(35,39,46,0.5); }
 table.mkt tr:hover { background: rgba(201,209,217,0.04); }
 table.mkt button { padding: 0 6px; font-size: 10.5px; }
+table.mkt button.textBtn { background: none; border: none; padding: 0; color: var(--ink-dim); cursor: pointer; font-family: inherit; font-size: inherit; text-decoration: none; }
+table.mkt button.textBtn:hover { color: var(--ink); }
 .bar { height: 3px; background: var(--line); flex: 1; }
 .bar > div { height: 100%; background: var(--ink-dim); }
 .bar > div.hi { background: var(--accent); }
