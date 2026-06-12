@@ -96,6 +96,8 @@ SW.game = (function () {
     (origin.ships || ['sparrow']).forEach(function (h, i) {
       SW.ships.create(state, h, startSys, i === 0 ? 'Stitch' : undefined);
     });
+    // The Sol cold open — only when explicitly requested (never for bots/tests)
+    if (opts.tutorial && SW.tutorial) SW.tutorial.init(state);
     G.state = state;
     G.fx.length = 0;
     return state;
@@ -124,6 +126,7 @@ SW.game = (function () {
     SW.scourge.tick(state);
     SW.worldevents.tick(state);
     SW.story.tick(state);
+    if (SW.tutorial) SW.tutorial.tick(state);
     SW.perks.tick(state);
     if (state.infamy >= 5) G.legacySet('infamy');
     checkEnd(state);
@@ -295,6 +298,7 @@ SW.game = (function () {
   A.shipSend = function (state, shipId, destId, sellOnArrive) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
+    if (SW.tutorial && SW.tutorial.mapLocked(state) && destId !== state.homeId) return err('The weave begins at home.');
     const check = SW.ships.canSend(state, ship, destId);
     if (!check.ok) return check;
     SW.ships.unassign(state, ship);
@@ -533,6 +537,7 @@ SW.game = (function () {
   A.order = function (state, shipId, intent) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
+    if (SW.tutorial && SW.tutorial.mapLocked(state)) return err('The weave begins at home.');
     const r = SW.ships.intent(state, ship, intent);
     if (r.ok) G.emit('toast', { kind: 'info', text: '▸ ' + ship.name + ': ' + r.note });
     return r;

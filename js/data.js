@@ -212,6 +212,7 @@ SW.data = (function () {
     'cats_aboard', 'crew_hired', 'doctrine_chosen', 'doctrine_prompted',
     'archivist_sys', 'archivist_quest', 'archivist_friend', 'archivist_dead',
     'met_helix', 'met_mariner', 'panic_done', 'stance_chosen',
+    'first_thread',
   ];
   D.FLAG_PREFIXES = ['met_', 'rival_collapsed_', 'absorbed_', 'mourned_'];
 

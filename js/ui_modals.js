@@ -183,6 +183,10 @@ SW.uiModals = (function () {
         return '<option value="' + id + '">' + p.icon + ' ' + p.name + ' — ' + p.desc + '</option>';
       }).join('') + '</select></div>';
     html += '<div class="row"><span class="sub" style="width:64px">seed</span><input id="ngSeed" placeholder="random" style="flex:1"></div>';
+    // Sol prologue: default on for first-time weavers, optional once completed
+    html += '<div class="row"><label class="sub"><input type="checkbox" id="ngTut"' +
+      (SW.game.legacy().prologue ? '' : ' checked') + '> Sol prologue — wake at home, learn the verb' +
+      (SW.game.legacy().prologue ? ' (completed)' : '') + '</label></div>';
     html += '<div class="choices" style="margin-top:12px"><button class="primary" data-act="begin">begin weaving</button>' +
       '<button data-act="help">how to play</button></div>';
     modal.innerHTML = html;

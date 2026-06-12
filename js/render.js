@@ -210,7 +210,11 @@ SW.render = (function () {
     R.systemPan.x = 0; R.systemPan.y = 0; R.systemZoom = 1; R.systemAngle = 0; R.systemPitch = 0.42;
     SW.audio.setScene('system');
   };
-  R.exitSystem = function () { R.mode = 'galaxy'; R.systemId = null; R.selectedBody = null; SW.audio.setScene('galaxy'); };
+  R.exitSystem = function () {
+    const s = SW.game && SW.game.state;
+    if (s && SW.tutorial && SW.tutorial.mapLocked(s)) return; // the prologue holds the door
+    R.mode = 'galaxy'; R.systemId = null; R.selectedBody = null; SW.audio.setScene('galaxy');
+  };
   function panDragComponents(dx, dy, thresholded) {
     if (!thresholded) return { dx: dx, dy: dy };
     const ax = Math.abs(dx), ay = Math.abs(dy);

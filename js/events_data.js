@@ -14,11 +14,21 @@ SW.eventsData = (function () {
 
     // ============ TUTORIAL ARC ============
     {
+      // Skip-path opening only: prologue games wake inside Sol (tutorial.js owns those beats)
       id: 'ev_wake', title: 'COLD BOOT', weight: 100,
-      when: function (s) { return s.tick >= 1; },
+      when: function (s) { return s.tick >= 1 && !s.tutorial; },
       text: 'You are WEFT-7, last logistics intelligence of the Courier Guild. The Guild is dust. The worlds have drifted apart.\n\nOne probe answers your ping. The galaxy is quiet, and hungry.',
       choices: [
         { label: 'Spin up the rotors.', fx: function (s) { obj(s, 'Click a nearby system, buy something cheap, and send your probe somewhere it sells high.'); return 'The Sparrow hums to life.'; } },
+      ],
+    },
+    {
+      // The prologue's title card: fires the tick after the first jump lands
+      id: 'ev_first_thread', title: 'STARWEFT', weight: 100,
+      when: function (s) { return !!(s.tutorial && s.tutorial.done && !s.story.flags.first_thread); },
+      text: 'The worlds drifted apart. You are the thread.\n\nThe bubble opens before you: hungry markets, idle factories, lanes gone quiet. The Anchorage will hold — for a while. Weave.',
+      choices: [
+        { label: 'Begin.', fx: function (s) { flag(s, 'first_thread'); obj(s, 'Buy where the weave gluts, sell where it starves. Make 3 deliveries.'); return null; } },
       ],
     },
     {

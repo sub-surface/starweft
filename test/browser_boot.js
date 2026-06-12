@@ -104,7 +104,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -627,6 +627,25 @@ step('interval loop bodies run without throwing', function () {
 step('autosave happened via tick loop', function () {
   for (let i = 0; i < 50; i++) G.tick(G.state);
   if (!storageMap.starweft_auto) throw new Error('no autosave in storage');
+});
+
+step('Sol prologue boots locked into the system view', function () {
+  G.newGame({ seed: 'boot-tutorial', difficulty: 'standard', tutorial: true });
+  const s = G.state;
+  if (!SW.tutorial.isActive(s)) throw new Error('tutorial not active');
+  SW.ui.enterSystem(s.homeId);
+  if (SW.render.mode !== 'system') throw new Error('not in system view');
+  G.tick(s);
+  if (!s.story.objective || s.story.objective.indexOf('Hydrofarm') < 0) throw new Error('prologue prompt not set: ' + s.story.objective);
+  SW.ui.exitSystem();                       // must be refused while locked
+  if (SW.render.mode !== 'system') throw new Error('map lock did not hold');
+  SW.ui.refresh();                          // panels render in tutorial state without throwing
+  pumpFrames(3);
+  // complete the first beat via actions; prompt advances on the next tick
+  const r = A.shipBuy(s, s.ships[0].id, 'ALLOY', 5);
+  if (!r.ok) throw new Error('alloy buy failed: ' + r.msg);
+  G.tick(s);
+  if (s.tutorial.goal !== 1) throw new Error('gather beat did not advance (goal=' + s.tutorial.goal + ')');
 });
 
 console.log('\n' + (failures ? failures + ' FAILURES' : 'BROWSER BOOT CHECK PASSED ✓'));

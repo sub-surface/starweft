@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -1176,6 +1176,59 @@ section('Procedural encounters');
 }
 
 // ---------- 14a. source integrity (mojibake scan) ----------
+section('Sol prologue (tutorial)');
+{
+  // Full prologue, driven exactly as a player would via actions
+  const st = G.newGame({ seed: 'smoke-tutorial', difficulty: 'standard', tutorial: true });
+  assert(st.tutorial && st.tutorial.active, 'tutorial active when requested');
+  assert(st.credits >= 1200, 'Guild escrow granted (credits=' + st.credits + ')');
+  G.tick(st);
+  assert(st.tutorial.goal === 0, 'gather beat is current after first tick');
+  assert(SW.tutorial.mapLocked(st), 'galaxy map locked during early prologue');
+  assert(st.story.pending !== 'ev_wake', 'ev_wake suppressed in prologue');
+
+  const ship = st.ships[0];
+  const nb = st.systems[st.homeId].links[0];
+  const blocked = A.shipSend(st, ship.id, nb);
+  assert(!blocked.ok, 'jump refused while the map is locked');
+
+  const buy = A.shipBuy(st, ship.id, 'ALLOY', 5);
+  assert(buy.ok, 'alloy purchase succeeds (' + (buy.msg || 'ok') + ')');
+  G.tick(st);
+  assert(st.tutorial.goal === 1, 'anchor beat after gathering alloy');
+
+  const built = A.buildSite(st, st.homeId, 'Earth', 'hydrofarm');
+  assert(built.ok, 'hydrofarm anchors on Earth (' + (built.msg || 'ok') + ')');
+  G.tick(st);
+  assert(st.tutorial.goal === 2, 'chain beat after anchoring');
+
+  for (let i = 0; i < 30 && st.tutorial.goal === 2; i++) G.tick(st);
+  assert(st.tutorial.goal === 3, 'jump beat after watching the chain feed the city');
+  assert(!SW.tutorial.mapLocked(st), 'map unlocks with the Guild gift');
+
+  const go = A.shipSend(st, ship.id, nb);
+  assert(go.ok, 'jump allowed after the gift (' + (go.msg || 'ok') + ')');
+  for (let i = 0; i < 300 && !st.tutorial.done; i++) G.tick(st);
+  assert(st.tutorial.done && !st.tutorial.active, 'prologue completes when the jump lands');
+
+  // Title card fires through the normal event machinery (drain competitors)
+  let sawCard = false;
+  for (let i = 0; i < 30 && !sawCard; i++) {
+    if (st.story.pending === 'ev_first_thread') { sawCard = true; break; }
+    if (st.story.pending) A.chooseEvent(st, 0);
+    G.tick(st);
+  }
+  assert(sawCard || st.story.pending === 'ev_first_thread', 'ev_first_thread title card fires after the prologue');
+  A.chooseEvent(st, 0);
+  assert(st.story.flags.first_thread === true, 'first_thread flag set by title card');
+
+  // Skip path: no tutorial state, ev_wake fires as today
+  const sk = G.newGame({ seed: 'smoke-tutorial-skip', difficulty: 'standard' });
+  assert(!sk.tutorial, 'no tutorial state on skip path');
+  G.tick(sk);
+  assert(sk.story.pending === 'ev_wake', 'ev_wake fires normally without tutorial');
+}
+
 section('Source integrity');
 {
   const fs = require('fs');

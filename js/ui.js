@@ -423,6 +423,8 @@ SW.ui = (function () {
     $('#btnBackGalaxy').classList.remove('hidden');
   };
   ui.exitSystem = function () {
+    const s = st();
+    if (s && SW.tutorial && SW.tutorial.mapLocked(s)) { toast({ kind: 'info', text: 'The weave begins at home.' }); return; }
     SW.render.exitSystem();
     $('#btnBackGalaxy').classList.add('hidden');
   };
@@ -712,6 +714,7 @@ SW.ui = (function () {
           difficulty: $('#ngDiff').value,
           origin: chosenOriginFromModal(),
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
+          tutorial: !!($('#ngTut') && $('#ngTut').checked),
           world: {
             density: ($('#ngDen') && $('#ngDen').value) || 'standard',
             wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
@@ -725,6 +728,8 @@ SW.ui = (function () {
         });
         hideModals();
         afterLoad();
+        // The cold open begins at home, in the system view, map locked
+        if (SW.tutorial.isActive(SW.game.state)) ui.enterSystem(SW.game.state.homeId);
         A().setSpeed(SW.game.state, 1);
         return;
       }
