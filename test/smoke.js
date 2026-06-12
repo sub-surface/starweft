@@ -1201,6 +1201,25 @@ section('Multi-site bodies & orbital spindles');
   assert(fx.prod.ORE > 0.8, 'stacked mines stack production (' + fx.prod.ORE + ')');
 }
 
+section('Ring Dredge facility');
+{
+  const st = G.newGame({ seed: 'smoke-ringworks', difficulty: 'relaxed' });
+  const home = st.systems[st.homeId];
+  home.depot = home.depot || {};
+  home.depot.ALLOY = 60;
+  st.credits = 99999;
+  // ringworks anchors at Jupiter (gas giant)
+  const rJup = A.buildSite(st, st.homeId, 'Jupiter', 'ringworks');
+  assert(rJup.ok, 'ringworks anchors at Jupiter (gas) (' + (rJup.msg || 'ok') + ')');
+  // ringworks refused at Mars (desert — not in sites list)
+  const rMars = A.buildSite(st, st.homeId, 'Mars', 'ringworks');
+  assert(!rMars.ok, 'ringworks refused at Mars (desert)');
+  // production aggregates include ORE and CRYSTAL
+  const sfx = SW.sites.fx(home);
+  assert(sfx.prod && sfx.prod.ORE > 0, 'ringworks prod aggregates ORE (' + (sfx.prod && sfx.prod.ORE) + ')');
+  assert(sfx.prod && sfx.prod.CRYSTAL > 0, 'ringworks prod aggregates CRYSTAL (' + (sfx.prod && sfx.prod.CRYSTAL) + ')');
+}
+
 section('Sol prologue (tutorial)');
 {
   // Full prologue, driven exactly as a player would via actions

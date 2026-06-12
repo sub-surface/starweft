@@ -28,14 +28,14 @@ SW.tutorial = (function () {
     {
       id: 'gather',
       enter: function (s) {
-        SW.story.setObjective(s, 'Earth Anchorage is hungry. A Hydrofarm on Earth would feed it — buy 5 Alloy at the Anchorage market. The Guild escrow (+600¤) is yours now.');
+        SW.story.setObjective(s, 'Earth Anchorage is hungry. In the Anchorage panel, find the ALLOY row and buy 5 — enough to anchor a Hydrofarm on Earth. The Guild escrow (+600¤) is yours.');
       },
       complete: function (s) { return alloyOnSite(s) >= 5; },
     },
     {
       id: 'anchor',
       enter: function (s) {
-        SW.story.setObjective(s, 'Alloy aboard counts as materials on-site. Open Earth in the system view and anchor the Hydrofarm. Building is delivering.');
+        SW.story.setObjective(s, 'Select Earth in the orrery. The alloy aboard Stitch counts as materials on-site. Anchor the Hydrofarm — building is delivering.');
       },
       complete: function (s) { return (home(s).sites || []).length > 0; },
     },

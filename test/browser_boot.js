@@ -646,6 +646,25 @@ step('Sol prologue boots locked into the system view', function () {
   if (!r.ok) throw new Error('alloy buy failed: ' + r.msg);
   G.tick(s);
   if (s.tutorial.goal !== 1) throw new Error('gather beat did not advance (goal=' + s.tutorial.goal + ')');
+  // UI gating: locked state hides search and exchange; only fleet+log tabs visible
+  SW.ui.refresh();
+  const sw = elCache['#searchWrap'];
+  if (sw && sw.style) {
+    if (sw.style.display !== 'none') throw new Error('#searchWrap not hidden during tutorial lock (display=' + sw.style.display + ')');
+  }
+  const be = elCache['#btnExchange'];
+  if (be && be.style) {
+    if (be.style.display !== 'none') throw new Error('#btnExchange not hidden during tutorial lock (display=' + be.style.display + ')');
+  }
+  // simulate unlock and verify elements are restored
+  s.tutorial.mapUnlocked = true;
+  SW.ui.refresh();
+  if (sw && sw.style) {
+    if (sw.style.display === 'none') throw new Error('#searchWrap not restored after map unlock');
+  }
+  if (be && be.style) {
+    if (be.style.display === 'none') throw new Error('#btnExchange not restored after map unlock');
+  }
 });
 
 console.log('\n' + (failures ? failures + ' FAILURES' : 'BROWSER BOOT CHECK PASSED ✓'));

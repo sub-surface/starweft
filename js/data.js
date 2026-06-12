@@ -91,6 +91,7 @@ SW.data = (function () {
     crucible:   { name: 'Crystal Crucible', icon: '◆', cost: 2200, mats: { ALLOY: 8, TECH: 3 }, sites: ['lava', 'carbon'],          fx: { prod: { CRYSTAL: 0.22 } }, desc: 'Lattices grown in the melt, pulled out glowing.' },
     cryoarchive:{ name: 'Cryo-Archive',     icon: '❄', cost: 1800, mats: { TECH: 5 },           sites: ['ice', 'icegiant'],         fx: { research: 0.25 },          desc: 'Cold storage for warm knowledge.' },
     habitat:    { name: 'Orbital Habitat',  icon: '◍', cost: 2600, mats: { ALLOY: 12, TECH: 4 },sites: ['terran', 'ocean', 'desert', 'rock', 'gas', 'icegiant'], fx: { cap: 40, pop: 2 }, desc: 'A ring of lights. People follow.' },
+    ringworks:  { name: 'Ring Dredge',      icon: '⊚', cost: 1500, mats: { ALLOY: 7 },          sites: ['gas', 'icegiant'],         fx: { prod: { ORE: 0.35, CRYSTAL: 0.05 } }, desc: 'Combs the rings for ice-bound ore and lattice shards.' },
     spindle:    { name: 'Orbital Spindle',  icon: '✶', cost: 1600, mats: { ALLOY: 8, TECH: 2 }, sites: [], orbital: true, fx: { cap: 30 }, desc: 'A dock, a customs desk, and one bar with no name. Anchors in any orbit.' },
   };
 

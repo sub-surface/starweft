@@ -1411,6 +1411,8 @@ SW.render = (function () {
     }
 
     // orbits + bodies
+    // bodyPos collected here so shuttle paths can be drawn after all positions are known
+    var bodyPos = {};
     for (const b of data.bodies) {
       const orad = orbitR(b.a);
       ctx.strokeStyle = 'rgba(160,170,185,0.16)';
@@ -1421,6 +1423,7 @@ SW.render = (function () {
       const angle = (t * 0.0022 / Math.max(0.02, b.period)) * Math.PI * 2 + b.a * 7;
       const bp = orbitPoint(angle, orad);
       const bx = bp.x, by = bp.y;
+      bodyPos[b.name] = { x: bx, y: by };
       if (b.type === 'belt') {
         // belt: stippled arc near the body's position
         ctx.fillStyle = 'rgba(180,190,205,0.5)';
@@ -1463,6 +1466,72 @@ SW.render = (function () {
       ctx.fillText(shortName, bx, by + br + 12);
       ctx.textAlign = 'left';
       bodyPickables.push({ x: bx, y: by, r: br + 4, body: b });
+    }
+
+    // Intra-system shuttle flows — presentational ghosts of real production
+    // (sites add stock to the system market every economy tick; these dots echo that flow visually).
+    {
+      // find hub: body with station prop, else first with pop/settled, else skip
+      var hubBody = null;
+      for (var _bi = 0; _bi < data.bodies.length; _bi++) {
+        var _b = data.bodies[_bi];
+        if (_b.station) { hubBody = _b; break; }
+      }
+      if (!hubBody) {
+        for (var _bi = 0; _bi < data.bodies.length; _bi++) {
+          var _b = data.bodies[_bi];
+          if (_b.pop || _b.settled) { hubBody = _b; break; }
+        }
+      }
+      if (hubBody && bodyPos[hubBody.name]) {
+        var hubP = bodyPos[hubBody.name];
+        // collect producing sites (those whose facility has fx.prod)
+        var prodSites = [];
+        if (sys.sites) {
+          for (var _si = 0; _si < sys.sites.length; _si++) {
+            var _s = sys.sites[_si];
+            var _f = D.FACILITIES[_s.fac];
+            if (_f && _f.fx && _f.fx.prod && _s.body !== hubBody.name && bodyPos[_s.body]) {
+              prodSites.push(_s);
+              if (prodSites.length >= 12) break;
+            }
+          }
+        }
+        for (var _si = 0; _si < prodSites.length; _si++) {
+          var _s = prodSites[_si];
+          var srcP = bodyPos[_s.body];
+          // deterministic phase per shuttle index; st.tick drives animation, no Math.random
+          var phase = ((st.tick * 0.012) + _si * 0.618) % 1;
+          // quadratic bezier: midpoint bowed ~12px perpendicular to the src->hub vector
+          var mx = (srcP.x + hubP.x) / 2;
+          var my = (srcP.y + hubP.y) / 2;
+          var dx = hubP.x - srcP.x, dy = hubP.y - srcP.y;
+          var len = Math.sqrt(dx * dx + dy * dy) || 1;
+          var bowX = mx + (-dy / len) * 12;
+          var bowY = my + (dx / len) * 12;
+          // interpolate along quadratic curve at phase and two trailing points
+          var dots = [
+            { ph: phase, a: 0.8 },
+            { ph: Math.max(0, phase - 0.04), a: 0.4 },
+            { ph: Math.max(0, phase - 0.08), a: 0.15 },
+          ];
+          for (var _di = 0; _di < dots.length; _di++) {
+            var p = dots[_di].ph;
+            var q = 1 - p;
+            var px = q * q * srcP.x + 2 * q * p * bowX + p * p * hubP.x;
+            var py = q * q * srcP.y + 2 * q * p * bowY + p * p * hubP.y;
+            ctx.fillStyle = accent(dots[_di].a);
+            ctx.beginPath(); ctx.arc(px, py, 1.4, 0, Math.PI * 2); ctx.fill();
+          }
+          // brief '+' glint at hub near arrival
+          if (phase > 0.96) {
+            ctx.fillStyle = accent(0.7 * (phase - 0.96) / 0.04);
+            ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('+', hubP.x, hubP.y - 6);
+            ctx.textAlign = 'left';
+          }
+        }
+      }
     }
 
     // your ships docked here

@@ -20,6 +20,7 @@ SW.worldevents = (function () {
   };
 
   W.tick = function (state) {
+    if (state.tutorial && state.tutorial.active) return;
     const T = D.TUNE;
     // expire blockades
     state.blockades = state.blockades.filter(function (bl) {

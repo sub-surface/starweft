@@ -319,6 +319,24 @@ SW.ui = (function () {
     SW.uiSystem.renderSysPanel();
     SW.uiShip.renderShipChip();
     SW.uiShip.renderCommandBar();
+    // Prologue UI gating: shrink the interface while the map is locked
+    const _st = st();
+    if (_st && SW.tutorial && SW.tutorial.mapLocked(_st)) {
+      const sw = $('#searchWrap'); if (sw && sw.style) sw.style.display = 'none';
+      const be = $('#btnExchange'); if (be && be.style) be.style.display = 'none';
+      document.querySelectorAll('#dockTabs button').forEach(function (b) {
+        const t = b.dataset && b.dataset.tab;
+        const show = t === 'fleet' || t === 'log';
+        if (b.style) b.style.display = show ? '' : 'none';
+        if (!show && b.classList && b.classList.contains('active')) ui.setTab('fleet');
+      });
+    } else {
+      const sw = $('#searchWrap'); if (sw && sw.style) sw.style.display = '';
+      const be = $('#btnExchange'); if (be && be.style) be.style.display = '';
+      document.querySelectorAll('#dockTabs button').forEach(function (b) {
+        if (b.style) b.style.display = '';
+      });
+    }
     renderDock(true);
     renderInfobox(null);
   };

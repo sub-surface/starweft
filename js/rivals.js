@@ -68,7 +68,7 @@ SW.rivals = (function () {
         rival.alive = false;
         state.story.flags['rival_collapsed_' + rival.id] = true;
         SW.game.emit('toast', { kind: 'bad', text: '⚑ ' + rival.name + ' has gone dark. Their routes are yours now.' });
-        SW.game.news(state, '⚑ ' + rival.name + ' declares insolvency; lanes revert to open tender');
+        if (!(state.tutorial && state.tutorial.active)) SW.game.news(state, '⚑ ' + rival.name + ' declares insolvency; lanes revert to open tender');
         continue;
       }
 
