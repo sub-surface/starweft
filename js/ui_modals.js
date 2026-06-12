@@ -15,7 +15,7 @@ SW.uiModals = (function () {
   // Module-private state
   let codexTab = 'ships', codexHull = 'sparrow';
   let chosenOrigin = 'courier';
-  let sim = null;
+  let sim = null, raidChoice = null;
 
   // Expose codexHull for portraitLoop in coordinator (reads at animation time)
   Object.defineProperty(m, 'codexHull', { get: function () { return codexHull; } });
@@ -251,6 +251,28 @@ SW.uiModals = (function () {
   // A timed lane-defense engagement. Performance bends the raid odds by up to
   // ±25% (clamped in the sim) — skill is an edge, never a guarantee. The
   // AUTO-RESOLVE button keeps the stats-only path for players who'd rather not.
+  function openRaidChoice(ship, sys) {
+    const s = st();
+    if (!s || !ship || !sys) return;
+    const power = SW.combat.power(s, ship);
+    let defense = 3 + (sys.pop || 0) * 0.15 + SW.combat.patrolPower(s, sys.region);
+    if (sys.ideology === 'vigil') defense += 6;
+    raidChoice = { ship: ship, sys: sys, wasPaused: s.paused };
+    $('#combatSim').innerHTML = '<div class="modalCard"><h3>RAID PLAN</h3>' +
+      '<div class="sub">' + esc(ship.name) + ' (pwr ' + power + ') vs ' + esc(sys.name) + ' (def ~' + Math.round(defense) + ')</div>' +
+      '<p class="sub">The Simulacrum sketches patrol lanterns, decoy manifests, and one very nervous customs clerk.</p>' +
+      '<div class="choices"><button class="primary" data-act="simManual">MANUAL BREACH</button>' +
+      '<button data-act="simAuto">AUTO-RESOLVE</button><button class="danger" data-act="simAbort">ABORT</button></div></div>';
+    SW.ui.showModal('combatSim');
+  }
+
+  function beginRaidManual() {
+    const w = raidChoice;
+    raidChoice = null;
+    if (!w) return;
+    openCombatSim(w.ship, w.sys);
+  }
+
   function openCombatSim(ship, sys) {
     const s = st();
     if (!s || !ship || !sys) return;
@@ -261,7 +283,7 @@ SW.uiModals = (function () {
     modal.innerHTML = '<div class="modalCard"><h3>TACTICAL SIMULACRUM</h3>' +
       '<div class="sub">' + esc(ship.name) + ' (pwr ' + power + ')  vs  ' + esc(sys.name) + ' (def ~' + Math.round(defense) + ')</div>' +
       '<canvas id="simCanvas" width="520" height="320" style="display:block;margin:8px auto;border:1px solid var(--line,#2a2f36)"></canvas>' +
-      '<div class="row"><span class="sub grow">←/→ or A/D to fly · guns are automatic · clear the wave, keep your hull</span>' +
+      '<div class="row"><span class="sub grow">←/→ or A/D to fly · guns are automatic · bright kites carry fat manifests</span>' +
       '<button data-act="simAuto">AUTO-RESOLVE</button><button class="danger" data-act="simAbort">ABORT</button></div></div>';
     SW.ui.showModal('combatSim');
     const cv = document.getElementById('simCanvas');
@@ -270,22 +292,22 @@ SW.uiModals = (function () {
     const total = Math.max(4, Math.min(24, Math.round(defense * 1.5)));
     const inv = [];
     for (let i = 0; i < total; i++) {
-      inv.push({ x: 60 + (i % 8) * 52, y: 36 + Math.floor(i / 8) * 34, alive: true, ph: i * 0.7 });
+      inv.push({ x: 60 + (i % 8) * 52, y: 36 + Math.floor(i / 8) * 34, alive: true, ph: i * 0.7, prize: i % 7 === 3 });
     }
     sim = {
       ship: ship, sys: sys, cv: cv, wasPaused: wasPaused,
       px: 260, keys: {}, shots: [], bombs: [], inv: inv, total: total,
-      hp: 3, t0: 0, lastShot: 0, lastBomb: 0, over: false,
+      hp: 3, lootPips: 0, t0: 0, lastShot: 0, lastBomb: 0, over: false,
       bombRate: Math.min(900, 280 + 4000 / Math.max(2, defense)),
     };
     requestAnimationFrame(simFrame);
   }
   function closeCombatSim(autoResolve) {
     const s = st();
-    const wasSim = sim;
+    const wasSim = sim || raidChoice;
     SW.ui.hideModals();
     $('#combatSim').innerHTML = '';
-    sim = null;
+    sim = null; raidChoice = null;
     if (!wasSim) return;
     if (s) s.paused = wasSim.wasPaused;
     if (autoResolve && s) {
@@ -308,7 +330,7 @@ SW.uiModals = (function () {
       if (!r.ok) SW.ui.toast({ kind: 'bad', text: r.msg });
       else {
         SW.audio.sfx('raid');
-        SW.ui.toast({ kind: 'info', text: '⌖ Simulacrum: ' + kills + '/' + w.total + ' cleared, hull ' + Math.max(0, w.hp) + '/3 — odds ' + (edge >= 0 ? '+' : '') + Math.round(edge * 100) + '%.' });
+        SW.ui.toast({ kind: 'info', text: '⌖ Simulacrum: ' + kills + '/' + w.total + ' cleared, ' + (w.lootPips || 0) + ' fat manifests tagged, hull ' + Math.max(0, w.hp) + '/3 — odds ' + (edge >= 0 ? '+' : '') + Math.round(edge * 100) + '%.' });
       }
     }
   }
@@ -343,7 +365,7 @@ SW.uiModals = (function () {
     for (const sh of w.shots) {
       for (const i of w.inv) {
         if (!i.alive) continue;
-        if (Math.abs(sh.x - (i.x + i.dx)) < 14 && Math.abs(sh.y - i.y) < 12) { i.alive = false; sh.y = -99; }
+        if (Math.abs(sh.x - (i.x + i.dx)) < 14 && Math.abs(sh.y - i.y) < 12) { i.alive = false; if (i.prize) w.lootPips++; sh.y = -99; }
       }
     }
     w.bombs = w.bombs.filter(function (b) {
@@ -360,8 +382,8 @@ SW.uiModals = (function () {
     c2.font = '16px sans-serif';
     for (const i of w.inv) {
       if (!i.alive) continue;
-      c2.fillStyle = 'rgba(160,170,185,0.95)';
-      c2.fillText('∆', i.x + i.dx - 6, i.y + 6);
+      c2.fillStyle = i.prize ? 'hsla(45,90%,72%,0.95)' : 'rgba(160,170,185,0.95)';
+      c2.fillText(i.prize ? '◇' : '∆', i.x + i.dx - 6, i.y + 6);
     }
     c2.fillStyle = 'rgba(255,77,87,0.95)';
     for (const b of w.bombs) c2.fillRect(b.x - 1.5, b.y - 4, 3, 8);
@@ -391,6 +413,8 @@ SW.uiModals = (function () {
   m.showMenu = showMenu;
   m.showCheats = showCheats;
   m.showHelp = showHelp;
+  m.openRaidChoice = openRaidChoice;
+  m.beginRaidManual = beginRaidManual;
   m.openCombatSim = openCombatSim;
   m.closeCombatSim = closeCombatSim;
   m.simKeys = simKeys;

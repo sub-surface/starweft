@@ -30,6 +30,7 @@ function stubCtx() {
 
 const listeners = {}; // type -> [fn]
 function stubEl(tag) {
+  let html = '';
   const el = {
     tagName: (tag || 'DIV').toUpperCase(),
     children: [],
@@ -39,7 +40,8 @@ function stubEl(tag) {
     firstChild: null,
     _cls: {},
     classList: null,
-    innerHTML: '', textContent: '',
+    textContent: '',
+    scrollTop: 0,
     addEventListener: function (type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
     removeEventListener: function () {},
     appendChild: function (c) { el.children.push(c); el.firstChild = el.children[0]; },
@@ -52,6 +54,10 @@ function stubEl(tag) {
     getContext: function () { return stubCtx(); },
     clientWidth: 1280, clientHeight: 720, width: 0, height: 0,
   };
+  Object.defineProperty(el, 'innerHTML', {
+    get: function () { return html; },
+    set: function (v) { html = String(v); el.scrollTop = 0; },
+  });
   el.classList = {
     add: function (c) { el._cls[c] = 1; },
     remove: function (c) { delete el._cls[c]; },
@@ -256,7 +262,7 @@ step('combat simulacrum entry points exist', function () {
   if (!SW.data.TECHS.simulacrum || !SW.data.TECHS.deepdrives || !SW.data.TECHS.orbitalworks) throw new Error('new techs missing');
 });
 
-step('raid button resolves immediately; sim button opens visible modal', function () {
+step('raid button opens simulacrum choice once unlocked', function () {
   const s = G.state;
   if (s.tech.unlocked.indexOf('corvettes') < 0) s.tech.unlocked.push('corvettes');
   if (s.tech.unlocked.indexOf('simulacrum') < 0) s.tech.unlocked.push('simulacrum');
@@ -270,17 +276,18 @@ step('raid button resolves immediately; sim button opens visible modal', functio
   SW.render.selectedSys = target.id;
   const inf0 = s.infamy || 0;
   const paused0 = s.paused;
+  SW.ui.refresh();
+  const commandHtml = (elCache['#commandBar'] && elCache['#commandBar'].innerHTML) || '';
+  if (commandHtml.indexOf('data-act="simRaid"') >= 0) throw new Error('separate sim button still rendered');
   fireClick('raidHere');
-  if ((s.infamy || 0) <= inf0) throw new Error('raidHere did not resolve a raid immediately');
-  if (s.paused !== paused0) throw new Error('raidHere changed pause state');
-
-  SW.ui.hideModals();
-  const cv2 = SW.ships.create(s, 'corvette', target.id);
-  cv2.raidCooldownUntil = 0;
-  SW.render.selectedShip = cv2.id;
-  fireClick('simRaid');
-  if (elCache['#modalShade'].classList.contains('hidden') || elCache['#combatSim'].classList.contains('hidden')) throw new Error('simRaid did not open visible simulacrum modal');
-  fireClick('simAbort');
+  if ((s.infamy || 0) !== inf0) throw new Error('raidHere resolved before player chose manual or auto');
+  if (s.paused !== paused0) throw new Error('raid choice changed pause state');
+  if (elCache['#modalShade'].classList.contains('hidden') || elCache['#combatSim'].classList.contains('hidden')) throw new Error('raidHere did not open visible choice modal');
+  const modalHtml = (elCache['#combatSim'] && elCache['#combatSim'].innerHTML) || '';
+  if (modalHtml.indexOf('MANUAL BREACH') < 0 || modalHtml.indexOf('AUTO-RESOLVE') < 0) throw new Error('raid choice modal missing manual/auto actions');
+  fireClick('simAuto');
+  if ((s.infamy || 0) <= inf0) throw new Error('simAuto did not resolve the raid');
+  if (s.paused !== paused0) throw new Error('simAuto did not restore pause state');
 });
 
 step('galactic LOD: frames render at every zoom scale', function () {
@@ -528,6 +535,9 @@ step('exchange shows supply depth and can create keep-stocked directives', funct
   if (html.indexOf('need-first') < 0) throw new Error('market sorting explanation missing');
   if (html.indexOf('>focus<') < 0 || html.indexOf('>fetch<') < 0 || html.indexOf('>route<') < 0) throw new Error('supply map actions are not clearly named');
   if (html.indexOf('data-act="marketKeep"') < 0) throw new Error('keep-stocked action missing');
+  elCache['#exchange'].scrollTop = 220;
+  SW.uiMarket.renderExchange();
+  if (elCache['#exchange'].scrollTop !== 220) throw new Error('market render reset scroll position');
   const before = s.directives.length;
   fireClick('marketKeep', { sys: String(home.id), c: 'FOOD', target: '30' });
   if (s.directives.length !== before + 1) throw new Error('marketKeep did not create directive');

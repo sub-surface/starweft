@@ -91,6 +91,11 @@ SW.uiMarket = (function () {
     if (ex.classList.contains('hidden')) { ex.classList.remove('hidden'); m.renderExchange(); }
     else ex.classList.add('hidden');
   }
+  function replaceExchangeHtml(ex, html) {
+    const top = ex.scrollTop || 0;
+    ex.innerHTML = html;
+    ex.scrollTop = top;
+  }
   function renderExchange() {
     const s = st();
     const ex = $('#exchange');
@@ -205,7 +210,7 @@ SW.uiMarket = (function () {
       html += '<div class="row"><span class="grow sub">' + esc(r.name) + ' · ' + r.ships.length + '▲</span><span class="num sub">' + (r.totalProfit >= 0 ? '+' : '') + U.fmt(r.totalProfit) + '</span></div>';
     }
     html += '</div></div>';
-    ex.innerHTML = html;
+    replaceExchangeHtml(ex, html);
     ex.querySelectorAll('[data-exc]').forEach(function (el) {
       el.addEventListener('click', function () { exchangeComm = el.dataset.exc; renderExchange(); });
     });
@@ -333,7 +338,7 @@ SW.uiMarket = (function () {
       html += '<div class="row"><span class="grow sub">' + esc(r.name) + ' - ' + r.ships.length + ' ships</span><span class="num sub">' + (r.totalProfit >= 0 ? '+' : '') + U.fmt(r.totalProfit) + '</span></div>';
     }
     html += '</div></div>';
-    ex.innerHTML = html;
+    replaceExchangeHtml(ex, html);
     ex.querySelectorAll('[data-exc]').forEach(function (el) {
       el.addEventListener('click', function () { exchangeComm = el.dataset.exc; renderExchangeV2(); });
     });
