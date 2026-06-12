@@ -20,6 +20,8 @@ SW.ui = (function () {
   ui.techView = { x: 0, y: 0, zoom: 1, selected: null }; // shared with ui_tech.js
   let livePortraits = [];        // [{canvas, spec}] animated
   let panelOpenSections = {};    // system-panel section key -> true when expanded
+  let uiPointerActive = false;   // interval redraws must not remove active click targets
+  let deferredUiRefresh = false;
 
   // ============ shared DOM helpers (exposed on ui for modules) ============
   function $(sel) { return document.querySelector(sel); }
@@ -123,6 +125,19 @@ SW.ui = (function () {
     SW.uiSystem.renderSysPanel();
   }
 
+  function isUiPointerTarget(target) {
+    return !!(target && target.closest && target.closest('#topbar, #main .panel, #exchange, #modalShade, #bottombar, #mapHint, #btnBackGalaxy'));
+  }
+  function releaseUiPointer() {
+    if (!uiPointerActive) return;
+    uiPointerActive = false;
+    if (deferredUiRefresh) {
+      deferredUiRefresh = false;
+      lastRenderTick = -1;
+      ui.refresh();
+    }
+  }
+
   // ============ modal helpers (exposed for all modules) ============
   function showModal(id) {
     $('#modalShade').classList.remove('hidden');
@@ -202,7 +217,13 @@ SW.ui = (function () {
     document.addEventListener('keyup', function (e) { SW.uiModals.simKeys(e, false); });
     document.addEventListener('mouseover', onHoverInfo);
     document.addEventListener('click', onPanelSectionClick);
-    document.addEventListener('pointerdown', function () { SW.audio.ensure(); }, { once: true });
+    document.addEventListener('pointerdown', function (e) {
+      SW.audio.ensure();
+      uiPointerActive = isUiPointerTarget(e.target);
+    });
+    document.addEventListener('pointerup', releaseUiPointer);
+    document.addEventListener('pointercancel', releaseUiPointer);
+    window.addEventListener('blur', releaseUiPointer);
 
     document.querySelectorAll('#dockTabs button').forEach(function (b) {
       b.addEventListener('click', function () { ui.setTab(b.dataset.tab); });
@@ -254,6 +275,11 @@ SW.ui = (function () {
     const s = st();
     if (!s) return;
     if (++tickerBeat % 16 === 0) SW.uiMarket.rotateTicker(); // ~5s carousel
+    if (uiPointerActive) {
+      deferredUiRefresh = true;
+      SW.audio.updateMood(s);
+      return;
+    }
     renderTopbar();
     SW.audio.updateMood(s);
     const focused = document.activeElement && (document.activeElement.tagName === 'SELECT' || document.activeElement.tagName === 'INPUT');

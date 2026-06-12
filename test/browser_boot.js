@@ -139,6 +139,10 @@ function fireInputTarget(id, value) {
   const evt = { target: el };
   for (const fn of (listeners.input || [])) fn(evt);
 }
+function firePointer(type, target) {
+  const evt = { target: target || { closest: function () { return null; } } };
+  for (const fn of (listeners[type] || [])) fn(evt);
+}
 
 step('game state exists after boot', function () {
   if (!G.state || !G.state.systems.length) throw new Error('no state');
@@ -210,6 +214,28 @@ step('command bar owns ship actions; chip is status-only', function () {
   if (bar.indexOf('sendMode') < 0 || bar.indexOf('chkSellArrive') < 0) throw new Error('command bar missing send controls');
   if (bar.indexOf('followShip') < 0) throw new Error('command bar missing follow');
   if (chip.indexOf('sendMode') >= 0) throw new Error('ship chip still duplicates send controls');
+});
+
+step('interval refresh does not replace UI while pointer is down', function () {
+  SW.render.selectedSys = G.state.homeId;
+  SW.render.selectedShip = G.state.ships[0].id;
+  SW.ui.refresh();
+  let renders = 0;
+  const orig = SW.uiSystem.renderSysPanel;
+  SW.uiSystem.renderSysPanel = function () { renders++; return orig.apply(this, arguments); };
+  G.tick(G.state);
+  intervals.forEach(function (fn) { fn(); });
+  if (renders === 0) throw new Error('test setup did not observe interval panel render');
+
+  renders = 0;
+  firePointer('pointerdown', { closest: function (sel) { return sel === '#topbar, #main .panel, #exchange, #modalShade, #bottombar, #mapHint, #btnBackGalaxy' ? {} : null; } });
+  G.tick(G.state);
+  intervals.forEach(function (fn) { fn(); });
+  if (renders !== 0) throw new Error('panel rendered during active UI pointer press');
+
+  firePointer('pointerup');
+  if (renders === 0) throw new Error('deferred refresh did not flush on pointer release');
+  SW.uiSystem.renderSysPanel = orig;
 });
 
 step('follow + focus camera actions', function () {
