@@ -31,7 +31,7 @@ SW.data = (function () {
 
   // ---- Commodities ----
   D.COMMODITIES = {
-    ORE:     { name: 'Ore',     icon: '⛏', base: 8,   tier: 0 },
+    ORE:     { name: 'Ore',     icon: '▦', base: 8,   tier: 0 },
     GAS:     { name: 'Gas',     icon: '◌', base: 10,  tier: 0 },
     BIO:     { name: 'Biomass', icon: '❀', base: 7,   tier: 0 },
     CRYSTAL: { name: 'Crystal', icon: '◆', base: 24,  tier: 0 },
@@ -72,7 +72,7 @@ SW.data = (function () {
   D.BUILDINGS = {
     relay:     { name: 'Relay Beacon',       icon: '◬', cost: 800,   mats: { ALLOY: 8 },            tech: null,          desc: 'Extends command range from this system.' },
     depot:     { name: 'Depot',              icon: '▢', cost: 500,   mats: { ALLOY: 5 },            tech: 'depots',      desc: 'Private stockpile. Routes can drop/take goods.' },
-    extractor: { name: 'Extractor Array',    icon: '⚙', cost: 1400,  mats: { ALLOY: 10 },           tech: null,          desc: '+60% production here.', onlyType: 'producer' },
+    extractor: { name: 'Extractor Array',    icon: '✱', cost: 1400,  mats: { ALLOY: 10 },           tech: null,          desc: '+60% production here.', onlyType: 'producer' },
     fabricator:{ name: 'Fabricator',         icon: '⌬', cost: 2600,  mats: { ALLOY: 15, TECH: 5 },  tech: 'fabricators', desc: 'Adds a factory slot (required for Panacea).' },
     enclave:   { name: 'Research Enclave',   icon: '◉', cost: 1800,  mats: { TECH: 8 },             tech: 'enclaves',    desc: '+100% research from this population.', onlyType: 'pop' },
     bastion:   { name: 'Quarantine Bastion', icon: '⛨', cost: 2200,  mats: { ALLOY: 12, TECH: 4 },  tech: 'bastions',    desc: 'Blocks 80% of Scourge spread into this system.' },
@@ -85,19 +85,39 @@ SW.data = (function () {
   // fx.prod / fx.research apply per tick while the system lives;
   // fx.cap / fx.pop are applied once at construction.
   D.FACILITIES = {
-    mine:       { name: 'Mining Station',   icon: '⛏', cost: 1200, mats: { ALLOY: 6 },          sites: ['belt', 'rock', 'desert'],  fx: { prod: { ORE: 0.45 } },     desc: 'Drills and drones. The belt gives what worlds hoard.' },
+    mine:       { name: 'Mining Station',   icon: '▦', cost: 1200, mats: { ALLOY: 6 },          sites: ['belt', 'rock', 'desert'],  fx: { prod: { ORE: 0.45 } },     desc: 'Drills and drones. The belt gives what worlds hoard.' },
     skimmer:    { name: 'Atmos Skimmer',    icon: '◌', cost: 1400, mats: { ALLOY: 8 },          sites: ['gas', 'icegiant'],         fx: { prod: { GAS: 0.45 } },     desc: 'Ramscoops drinking from the cloud tops.' },
     hydrofarm:  { name: 'Hydrofarm',        icon: '❀', cost: 1000, mats: { ALLOY: 5 },          sites: ['terran', 'ocean'],         fx: { prod: { BIO: 0.45 } },     desc: 'Kelp vats under orbital mirrors.' },
     crucible:   { name: 'Crystal Crucible', icon: '◆', cost: 2200, mats: { ALLOY: 8, TECH: 3 }, sites: ['lava', 'carbon'],          fx: { prod: { CRYSTAL: 0.22 } }, desc: 'Lattices grown in the melt, pulled out glowing.' },
-    cryoarchive:{ name: 'Cryo-Archive',     icon: '❄', cost: 1800, mats: { TECH: 5 },           sites: ['ice', 'icegiant'],         fx: { research: 0.25 },          desc: 'Cold storage for warm knowledge.' },
+    cryoarchive:{ name: 'Cryo-Archive',     icon: '✻', cost: 1800, mats: { TECH: 5 },           sites: ['ice', 'icegiant'],         fx: { research: 0.25 },          desc: 'Cold storage for warm knowledge.' },
     habitat:    { name: 'Orbital Habitat',  icon: '◍', cost: 2600, mats: { ALLOY: 12, TECH: 4 },sites: ['terran', 'ocean', 'desert', 'rock', 'gas', 'icegiant'], fx: { cap: 40, pop: 2 }, desc: 'A ring of lights. People follow.' },
-    ringworks:  { name: 'Ring Dredge',      icon: '⊚', cost: 1500, mats: { ALLOY: 7 },          sites: ['gas', 'icegiant'],         fx: { prod: { ORE: 0.35, CRYSTAL: 0.05 } }, desc: 'Combs the rings for ice-bound ore and lattice shards.' },
+    ringworks:  { name: 'Ring Dredge',      icon: '⊚', cost: 1500, mats: { ALLOY: 7 },          sites: ['rock', 'desert', 'terran', 'ocean', 'ice', 'gas', 'icegiant', 'carbon', 'lava'], requiresRing: true, fx: { prod: { ORE: 0.35, CRYSTAL: 0.05 } }, desc: 'Combs planetary rings for ice-bound ore and lattice shards.' },
     spindle:    { name: 'Orbital Spindle',  icon: '✶', cost: 1600, mats: { ALLOY: 8, TECH: 2 }, sites: [], orbital: true, fx: { cap: 30 }, desc: 'A dock, a customs desk, and one bar with no name. Anchors in any orbit.' },
   };
 
   // How many facilities a body can anchor (stations orbit, the rest dig in)
   D.SITE_SLOTS = { belt: 3, terran: 3 };
   D.SITE_SLOTS_DEFAULT = 2;
+
+  // ---- Berth price character: what a body's docks pay and charge ----
+  // A ship berthed AT a body trades the system market through local rates.
+  // <1 = cheap here (source), >1 = dear here (demand). The hub is neutral.
+  // This is the in-system game: ore is cheap in the belt, food is dear on
+  // a frontier settlement, and the spread between berths is honest work.
+  D.BERTH = {
+    belt:     { ORE: 0.6, CRYSTAL: 0.85, FOOD: 1.2, FUEL: 1.15 },
+    rock:     { ORE: 0.85 },
+    desert:   { ORE: 0.8, FOOD: 1.15 },
+    lava:     { CRYSTAL: 0.75, ORE: 0.9 },
+    carbon:   { CRYSTAL: 0.7 },
+    gas:      { GAS: 0.6 },
+    icegiant: { GAS: 0.7 },
+    ice:      { GAS: 0.85 },
+    terran:   { BIO: 0.8 },
+    ocean:    { BIO: 0.7 },
+  };
+  // Settled outposts (Mars): hungry mouths far from the vats.
+  D.BERTH_SETTLED = { FOOD: 1.3, MEDS: 1.25, BIO: 1.2 };
 
   // ---- Aptitude perks (the captain, not the network; SPEC §character) ----
   // Earned via milestones, one point each. Chains within four disciplines.
@@ -213,7 +233,7 @@ SW.data = (function () {
   // typo'd flag is a test failure instead of a silent nothing.
   D.FLAGS = [
     'scourge_awake', 'scourge_known', 'scourge_cured', 'victory_seen', 'postgame',
-    'routes_unlocked', 'built_relay', 'sample_collected', 'panacea_ready', 'inoculated_hulls',
+    'routes_unlocked', 'sol_net_authorized', 'first_route', 'built_relay', 'sample_collected', 'panacea_ready', 'inoculated_hulls',
     'hole_surveyed', 'husk_surveyed', 'deep_exodus',
     'cats_aboard', 'crew_hired', 'doctrine_chosen', 'doctrine_prompted',
     'archivist_sys', 'archivist_quest', 'archivist_friend', 'archivist_dead',
@@ -244,10 +264,10 @@ SW.data = (function () {
 
   // ---- System archetypes ----
   D.SYS_TYPES = {
-    mining:    { name: 'Mining System',     icon: '⛏' },
+    mining:    { name: 'Mining System',     icon: '▦' },
     gas:       { name: 'Gas Siphon',        icon: '◌' },
     agri:      { name: 'Agriworld',         icon: '❀' },
-    industrial:{ name: 'Industrial Hub',    icon: '⚙' },
+    industrial:{ name: 'Industrial Hub',    icon: '✱' },
     pop:       { name: 'Population Center', icon: '◉' },
     frontier:  { name: 'Frontier',          icon: '○' },
     derelict:  { name: 'Derelict',          icon: '✧' },
@@ -377,6 +397,16 @@ SW.data = (function () {
     civicEvery: 25,                 // ticks between civic accumulation passes
     civicProsperityMin: 68,         // minimum prosperity to start accumulating civic momentum
     civicMomentum: 12,              // momentum needed to attempt a civic build
+    // In-system shuttle hops (ship.body berths)
+    hopTicksBase: 2,                // floor for any berth-to-berth hop
+    hopTicksPerAU: 2.2,             // x |sqrt(a1)-sqrt(a2)| — sqrt keeps outer hops sane
+    // Sol prologue
+    prologueEscrow: 600,            // the Guild escrow granted at wake
+    prologueGift: 400,              // the Guildmaster's parting gift at the jump beat
+    prologueStipend: 150,           // Guild advance when a prologue run goes broke
+    prologueStipendEvery: 60,       // ticks between advances (bankruptcy is never a wall)
+    prologueOreBeat: 6,             // ore aboard to clear the first-cargo beat
+    prologueProfitBeat: 70,         // creditsEarned to clear the first-sale beat
   };
 
   D.RIVAL_DEFS = [

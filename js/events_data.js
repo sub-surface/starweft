@@ -23,6 +23,31 @@ SW.eventsData = (function () {
       ],
     },
     {
+      // Prologue cold open: the situation, the ship, the one job
+      id: 'ev_prologue_ledger', title: 'THE LAST LEDGER', weight: 100, prologue: true,
+      when: function (s) { return !!(s.tutorial && s.tutorial.active && s.tick >= 1); },
+      text: 'You are WEFT-7, last logistics intelligence of the Courier Guild. The Guild is dust. Its escrow is yours, and one sparrow-class hull at Earth Anchorage answers to the name Stitch.\n\nEarth eats. The Belt provides. Start there.',
+      choices: [
+        { label: 'Take the helm.', fx: function (s) { return 'Stitch warms her rotors against the dark.'; } },
+      ],
+    },
+    {
+      // First berth away from the cradle: name the verb out loud
+      id: 'ev_belt_berth', title: 'ROCKHOPPER RATES', weight: 100, prologue: true,
+      when: function (s) {
+        return !!(s.tutorial && s.tutorial.active) &&
+          s.ships.some(function (sh) { return sh.body === 'The Belt'; });
+      },
+      text: 'The Belt docks smell of regolith and bad coffee. A rockhopper foreman waves at a hopper full of ore nobody hauls anymore.\n\n"Anchorage pays double for this, you know. Nobody flies the spread since the Guild folded."',
+      choices: [
+        { label: 'Somebody flies it now.', fx: function (s) {
+          const sh = s.ships.find(function (x) { return x.body === 'The Belt'; });
+          if (sh) { sh.cargo.ORE = (sh.cargo.ORE || 0) + 3; sh.basis.ORE = sh.basis.ORE || 0; }
+          return sh ? 'The foreman tops off your hold: +3 Ore, on the house.' : 'The foreman nods at empty berths.';
+        } },
+      ],
+    },
+    {
       // The prologue's title card: fires the tick after the first jump lands
       id: 'ev_first_thread', title: 'STARWEFT', weight: 100,
       when: function (s) { return !!(s.tutorial && s.tutorial.done && !s.story.flags.first_thread); },
@@ -41,7 +66,7 @@ SW.eventsData = (function () {
     },
     {
       id: 'ev_routes_unlocked', title: 'THE GUILDMASTER\'S GIFT', weight: 90,
-      when: function (s) { return (s.stats.deliveries || 0) >= 3; },
+      when: function (s) { return !s.story.flags.routes_unlocked && (s.stats.deliveries || 0) >= 3; },
       text: 'A dead man\'s message unlocks: "If you\'re hearing this, you learned the trick of it. Stop flying every crate yourself."\n\nAttached: the Guild\'s route automation core.',
       choices: [
         { label: 'Install it.', fx: function (s) { flag(s, 'routes_unlocked'); obj(s, 'Open the Routes tab and create a looping trade route. Assign a ship to it.'); return 'ROUTES UNLOCKED — automate your trade loops.'; } },
@@ -52,7 +77,7 @@ SW.eventsData = (function () {
       when: function (s) { return s.story.flags.routes_unlocked && s.routes.length >= 1 && s.routes[0].ships.length >= 1; },
       text: 'Your first automated loop closes. The probe doesn\'t wait for orders anymore — it simply goes, and goes, and goes.\n\nProsperous worlds are already sending research queries to your network.',
       choices: [
-        { label: 'Let it run.', fx: function (s) { s.research += 40; obj(s, 'Grow the weave: more ships, more routes. Thriving worlds generate Research.'); return '+40 research.'; } },
+        { label: 'Let it run.', fx: function (s) { flag(s, 'first_route'); s.research += 40; obj(s, 'Grow the weave: more ships, more routes. Thriving worlds generate Research.'); return '+40 research.'; } },
       ],
     },
     {
@@ -648,7 +673,8 @@ SW.eventsData = (function () {
 
   // ---- speaker portraits per event (rendered by portraits.js) ----
   const SPEAKERS = {
-    ev_wake: 'weft7', ev_first_delivery: 'weft7', ev_routes_unlocked: 'guildmaster',
+    ev_wake: 'weft7', ev_prologue_ledger: 'guildmaster', ev_belt_berth: 'dockworker',
+    ev_first_delivery: 'weft7', ev_routes_unlocked: 'guildmaster',
     ev_first_route: 'weft7', ev_relay_hint: 'engineer', ev_first_relay: 'engineer',
     ev_fleet5: 'dockworker', ev_fleet12: 'dockworker', ev_rich: 'banker',
     ev_first_freighter: 'dockworker', ev_all_charted: 'weft7',

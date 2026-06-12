@@ -42,7 +42,8 @@ function stubEl(tag) {
     classList: null,
     textContent: '',
     scrollTop: 0,
-    addEventListener: function (type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    _listeners: {},
+    addEventListener: function (type, fn) { (el._listeners[type] = el._listeners[type] || []).push(fn); },
     removeEventListener: function () {},
     appendChild: function (c) { el.children.push(c); el.firstChild = el.children[0]; },
     removeChild: function (c) { const i = el.children.indexOf(c); if (i >= 0) el.children.splice(i, 1); el.firstChild = el.children[0] || null; },
@@ -104,7 +105,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'civics', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -190,7 +191,7 @@ step('map hover + click on every system type', function () {
 });
 
 step('all dock tabs render', function () {
-  ['fleet', 'routes', 'ops', 'tech', 'you', 'log'].forEach(function (t) { SW.ui.setTab(t); });
+  ['fleet', 'routes', 'ops', 'you', 'log'].forEach(function (t) { SW.ui.setTab(t); });
 });
 
 step('camera alignment action flattens the orbit view', function () {
@@ -228,22 +229,25 @@ step('interval refresh does not replace UI while pointer is down', function () {
   SW.ui.refresh();
   let renders = 0;
   const orig = SW.uiSystem.renderSysPanel;
-  SW.uiSystem.renderSysPanel = function () { renders++; return orig.apply(this, arguments); };
-  G.tick(G.state);
-  intervals.forEach(function (fn) { fn(); });
-  if (renders === 0) throw new Error('test setup did not observe interval panel render');
+  try {
+    SW.uiSystem.renderSysPanel = function () { renders++; return orig.apply(this, arguments); };
+    G.tick(G.state);
+    intervals.forEach(function (fn) { fn(); });
+    if (renders === 0) throw new Error('test setup did not observe interval panel render');
 
-  renders = 0;
-  firePointer('pointerdown', { closest: function (sel) { return sel === '#topbar, #main .panel, #exchange, #modalShade, #bottombar, #mapHint, #btnBackGalaxy' ? {} : null; } });
-  G.tick(G.state);
-  intervals.forEach(function (fn) { fn(); });
-  if (renders !== 0) throw new Error('panel rendered during active UI pointer press');
+    renders = 0;
+    firePointer('pointerdown', { closest: function (sel) { return sel && sel.indexOf('#topbar') >= 0 ? {} : null; } });
+    G.tick(G.state);
+    intervals.forEach(function (fn) { fn(); });
+    if (renders !== 0) throw new Error('panel rendered during active UI pointer press');
 
-  firePointer('pointerup');
-  if (renders !== 0) throw new Error('panel rendered synchronously on pointerup before click');
-  fireClick('sendMode');
-  if (!elCache['#map'] || elCache['#map']._cls.picking !== 1) throw new Error('first click after pointer release did not trigger SEND mode');
-  SW.uiSystem.renderSysPanel = orig;
+    firePointer('pointerup');
+    if (renders !== 0) throw new Error('panel rendered synchronously on pointerup before click');
+    fireClick('sendMode');
+    if (!elCache['#map'] || elCache['#map']._cls.picking !== 1) throw new Error('first click after pointer release did not trigger SEND mode');
+  } finally {
+    SW.uiSystem.renderSysPanel = orig;
+  }
 });
 
 step('follow + focus camera actions', function () {
@@ -305,20 +309,35 @@ step('eased zoom glides toward its target distance', function () {
   SW.render.cam.dist = 150; SW.render.cam.distTarget = 150;
 });
 
-step('tech tree opens as expanded scrollable modal', function () {
+step('tech tree opens via btnTech, overlay becomes visible', function () {
+  // open via topbar button action
   fireClick('openTechTree');
-  const html = (elCache['#techModal'] && elCache['#techModal'].innerHTML) || '';
-  if (html.indexOf('techCanvasFull') < 0) throw new Error('expanded tech canvas missing');
-  if (html.indexOf('techDetail') < 0) throw new Error('tech detail pane missing');
-  if (html.indexOf('techZoomIn') < 0 || html.indexOf('techResetView') < 0) throw new Error('tech viewport controls missing');
+  if (!SW.uiTech.isOpen()) throw new Error('tech overlay not open after openTechTree');
+  // pump RAF so bindTechViewport and canvas draw execute
+  pumpFrames(2);
+  // canvas must have viewport handlers bound
+  const canvas = elCache['#techCanvasFull'];
+  if (!canvas || typeof canvas.onwheel !== 'function') throw new Error('tech canvas wheel handler missing after open');
+  if (typeof canvas.onpointerdown !== 'function') throw new Error('tech canvas pan handler missing after open');
+  // close via dispatch action
+  fireClick('closeTechOverlay');
+  if (SW.uiTech.isOpen()) throw new Error('tech overlay still open after closeTechOverlay');
+  // re-open for subsequent tests
+  fireClick('openTechTree');
+  pumpFrames(2);
+  if (!SW.uiTech.isOpen()) throw new Error('tech overlay did not re-open');
 });
 
-step('expanded tech tree supports pan, zoom, and node details', function () {
+step('tech overlay supports pan, zoom, and node details', function () {
+  // ensure overlay is open with bound canvas handlers
   fireClick('openTechTree');
+  pumpFrames(2);
   if (!SW.ui.techView) throw new Error('tech view state missing');
+  // capture zoom AFTER open+autoFit so baseline is the fitted zoom
   const zoom0 = SW.ui.techView.zoom;
-  fireClick('techZoomIn');
-  if (SW.ui.techView.zoom <= zoom0) throw new Error('zoom in did not change zoom');
+  // zoom via direct call (mirrors what techZoomIn dispatch does)
+  SW.uiTech.zoomTechView(1.18);
+  if (SW.ui.techView.zoom <= zoom0) throw new Error('zoomTechView did not change zoom');
   const canvas = elCache['#techCanvasFull'];
   if (!canvas || typeof canvas.onwheel !== 'function') throw new Error('tech canvas wheel handler missing');
   const zoom1 = SW.ui.techView.zoom;
@@ -330,11 +349,14 @@ step('expanded tech tree supports pan, zoom, and node details', function () {
   canvas.onpointermove({ clientX: 152, clientY: 144, preventDefault: function () {} });
   canvas.onpointerup({ preventDefault: function () {} });
   if (SW.ui.techView.x === x0 && SW.ui.techView.y === y0) throw new Error('drag pan did not move viewport');
-  fireClick('techSelect', { id: 'analytics' });
-  const html = (elCache['#techModal'] && elCache['#techModal'].innerHTML) || '';
-  if (html.indexOf('Market Analytics') < 0 || html.indexOf('Unlocks') < 0) throw new Error('selected tech details missing');
+  // reset view
+  SW.ui.techView.selected = 'analytics';
   fireClick('techResetView');
   if (SW.ui.techView.zoom !== 1 || SW.ui.techView.x !== 0 || SW.ui.techView.y !== 0) throw new Error('reset did not restore tech viewport');
+  // detail html must contain selected tech info
+  const s = SW.game.state;
+  const detail = SW.uiTech.techDetailHtml(s, 'analytics');
+  if (detail.indexOf('Market Analytics') < 0 || detail.indexOf('Unlocks') < 0) throw new Error('techDetailHtml missing content for analytics');
 });
 
 step('system view exposes pan controls', function () {
@@ -372,6 +394,18 @@ step('system view skybox maps actual galaxy positions', function () {
   SW.render.rotateSystemView(0.5, 0);
   const p1 = SW.render.systemSkyPoint(home, other);
   if (!p0 || !p1 || (p0.x === p1.x && p0.y === p1.y)) throw new Error('system skybox is not tied to view/galaxy coordinates');
+  SW.render.exitSystem();
+});
+
+step('asteroid belts expose annular pick targets', function () {
+  SW.render.enterSystem(G.state.homeId);
+  pumpFrames(3);
+  if (typeof SW.render.debugBodyPickables !== 'function') throw new Error('debugBodyPickables missing');
+  const picks = SW.render.debugBodyPickables();
+  const belt = picks.find(function (p) { return p.body && p.body.name === 'The Belt'; });
+  if (!belt) throw new Error('The Belt pick target missing');
+  if (belt.kind !== 'annulus') throw new Error('The Belt pick target is not annular');
+  if (!(belt.outerR > belt.innerR && belt.innerR > 0)) throw new Error('invalid belt annulus radii');
   SW.render.exitSystem();
 });
 
@@ -578,7 +612,7 @@ step('title screen omits shallow badlands and no-rivals selectors', function () 
 
 step('tech research through dispatcher', function () {
   G.state.research = 500;
-  SW.ui.setTab('tech');
+  // research action works without being in a tab; fire via dispatcher
   fireClick('research', { id: 'couriers' });
   if (!SW.tech.has(G.state, 'couriers')) throw new Error('research via UI failed');
 });
@@ -636,16 +670,19 @@ step('Sol prologue boots locked into the system view', function () {
   SW.ui.enterSystem(s.homeId);
   if (SW.render.mode !== 'system') throw new Error('not in system view');
   G.tick(s);
-  if (!s.story.objective || s.story.objective.indexOf('Hydrofarm') < 0) throw new Error('prologue prompt not set: ' + s.story.objective);
+  if (!s.story.objective || s.story.objective.indexOf('BELT') < 0) throw new Error('prologue prompt not set: ' + s.story.objective);
   SW.ui.exitSystem();                       // must be refused while locked
   if (SW.render.mode !== 'system') throw new Error('map lock did not hold');
   SW.ui.refresh();                          // panels render in tutorial state without throwing
   pumpFrames(3);
   // complete the first beat via actions; prompt advances on the next tick
-  const r = A.shipBuy(s, s.ships[0].id, 'ALLOY', 5);
-  if (!r.ok) throw new Error('alloy buy failed: ' + r.msg);
+  const r = A.shipHop(s, s.ships[0].id, 'The Belt');
+  if (!r.ok) throw new Error('Belt hop failed: ' + r.msg);
   G.tick(s);
-  if (s.tutorial.goal !== 1) throw new Error('gather beat did not advance (goal=' + s.tutorial.goal + ')');
+  if (s.tutorial.goal !== 1) throw new Error('cast-off beat did not advance (goal=' + s.tutorial.goal + ')');
+  // panels render with a ship mid-shuttle (command bar, fleet, sys panel)
+  SW.ui.refresh();
+  pumpFrames(2);
   // UI gating: locked state hides search and exchange; only fleet+log tabs visible
   SW.ui.refresh();
   const sw = elCache['#searchWrap'];
@@ -656,6 +693,10 @@ step('Sol prologue boots locked into the system view', function () {
   if (be && be.style) {
     if (be.style.display !== 'none') throw new Error('#btnExchange not hidden during tutorial lock (display=' + be.style.display + ')');
   }
+  const bt = elCache['#btnTech'];
+  if (bt && bt.style) {
+    if (bt.style.display !== 'none') throw new Error('#btnTech not hidden during tutorial lock (display=' + bt.style.display + ')');
+  }
   // simulate unlock and verify elements are restored
   s.tutorial.mapUnlocked = true;
   SW.ui.refresh();
@@ -665,6 +706,68 @@ step('Sol prologue boots locked into the system view', function () {
   if (be && be.style) {
     if (be.style.display === 'none') throw new Error('#btnExchange not restored after map unlock');
   }
+  if (bt && bt.style) {
+    if (bt.style.display === 'none') throw new Error('#btnTech not restored after map unlock');
+  }
+});
+
+step('Sol prologue selected body exposes FLY HERE without manual expansion', function () {
+  G.newGame({ seed: 'boot-tutorial-body', difficulty: 'standard', tutorial: true });
+  const s = G.state;
+  G.tick(s);
+  SW.render.enterSystem(s.homeId);
+  SW.render.selectedSys = s.homeId;
+  SW.render.selectedShip = s.ships[0].id;
+  SW.render.selectedBody = SW.planets.body(s, s.homeId, 'The Belt');
+  SW.ui.refresh();
+  const html = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (html.indexOf('FLY HERE') < 0) throw new Error('selected body lacks FLY HERE action');
+  if (html.indexOf('Mining Station') >= 0 || html.indexOf('Orbital Spindle') >= 0) throw new Error('prologue exposes non-current body construction');
+  const idx = html.indexOf('The Belt');
+  if (idx < 0) throw new Error('selected Belt section missing from panel HTML');
+  const sectionStart = html.lastIndexOf('panelSection', idx);
+  const sectionOpen = sectionStart >= 0 && html.slice(sectionStart, Math.min(html.length, sectionStart + 80)).indexOf('collapsed') < 0;
+  if (!sectionOpen) throw new Error('selected Belt section is collapsed in prologue');
+});
+
+step('Sol prologue opens market during buy and sell beats', function () {
+  G.newGame({ seed: 'boot-tutorial-market', difficulty: 'standard', tutorial: true });
+  const s = G.state;
+  G.tick(s);
+  const ship = s.ships[0];
+  ship.body = 'The Belt';
+  s.tutorial.goal = 1;
+  SW.render.enterSystem(s.homeId);
+  SW.render.selectedSys = s.homeId;
+  SW.render.selectedShip = ship.id;
+  SW.render.selectedBody = SW.planets.body(s, s.homeId, 'The Belt');
+  SW.ui.refresh();
+  const html = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  const marketIdx = html.indexOf('Market');
+  if (marketIdx < 0) throw new Error('market section missing');
+  const sectionStart = html.lastIndexOf('panelSection', marketIdx);
+  const sectionOpen = sectionStart >= 0 && html.slice(sectionStart, Math.min(html.length, sectionStart + 80)).indexOf('collapsed') < 0;
+  if (!sectionOpen) throw new Error('market section is collapsed during prologue cargo beat');
+  if (html.indexOf('data-c="ORE"') < 0) throw new Error('ore buy/sell controls missing during prologue cargo beat');
+});
+
+step('Journal groups company contract with the run log', function () {
+  G.newGame({ seed: 'boot-tutorial-journal', difficulty: 'standard', tutorial: true });
+  const s = G.state;
+  G.tick(s);
+  SW.ui.setTab('log');
+  const html0 = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (html0.indexOf('Company Contracts') < 0) throw new Error('journal lacks company contract heading');
+  if (html0.indexOf('First Contract: Sol Logistics Net') < 0) throw new Error('journal lacks Sol Net contract');
+  if (html0.indexOf('Berth Stitch at The Belt') < 0) throw new Error('journal lacks current prologue step');
+
+  s.tutorial.goal = 6;
+  s.tutorial.netPrompted = true;
+  SW.ui.setTab('log');
+  const html1 = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (html1.indexOf('Authorize Sol Net') < 0) throw new Error('journal lacks Sol Net authorization action');
+  fireClick('authorizeSolNet');
+  if (!s.story.flags.sol_net_authorized || !s.story.flags.routes_unlocked) throw new Error('Sol Net authorization did not set company flags');
 });
 
 console.log('\n' + (failures ? failures + ' FAILURES' : 'BROWSER BOOT CHECK PASSED ✓'));

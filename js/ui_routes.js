@@ -179,6 +179,26 @@ SW.uiRoutes = (function () {
         '<button data-act="centerSys" data-id="' + ct.sysId + '">◎</button></div>' +
         '<div class="sub num">' + (ct.kind === 'survey' ? 'survey it' : ct.progress + '/' + ct.qty) + ' · ' + left + ' ticks · ' + U.fmt(ct.reward.credits || 0) + '¤ + ' + (ct.reward.research || 0) + '◇</div></div>';
     }
+    // wire contracts (classifieds from market analytics)
+    if (SW.market && SW.market.classifieds) {
+      const wire = SW.market.classifieds(s, 8);
+      const actionable = wire.filter(function (ad) { return ad.kind === 'wanted' || ad.kind === 'surplus' || ad.kind === 'charter'; });
+      if (actionable.length) {
+        html += '<h4 title="Offers and needs from across the known weave.">The Wire</h4>';
+        for (const ad of actionable) {
+          const glyph = ad.kind === 'wanted' ? '⊳' : ad.kind === 'surplus' ? '⊲' : '⇄';
+          let act = '';
+          if (ad.kind === 'wanted' && ad.from !== null && ad.to !== null)
+            act = ' <button data-act="fetchOp" data-from="' + ad.from + '" data-to="' + ad.to + '" data-c="' + ad.c + '" class="textBtn">&gt;take it&lt;</button>';
+          else if (ad.kind === 'charter' && s.story.flags.routes_unlocked)
+            act = ' <button data-act="quickRoute" data-from="' + ad.from + '" data-to="' + ad.to + '" data-c="' + ad.c + '" class="textBtn">&gt;sign on&lt;</button>';
+          else if (ad.kind === 'surplus')
+            act = ' <button data-act="centerSys" data-id="' + ad.from + '" class="textBtn">&gt;look&lt;</button>';
+          html += '<div class="wireAd wire-' + ad.kind + '"><span class="wireGlyph">' + glyph + '</span> ' + esc(ad.text) + act + '</div>';
+        }
+      }
+    }
+
     // blockades
     if (s.blockades.length) {
       html += '<h4>Blockades</h4>';
@@ -190,7 +210,7 @@ SW.uiRoutes = (function () {
         html += '<div class="listItem bad"><div class="row"><span class="title grow">⊘ ' + esc(s.systems[bl.a].name) + ' ↔ ' + esc(s.systems[bl.b].name) + '</span></div>' +
           '<div class="row"><span class="sub num grow">' + (bl.until - s.tick) + ' ticks · toll ' + U.fmt(bl.toll) + '¤</span>' +
           '<button data-act="payToll" data-i="' + i + '" ' + (s.credits < bl.toll ? 'disabled' : '') + '>pay</button>' +
-          '<button class="danger" data-act="breakBlockade" data-i="' + i + '" ' + (canBreak ? '' : 'disabled') + ' title="Needs an armed, idle, selected ship at either end">⚔ break</button></div></div>';
+          '<button class="danger" data-act="breakBlockade" data-i="' + i + '" ' + (canBreak ? '' : 'disabled') + ' title="Needs an armed, idle, selected ship at either end">‡ break</button></div></div>';
       });
     }
     // operations
@@ -239,7 +259,7 @@ SW.uiRoutes = (function () {
       html += (D.IDEOLOGIES[f] ? D.IDEOLOGIES[f].name.split(' ')[0] : f) + ' ' + (v > 0 ? '+' : '') + v.toFixed(1) + '</span>';
     }
     html += '</div>';
-    if ((s.infamy || 0) > 0.5) html += '<div class="sub">☠ infamy ' + s.infamy.toFixed(1) + (s.infamy >= D.TUNE.infamyBlackMarket ? ' — Reach black markets open (+15% sell)' : '') + '</div>';
+    if ((s.infamy || 0) > 0.5) html += '<div class="sub">† infamy ' + s.infamy.toFixed(1) + (s.infamy >= D.TUNE.infamyBlackMarket ? ' — Reach black markets open (+15% sell)' : '') + '</div>';
     body.innerHTML = html;
   }
 
@@ -247,8 +267,27 @@ SW.uiRoutes = (function () {
   function renderLog(body) {
     const s = st();
     let html = '';
+    if (SW.quests && SW.quests.markJournalViewed) SW.quests.markJournalViewed(s);
+    const contracts = (SW.quests && SW.quests.company) ? SW.quests.company(s) : [];
+    if (contracts.length) {
+      html += '<h4>Company Contracts</h4>';
+      for (const ct of contracts) {
+        html += '<div class="listItem"><div class="row"><span class="title grow">' + esc(ct.title) + '</span>' +
+          '<span class="tag">' + esc(ct.issuer) + '</span></div>' +
+          '<div class="sub">' + esc(ct.summary) + '</div>';
+        for (const step of ct.steps) {
+          html += '<div class="row"><span class="sub grow">' +
+            (step.done ? '[x] ' : (step.current ? '[>] ' : '[ ] ')) + esc(step.label) + '</span></div>';
+        }
+        if (ct.action) {
+          html += '<div class="row"><span class="grow"></span><button class="primary" data-act="' + esc(ct.action) + '">' + esc(ct.actionLabel || 'Authorize') + '</button></div>';
+        }
+        html += '</div>';
+      }
+      html += '<h4>Chronicle Log</h4>';
+    }
     const log = s.story.log.slice().reverse();
-    if (!log.length) html = '<div class="sub">The story will find you.</div>';
+    if (!log.length) html += '<div class="sub">The story will find you.</div>';
     for (const entry of log) {
       html += '<div class="listItem"><div class="row"><span class="title grow">' + esc(entry.title) + '</span><span class="sub num">⧗' + entry.tick + '</span></div>' +
         '<div class="sub">' + esc(entry.text).slice(0, 200) + '</div>' +

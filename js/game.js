@@ -157,6 +157,8 @@ SW.game = (function () {
     for (const ship of state.ships) {
       if (ship.mode === 'idle' && (ship.at === null || ship.at === undefined || !state.systems[ship.at])) bad.push(ship.name + ' idle at invalid system ' + ship.at);
       if (ship.mode === 'travel' && (!ship.leg || !state.systems[ship.leg.to])) bad.push(ship.name + ' traveling without a valid leg');
+      if (ship.mode === 'shuttle' && (ship.at === null || ship.at === undefined || !state.systems[ship.at])) bad.push(ship.name + ' shuttling outside any system');
+      if (ship.mode === 'shuttle' && ship.hop && !SW.planets.body(state, ship.at, ship.hop.to)) bad.push(ship.name + ' hopping to unknown body ' + (ship.hop && ship.hop.to));
       if (ship.routeId && !routeById[ship.routeId]) bad.push(ship.name + ' assigned to missing route ' + ship.routeId);
       for (const c in ship.cargo) {
         if (!isFinite(ship.cargo[c]) || ship.cargo[c] < 0) bad.push(ship.name + ' cargo.' + c + '=' + ship.cargo[c]);
@@ -188,7 +190,7 @@ SW.game = (function () {
         acc -= 1;
         try { G.tick(st); } catch (err) {
           st.paused = true;
-          G.emit('toast', { kind: 'bad', text: '⚠ Simulation error (paused): ' + (err && err.message ? err.message : err) });
+          G.emit('toast', { kind: 'bad', text: '△ Simulation error (paused): ' + (err && err.message ? err.message : err) });
           break;
         }
       }
@@ -296,6 +298,14 @@ SW.game = (function () {
     if (ship.mode !== 'idle') return err('Ship is in flight.');
     return SW.ships.sell(state, ship, c, qty);
   };
+  // In-system hop: shuttle the ship to a named body's berth. The map lock
+  // never blocks these — the prologue is MADE of them.
+  A.shipHop = function (state, shipId, bodyName) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    if (ship.routeId || ship.directiveId || ship.mission) return err('Release it from its orders first.');
+    return SW.ships.hop(state, ship, bodyName);
+  };
   A.shipSend = function (state, shipId, destId, sellOnArrive) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
@@ -304,6 +314,18 @@ SW.game = (function () {
     if (!check.ok) return check;
     SW.ships.unassign(state, ship);
     return SW.ships.send(state, ship, destId, { kind: 'manual', sellOnArrive: !!sellOnArrive });
+  };
+
+  A.authorizeSolNet = function (state) {
+    if (!state.tutorial || !state.tutorial.active || state.tutorial.goal !== 6) return err('No Sol Net contract is ready.');
+    if (!state.tutorial.netPrompted) return err('Open the Journal and review the company contract first.');
+    if (state.story.flags.sol_net_authorized) return { ok: true };
+    state.story.flags.sol_net_authorized = true;
+    state.story.flags.routes_unlocked = true;
+    G.news(state, 'Sol Logistics Net authorized: Earth Anchorage, The Belt, and the first anchor now report as one contract surface.', state.homeId);
+    G.emit('toast', { kind: 'good', text: 'Sol Logistics Net authorized. Route automation core installed.' });
+    G.emit('sfx', 'chime');
+    return { ok: true };
   };
 
   A.depotDrop = function (state, shipId, c, qty) {
@@ -426,7 +448,7 @@ SW.game = (function () {
     state.homeId = sysId;
     sys.presence.player = Math.min(10, (sys.presence.player || 0) + 2);
     state.stats.relocations = (state.stats.relocations || 0) + 1;
-    G.emit('toast', { kind: 'good', text: '⚓ Home anchorage re-laid at ' + sys.name + '.' });
+    G.emit('toast', { kind: 'good', text: '⌂ Home anchorage re-laid at ' + sys.name + '.' });
     G.emit('sfx', 'build');
     // deep exodus: those who run far enough coreward hear the Loom answer
     if (!state.story.flags.deep_exodus && (sys.x >= D.TUNE.exodusX || sys.region === 'verge')) {

@@ -97,17 +97,25 @@ renderer; it IS the engine demo.
 
 **The game starts inside the Sol system view. The galaxy map is locked.**
 
-1. WEFT-7 wakes with one shuttle. Earth Anchorage is hungry; The Belt has ore;
-   Mars needs alloys. Teach the verb intra-system: fetch ore from the Belt,
-   deliver to Earth; build the first Belt mining station (sites already
-   exist); watch Earth's market respond.
-2. Teach the in-system layer as the *first* logistics game, not a late
-   feature: 3–4 errands, one facility, one shuttle-flow decision. (Automate it
-   afterward — once the lesson lands, intra-system flows can fold into the
-   system's aggregate market exactly as they do today.)
-3. The Guild's last gift: a jump-capable Sparrow. First jump to Alpha
-   Centauri — the map unlocks, the bubble reveals, the title card drops.
-   *Discovery feels real because you started somewhere real.*
+1. ✅ WEFT-7 wakes with one shuttle. Earth Anchorage is hungry; The Belt has
+   ore. The verb is taught intra-system via **berths**: ships hop between
+   bodies (`A.shipHop`, mode `shuttle`, `ship.body`), and each body prices
+   the system market through its own rates (`D.BERTH` / `E.berthMult` —
+   ore cheap at the Belt, food dear on settled Mars). Beats: fly to the
+   Belt → fill the hold at rockhopper rates → sell at the Anchorage →
+   buy alloy → anchor the Hydrofarm → watch the chain → open the Journal
+   and authorize the **Sol Logistics Net** company contract → jump. Beats
+   are state predicates; no beat can stall (timers/fallbacks), and a broke
+   run gets a Guild stipend (`TUNE.prologueStipend`) — bankruptcy is never
+   a wall. Shipyard/construction hidden while locked.
+2. ✅ The in-system layer is the *first* logistics game: berth spreads are
+   self-correcting (trading moves the shared system stock), so the loop
+   teaches without becoming the endgame strategy.
+3. ✅ The Guild's last gift (+`TUNE.prologueGift`) arrives after the Sol Net
+   sign-off; route automation is installed as a company capability, the map
+   unlocks, first jump lands, the title card drops. Remaining: a real intro
+   cinematic (§3.2) and the named first-jump target (Alpha Centauri) as a
+   beat.
 4. Tutorial completion sets a legacy flag; subsequent runs offer "skip
    prologue" and start at the bubble as today.
 
@@ -325,7 +333,17 @@ pressures before the interface can explain them.
 10. **Market terminal** (§8) and **Encounters v2** (§9 — stateful predicates,
     hailing chips) — parallel tracks.
 11. **Rival convoys raidable** (§10.4); **sim LOD + badlands growth** (§10.3).
-12. SoA core only if profiling demands.
+12. **System card overhaul** (Elite-inspired system summary). Consolidate the
+    scattered system information (panel sections, infobox, codex, market rows)
+    into one coherent card per system: a procedural planet strip at the top
+    (each body drawn from its real generated details — type, rings, bands,
+    caps; click a body to drill into its details, anchorages, and berth
+    rates), population rendered as living particle streams between settled
+    bodies and the hub, market info inline, and construction that reads as
+    placing things in a place rather than rows in a list. Every facility's
+    benefit visible before and after building (visual + economic feedback —
+    started with `facilityFxText` and the orrery halos; finish the loop here).
+13. SoA core only if profiling demands.
 
 ## 14. Non-Goals
 

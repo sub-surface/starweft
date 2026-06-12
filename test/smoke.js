@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'civics', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -1229,9 +1229,11 @@ section('Ring Dredge facility');
   home.depot = home.depot || {};
   home.depot.ALLOY = 60;
   st.credits = 99999;
-  // ringworks anchors at Jupiter (gas giant)
+  // ringworks anchors only at a body that actually has rings
   const rJup = A.buildSite(st, st.homeId, 'Jupiter', 'ringworks');
-  assert(rJup.ok, 'ringworks anchors at Jupiter (gas) (' + (rJup.msg || 'ok') + ')');
+  assert(!rJup.ok, 'ringworks refused at ringless Jupiter');
+  const rSat = A.buildSite(st, st.homeId, 'Saturn', 'ringworks');
+  assert(rSat.ok, 'ringworks anchors at ringed Saturn (' + (rSat.msg || 'ok') + ')');
   // ringworks refused at Mars (desert — not in sites list)
   const rMars = A.buildSite(st, st.homeId, 'Mars', 'ringworks');
   assert(!rMars.ok, 'ringworks refused at Mars (desert)');
@@ -1241,38 +1243,147 @@ section('Ring Dredge facility');
   assert(sfx.prod && sfx.prod.CRYSTAL > 0, 'ringworks prod aggregates CRYSTAL (' + (sfx.prod && sfx.prod.CRYSTAL) + ')');
 }
 
+// ---------- planet detailing ----------
+section('Planet detailing');
+{
+  // (a) generation is deterministic: two calls with the same seed agree on ring/classLabel
+  const st1 = G.newGame({ seed: 'smoke-detail', difficulty: 'standard' });
+  const st2 = G.newGame({ seed: 'smoke-detail', difficulty: 'standard' });
+  SW.planets.clearCache();
+  const d1 = SW.planets.get(st1, st1.homeId);
+  SW.planets.clearCache();
+  const d2 = SW.planets.get(st2, st2.homeId);
+  assert(d1.bodies.length === d2.bodies.length, 'same seed: same body count');
+  for (let i = 0; i < d1.bodies.length; i++) {
+    const b1 = d1.bodies[i], b2 = d2.bodies[i];
+    assert(b1.classLabel === b2.classLabel, 'classLabel deterministic for ' + b1.name);
+    assert(String(b1.ring) === String(b2.ring), 'ring deterministic for ' + b1.name);
+  }
+
+  // (b) Sol's Saturn has ring:true and Earth has classLabel mentioning garden
+  const stSol = G.newGame({ seed: 'smoke-detail2', difficulty: 'standard' });
+  const sol = SW.planets.get(stSol, stSol.homeId);
+  const saturn = sol.bodies.find(function (b) { return b.name === 'Saturn'; });
+  const earth  = sol.bodies.find(function (b) { return b.name === 'Earth'; });
+  assert(saturn && saturn.ring === true, 'Sol Saturn has ring:true');
+  assert(earth && earth.classLabel && /garden/i.test(earth.classLabel), 'Earth classLabel mentions garden (' + (earth && earth.classLabel) + ')');
+
+  // (c) every body in a sampled set of systems has a classLabel string
+  const stSamp = G.newGame({ seed: 'smoke-detail3', difficulty: 'standard' });
+  let noLabel = 0, checked = 0;
+  for (let si = 0; si < Math.min(30, stSamp.systems.length); si++) {
+    const data = SW.planets.get(stSamp, si);
+    for (const b of data.bodies) {
+      checked++;
+      if (typeof b.classLabel !== 'string' || !b.classLabel.length) noLabel++;
+    }
+  }
+  assert(checked > 0 && noLabel === 0, 'all sampled bodies have classLabel (' + checked + ' checked, ' + noLabel + ' missing)');
+
+  // (d) existing fields (name/type/a) unchanged shape in Sol
+  const solCheck = SW.planets.get(stSol, stSol.homeId);
+  assert(solCheck.bodies.some(function (b) { return b.name === 'Earth' && b.type === 'terran' && b.a === 1; }), 'Earth name/type/a unchanged');
+  assert(solCheck.bodies.some(function (b) { return b.name === 'The Belt' && b.type === 'belt'; }), 'The Belt unchanged');
+  assert(solCheck.bodies.some(function (b) { return b.name === 'Saturn' && b.type === 'gas'; }), 'Saturn type unchanged');
+  assert(solCheck.bodies.some(function (b) { return b.name === 'Jupiter' && b.type === 'gas' && !b.ring; }), 'Sol Jupiter is gas but ringless');
+  assert(stSamp.systems.some(function (sys) {
+    return SW.planets.get(stSamp, sys.id).bodies.some(function (b) {
+      return b.type !== 'gas' && b.type !== 'icegiant' && b.ring === 'faint';
+    });
+  }), 'some non-giant worlds can have faint procedural rings');
+}
+
 section('Sol prologue (tutorial)');
 {
-  // Full prologue, driven exactly as a player would via actions
+  // Full prologue, driven exactly as a player would via actions:
+  // hop to the Belt, buy cheap ore, haul home, sell, anchor, jump.
   const st = G.newGame({ seed: 'smoke-tutorial', difficulty: 'standard', tutorial: true });
   assert(st.tutorial && st.tutorial.active, 'tutorial active when requested');
   assert(st.credits >= 1200, 'Guild escrow granted (credits=' + st.credits + ')');
   G.tick(st);
-  assert(st.tutorial.goal === 0, 'gather beat is current after first tick');
+  assert(st.tutorial.goal === 0, 'cast-off beat is current after first tick');
   assert(SW.tutorial.mapLocked(st), 'galaxy map locked during early prologue');
   assert(st.story.pending !== 'ev_wake', 'ev_wake suppressed in prologue');
+  assert(st.story.pending === 'ev_prologue_ledger', 'only prologue ledger may interrupt early prologue');
+  A.chooseEvent(st, 0);
+  st.tick = 5000;
+  st.credits = 100000;
+  st.stats.deliveries = 99;
+  st.story.pending = null;
+  for (let i = 0; i < 30; i++) G.tick(st);
+  assert(!st.story.pending || /^ev_prologue_/.test(st.story.pending), 'non-prologue story events suppressed while map locked (' + st.story.pending + ')');
+  assert(st.story.objective.indexOf('1)') >= 0 && st.story.objective.indexOf('FLY HERE') >= 0, 'prologue objective gives explicit numbered action');
 
   const ship = st.ships[0];
-  const nb = st.systems[st.homeId].links[0];
+  const home = st.systems[st.homeId];
+  const nb = home.links[0];
   const blocked = A.shipSend(st, ship.id, nb);
   assert(!blocked.ok, 'jump refused while the map is locked');
+
+  // berth pricing: the Belt discounts ore against the Anchorage rate
+  const hubOre = SW.economy.buyPrice(st, home, 'ORE', 'player');
+  const beltOre = SW.economy.buyPrice(st, home, 'ORE', 'player', 'The Belt');
+  assert(beltOre < hubOre * 0.7, 'Belt berth discounts ore (' + beltOre.toFixed(1) + ' vs ' + hubOre.toFixed(1) + ')');
+  assert(SW.economy.berthMult(st, home, 'Earth', 'ORE') === 1, 'hub berth is neutral');
+  assert(SW.economy.berthMult(st, home, 'Mars', 'FOOD') > 1, 'settled Mars pays a food premium');
+
+  // hop guards + the hop itself
+  assert(!A.shipHop(st, ship.id, 'Nonsuch').ok, 'hop to unknown body refused');
+  const hop = A.shipHop(st, ship.id, 'The Belt');
+  assert(hop.ok && ship.mode === 'shuttle' && ship.hop, 'hop departs (' + (hop.msg || 'eta ' + hop.eta) + ')');
+  assert(!A.shipHop(st, ship.id, 'Mars').ok, 'no second hop mid-flight');
+  assert(!A.shipBuy(st, ship.id, 'ORE', 5).ok, 'no trading mid-hop');
+  G.tick(st);
+  assert(st.tutorial.goal === 1, 'first-cargo beat once the hop is committed');
+  for (let i = 0; i < 25 && ship.mode !== 'idle'; i++) G.tick(st);
+  assert(ship.mode === 'idle' && ship.body === 'The Belt', 'berthed at the Belt');
+  const bad = SW.game.validate(st);
+  assert(bad.length === 0, 'validator clean with berthed ships: ' + bad.join('; '));
+
+  if (st.story.pending) A.chooseEvent(st, 0); // drain the cold-open / Belt events
+  const buyOre = A.shipBuy(st, ship.id, 'ORE', 8);
+  assert(buyOre.ok && buyOre.qty >= D.TUNE.prologueOreBeat, 'ore loads at Belt rates (' + (buyOre.msg || buyOre.qty) + ')');
+  G.tick(st);
+  assert(st.tutorial.goal === 2, 'first-sale beat after loading ore');
+
+  const back = A.shipHop(st, ship.id, 'Earth');
+  assert(back.ok, 'hop back to the Anchorage');
+  for (let i = 0; i < 25 && ship.mode !== 'idle'; i++) G.tick(st);
+  const sold = A.shipSell(st, ship.id, 'ORE', 999);
+  assert(sold.ok && sold.profit > 0, 'the Belt spread pays (profit=' + (sold.ok ? Math.round(sold.profit) : sold.msg) + ')');
+  G.tick(st);
+  assert(st.tutorial.goal === 3, 'gather beat after the first profitable sale');
 
   const buy = A.shipBuy(st, ship.id, 'ALLOY', 5);
   assert(buy.ok, 'alloy purchase succeeds (' + (buy.msg || 'ok') + ')');
   G.tick(st);
-  assert(st.tutorial.goal === 1, 'anchor beat after gathering alloy');
+  assert(st.tutorial.goal === 4, 'anchor beat after gathering alloy');
 
   const built = A.buildSite(st, st.homeId, 'Earth', 'hydrofarm');
   assert(built.ok, 'hydrofarm anchors on Earth (' + (built.msg || 'ok') + ')');
   G.tick(st);
-  assert(st.tutorial.goal === 2, 'chain beat after anchoring');
+  assert(st.tutorial.goal === 5, 'chain beat after anchoring');
 
-  for (let i = 0; i < 30 && st.tutorial.goal === 2; i++) G.tick(st);
-  assert(st.tutorial.goal === 3, 'jump beat after watching the chain feed the city');
+  for (let i = 0; i < 40 && st.tutorial.goal === 5; i++) G.tick(st);
+  assert(st.tutorial.goal === 6, 'net beat after watching the chain feed the city');
+  const contract = SW.quests.company(st)[0];
+  assert(contract && contract.id === 'sol_net', 'prologue company contract exists');
+  assert(contract.steps.some(function (step) { return step.id === 'authorize' && step.current; }), 'Sol Net authorization is the current contract step');
+  assert(SW.tutorial.mapLocked(st), 'map still locked until Sol Net is authorized');
+  assert(!st.story.flags.routes_unlocked, 'route automation is not unlocked before the Sol Net sign-off');
+  assert(!A.authorizeSolNet(st).ok, 'Sol Net sign-off requires the journal prompt');
+  st.tutorial.netPrompted = true;
+  const auth = A.authorizeSolNet(st);
+  assert(auth.ok, 'Sol Net authorization action succeeds (' + (auth.msg || 'ok') + ')');
+  assert(st.story.flags.sol_net_authorized, 'Sol Net flag set');
+  assert(st.story.flags.routes_unlocked, 'route automation core unlocks with Sol Net authorization');
+  G.tick(st);
+  assert(st.tutorial.goal === 7, 'jump beat follows Sol Net authorization');
   assert(!SW.tutorial.mapLocked(st), 'map unlocks with the Guild gift');
 
   const go = A.shipSend(st, ship.id, nb);
   assert(go.ok, 'jump allowed after the gift (' + (go.msg || 'ok') + ')');
+  assert(ship.body === null, 'inter-system departure clears the berth');
   for (let i = 0; i < 300 && !st.tutorial.done; i++) G.tick(st);
   assert(st.tutorial.done && !st.tutorial.active, 'prologue completes when the jump lands');
 
@@ -1286,6 +1397,19 @@ section('Sol prologue (tutorial)');
   assert(sawCard || st.story.pending === 'ev_first_thread', 'ev_first_thread title card fires after the prologue');
   A.chooseEvent(st, 0);
   assert(st.story.flags.first_thread === true, 'first_thread flag set by title card');
+
+  // Bankruptcy is never a wall: a broke, empty-handed prologue run gets a
+  // Guild advance and can buy back into the ore loop.
+  const br = G.newGame({ seed: 'smoke-tutorial-broke', difficulty: 'standard', tutorial: true });
+  G.tick(br);
+  br.credits = 0;
+  for (const sh of br.ships) { sh.cargo = {}; sh.basis = {}; }
+  let rescued = false;
+  for (let i = 0; i < D.TUNE.prologueStipendEvery + 5 && !rescued; i++) {
+    G.tick(br);
+    if (br.credits >= D.TUNE.prologueStipend) rescued = true;
+  }
+  assert(rescued, 'Guild stipend rescues a broke prologue run (credits=' + br.credits + ')');
 
   // Skip path: no tutorial state, ev_wake fires as today
   const sk = G.newGame({ seed: 'smoke-tutorial-skip', difficulty: 'standard' });
