@@ -7,7 +7,8 @@ Plain HTML/CSS/JS, Canvas 2D, no build step, playable from `file://` by double-c
 
 - `SPEC.md` — the v3 completeness spec and migration plan. **This is the contract.** Check §13 for what's done (✅) and what's next.
 - `DESIGN.md` — original design document (pillars, economy, systems).
-- `docs/reviews/` — eight detailed audit/spec documents (market, onboarding, commands, world sim, presentation, reliability, docs). These are **backlog and reference, not contracts**; SPEC.md wins on conflict.
+- `docs/reviews/` — twelve audit/spec documents plus `REQUIREMENTS_INDEX.md` (market, onboarding, commands, world sim, presentation, reliability, docs, progression, Scourge response, galaxy scale, supply consolidation). These are **backlog and reference, not contracts**; SPEC.md wins on conflict.
+- `docs/roadmaps/` — dependency roadmaps. `docs/DECISIONS.md` — the decision log; check it before re-opening a settled design (e.g. the tech tree).
 
 ## Hard rules (violate for nothing)
 

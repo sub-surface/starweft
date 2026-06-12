@@ -285,8 +285,8 @@ aware faction weights, portraits. v3 adds:
 - **10.4 Faction-parametric logistics** — rivals on real routes with real
   ships (trade lines ✅; raidable convoy entities ◌).
 - **10.5 Price index analytics** ✅; **flags registry, validator, perf meter,
-  LOD table** ✅; **UI split into per-surface modules** ◌ (prerequisite for
-  the §7 ontology work).
+  LOD table** ✅; **UI split into per-surface modules** ✅ (`ui_market`,
+  `ui_routes`, `ui_ship`, `ui_system`, `ui_tech`, `ui_modals`).
 - **Runtime decision** unchanged: browser JS, data-oriented where hot, WASM/
   Tauri as escape hatches. Python remains rejected (slower + kills pillar 1).
 
@@ -324,16 +324,22 @@ pressures before the interface can explain them.
    market row, ⤳ one-shot fetch on every opportunity. Remaining: interrupts
    (data-full/stranded as injectable rules), more intents (patrol, escort),
    queue editing.
-7. **UI split + ontology** (§7): per-surface modules, cockpit-style selected
-   ship (queue visible, tabs), YOU tab (aptitudes home), infobox layout slot +
-   hover bounding, data-info coverage test, ticker carousel.
-8. **Main menu + intro + Sol tutorial** (§3.1–3.3) — needs 7's modules.
+7. ✅ **UI split + ontology** (§7): per-surface modules, cockpit-style
+   selected ship (queue visible, tabs), YOU tab (aptitudes home), infobox
+   layout slot, ticker carousel. Remaining: data-info coverage test.
+8. ✅ **Main menu + intro + Sol tutorial** (§3.1–3.3) — Sol cold open
+   prologue (`js/tutorial.js`), Sol Net contract beats, menu/help/save
+   modals; covered by browser_boot steps.
 9. **World genesis v3 + run parameters** (§3.5, §4) — density presets,
    voids/clusters, ¤/tick metrics, full seed validator.
-10. **Market terminal** (§8) and **Encounters v2** (§9 — stateful predicates,
-    hailing chips) — parallel tracks.
+10. **Market terminal** (§8) ✅ — WEFT MERCANTILE WIRE re-skin, The Wire
+    classifieds generated from real state (`market_analytics.js`).
+    **Encounters v2** (§9 — stateful predicates, hailing chips) ◌ open.
 11. **Rival convoys raidable** (§10.4); **sim LOD + badlands growth** (§10.3).
-12. **System card overhaul** (Elite-inspired system summary). Consolidate the
+12. **System card overhaul** (Elite-inspired system summary). Groundwork
+    landed: damped system camera (pan/zoom, dblclick body tracking),
+    per-body procedural detail + classification labels, berth pricing
+    (`E.berthMult`). Remaining: consolidate the
     scattered system information (panel sections, infobox, codex, market rows)
     into one coherent card per system: a procedural planet strip at the top
     (each body drawn from its real generated details — type, rings, bands,

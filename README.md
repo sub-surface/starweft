@@ -38,7 +38,10 @@ Brutal.
   and runs headless.
 - Smoke test (uses any Node):
   `& "$env:ProgramFiles\nodejs\node.exe" test\smoke.js`
-- Design doc: [DESIGN.md](DESIGN.md)
+- Browser boot test (stub DOM — panels, modals, save/load):
+  `& "$env:ProgramFiles\nodejs\node.exe" test\browser_boot.js`
+- Design doc: [DESIGN.md](DESIGN.md) · contract: [SPEC.md](SPEC.md) ·
+  decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
 
 ## Roadmap Notes
 
@@ -52,14 +55,11 @@ Brutal.
 - Unique hull actions beyond cargo, tied to system type and quests: scouts survey
   anomalies, escorts stabilize dangerous lanes, freighters seed depots, and late
   hulls alter production or evacuation pressure.
-- Market terminal overhaul (Elite × Mass Effect): make THE MARKET feel like a
-  real in-world trading terminal — diegetic advertisements and faction
-  bulletins between the numbers, cute worldbuilding copy (shipping notices,
-  classifieds, lost-and-found), deeper trend analytics (emerging shortages,
-  price momentum, "movers" feed off the existing price-history buffers), and
-  easter-egg side content discovered through the terminal itself: odd
-  classifieds that become small quests, recurring NPC traders with running
-  jokes, a numbers-station channel for Loomkeeper fragments.
+- Market terminal (v1 landed: WEFT MERCANTILE WIRE — diegetic terminal
+  framing, The Wire classifieds generated from real state, trend analytics
+  off the price-history buffers, a numbers channel). Still open: classifieds
+  that become small quests, recurring NPC traders with running jokes,
+  Loomkeeper fragments seeded through the numbers station.
 - RTS-inspired command layer: selected-unit command home, clearer send/queue
   feedback, tactical stance buttons, strategic orders, and fewer layout jumps.
 - Badlands (v1 landed: ~90 systems in a dark shell beyond the bubble — rich
@@ -67,9 +67,9 @@ Brutal.
   bridge weftlines, all gated behind Deep Drives; survey rewards scale up to
   3× out there). Still open: badlands-specific secrets/encounters, sim-LOD
   cohorts if the shell grows, neutron-star wonders.
-- Tech tree rebuild from first principles: stable pan/zoom canvas, legible
-  branch identity, clearer dependency paths, build synergies, and fewer cramped
-  text/list hybrids.
+- Tech tree (landed: full-viewport atlas — stable pan/zoom canvas, docked
+  detail pane, select-then-research purchase flow; docs/DECISIONS.md records
+  why this design won). Still open: richer build-synergy surfacing.
 - 100x-dev wish list: scalable map LOD for thousands of visible stars, robust
   command queue UX, inspectable economy/supply-chain solver, automated balance
   telemetry, and richer quest hooks for ship/system-specific actions.
