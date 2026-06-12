@@ -268,24 +268,18 @@ SW.data = (function () {
       standard: { name: 'Standard',                      mult: 1.0 },
       gilded:   { name: 'Gilded — fat and slow',         mult: 1.6 },
     },
-    badlands: {
-      shallow:  { name: 'Shallow', count: 45,  R: 100 },
-      standard: { name: 'Standard', count: 90, R: 120 },
-      deep:     { name: 'Deep — Noita country', count: 150, R: 150 },
-    },
+    badlands: { name: 'Deep Wilds', count: 180, R: 170 },
   };
   D.resolveWorld = function (opts) {
     opts = opts || {};
     const den = D.WORLD.density[opts.density] || D.WORLD.density.standard;
     const wea = D.WORLD.wealth[opts.wealth] || D.WORLD.wealth.standard;
-    const bad = D.WORLD.badlands[opts.badlands] || D.WORLD.badlands.standard;
-    let rivals = parseInt(opts.rivals, 10);
-    if (!(rivals >= 0 && rivals <= 2)) rivals = 2;
+    const bad = D.WORLD.badlands;
     return {
       density: opts.density || 'standard', wealth: opts.wealth || 'standard',
-      badlandsPreset: opts.badlands || 'standard',
+      badlandsPreset: 'deep',
       sysCount: den.sysCount, bubbleR: den.bubbleR, minSysDist: den.minSysDist,
-      wealthMult: wea.mult, rivals: rivals,
+      wealthMult: wea.mult,
       badlandsCount: bad.count, badlandsR: bad.R,
     };
   };
@@ -360,8 +354,12 @@ SW.data = (function () {
   };
 
   D.RIVAL_DEFS = [
-    { id: 'helix',   name: 'Helix Combine',     color: '#8a8f98', blurb: 'Polished, predatory, punctual. Combine Charter\'s sharpest blade.' },
-    { id: 'mariner', name: 'Mariner Syndicate', color: '#6e7681', blurb: 'Old routes, older grudges. The Commons made flesh.' },
+    { id: 'helix',   name: 'Helix Combine',       archetype: 'industrial cartel', color: '#8a8f98', blurb: 'Polished, predatory, punctual. Combine Charter\'s sharpest blade.', preferred: ['TECH', 'ALLOY'], lineTarget: 4, maxShips: 8, qtyMult: 1.2, expand: 'industrial' },
+    { id: 'mariner', name: 'Mariner Syndicate',   archetype: 'commons haulers',   color: '#6e7681', blurb: 'Old routes, older grudges. The Commons made flesh.', preferred: ['FUEL', 'FOOD'], lineTarget: 4, maxShips: 8, qtyMult: 1.1, expand: 'ports' },
+    { id: 'vigilant',name: 'Vigil Picket Line',   archetype: 'quarantine order',  color: '#7c8798', blurb: 'Escorts, inspections, and a long memory for plague routes.', preferred: ['ALLOY', 'MEDS', 'FUEL'], lineTarget: 3, maxShips: 7, qtyMult: 0.9, expand: 'front' },
+    { id: 'synodic', name: 'Synod Relief Chain',  archetype: 'relief mission',    color: '#91969f', blurb: 'Pilgrim barges following need, prayer, and famine.', preferred: ['FOOD', 'MEDS'], lineTarget: 3, maxShips: 7, qtyMult: 1.0, expand: 'population' },
+    { id: 'loomward',name: 'Loomward Tithes',     archetype: 'relic convoy',      color: '#777f8f', blurb: 'Crystal, ruins, and debts paid to dead infrastructure.', preferred: ['CRYSTAL', 'TECH'], lineTarget: 3, maxShips: 6, qtyMult: 0.8, expand: 'ruins' },
+    { id: 'severedco', name: 'Severed Freeholds', archetype: 'corsair brokers',   color: '#686f7c', blurb: 'Insurance, tolls, and smiles with teeth.', preferred: ['ORE', 'CRYSTAL'], lineTarget: 3, maxShips: 7, qtyMult: 1.0, expand: 'reach' },
   ];
 
   return D;

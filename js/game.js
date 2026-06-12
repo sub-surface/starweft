@@ -70,7 +70,7 @@ SW.game = (function () {
     SW.galaxy.generate(state);
     SW.story.init(state);
     SW.scourge.init(state);
-    SW.rivals.init(state, state.world.rivals);
+    SW.rivals.init(state);
     SW.combat.init(state);
     SW.worldevents.init(state);
 
@@ -285,6 +285,8 @@ SW.game = (function () {
   A.shipSend = function (state, shipId, destId, sellOnArrive) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
+    const check = SW.ships.canSend(state, ship, destId);
+    if (!check.ok) return check;
     SW.ships.unassign(state, ship);
     return SW.ships.send(state, ship, destId, { kind: 'manual', sellOnArrive: !!sellOnArrive });
   };
@@ -314,8 +316,9 @@ SW.game = (function () {
     return { ok: true };
   };
 
-  A.createRoute = function (state, stops, name) {
-    if (!state.story.flags.routes_unlocked) return err('Routes are not unlocked yet.');
+  function validateRoute(state, stops, opts) {
+    opts = opts || {};
+    if (!opts.skipUnlock && !state.story.flags.routes_unlocked) return err('Routes are not unlocked yet.');
     if (!stops || stops.length < 2) return err('A route needs at least 2 stops.');
     for (const st of stops) {
       const sys = state.systems[st.sys];
@@ -324,6 +327,11 @@ SW.game = (function () {
       if (st.action === 'smart' && !SW.tech.has(state, 'smartroutes')) return err('Smart stops require Smart Routing research.');
       if ((st.action === 'drop' || st.action === 'take') && !sys.depot) return err(sys.name + ' has no Depot.');
     }
+    return { ok: true };
+  }
+  A.createRoute = function (state, stops, name) {
+    const valid = validateRoute(state, stops);
+    if (!valid.ok) return valid;
     const route = SW.ships.createRoute(state, stops, name);
     G.emit('toast', { kind: 'good', text: '↻ ' + route.name + ' created.' });
     return { ok: true, route: route };
@@ -377,6 +385,8 @@ SW.game = (function () {
     if (!SW.tech.has(state, 'metaroutes')) return err('Requires Weftworks research.');
     const plan = SW.ships.planChainRoute(state, c);
     if (!plan.ok) return plan;
+    const valid = validateRoute(state, plan.stops, { skipUnlock: true });
+    if (!valid.ok) return valid;
     const route = SW.ships.createRoute(state, plan.stops, plan.name);
     G.emit('toast', { kind: 'good', text: '⧉ ' + route.name + ' woven: ' + plan.producer.name + ' → ' + plan.market.name + '.' });
     G.emit('sfx', 'buy');
@@ -507,6 +517,8 @@ SW.game = (function () {
     if (!ship) return err('No such ship.');
     return SW.ships.sellData(state, ship);
   };
+  A.openHail = function (state) { return SW.story.openHail(state); };
+  A.dismissHail = function (state) { return SW.story.dismissHail(state); };
   // Command grammar: issue an intent; it compiles to a visible queue of atoms.
   A.order = function (state, shipId, intent) {
     const ship = findShip(state, shipId);
@@ -525,7 +537,6 @@ SW.game = (function () {
   A.supplyMission = function (state, shipId, targetSysId, c, qty) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
-    SW.ships.unassign(state, ship);
     return SW.ships.supplyMission(state, ship, targetSysId, c, qty);
   };
 
@@ -579,6 +590,52 @@ SW.game = (function () {
     state.story.flags.postgame = true;
     state.gameOver = null;
     return { ok: true };
+  };
+  A.cheat = function (state, kind, arg) {
+    if (!state || !state.systems) return err('No active run.');
+    if (kind === 'resources') {
+      state.credits += 50000;
+      state.research += 5000;
+      return { ok: true, msg: '+50,000¤, +5,000◇' };
+    }
+    if (kind === 'unlock') {
+      for (const id in D.TECHS) {
+        if (D.TECHS[id].group === 'doctrine') continue;
+        if (state.tech.unlocked.indexOf(id) < 0) state.tech.unlocked.push(id);
+      }
+      state.story.flags.routes_unlocked = true;
+      state.story.flags.built_relay = true;
+      state.story.flags.sample_collected = true;
+      state.story.flags.hole_surveyed = true;
+      state.story.flags.husk_surveyed = true;
+      return { ok: true, msg: 'Feature gates unlocked.' };
+    }
+    if (kind === 'reveal') {
+      let n = 0;
+      for (const sys of state.systems) {
+        if (!sys.discovered) n++;
+        sys.discovered = true;
+        sys.surveyed = true;
+        sys.charted = true;
+      }
+      return { ok: true, msg: n + ' systems revealed.' };
+    }
+    if (kind === 'fleet') {
+      const sysId = state.systems[arg] ? arg : state.homeId;
+      const hulls = ['sparrow', 'courier', 'freighter', 'superhauler', 'pathfinder', 'surveyor', 'corvette', 'lancer'];
+      for (const h of hulls) if (D.HULLS[h]) SW.ships.create(state, h, sysId);
+      return { ok: true, msg: 'Test fleet launched.' };
+    }
+    if (kind === 'stock') {
+      const sys = state.systems[arg] || state.systems[state.homeId];
+      for (const c of D.COMM_IDS) {
+        if (D.COMMODITIES[c].locked && state.tech.unlocked.indexOf('panacea') < 0) continue;
+        sys.stocks[c] = Math.max(sys.stocks[c] || 0, Math.floor((sys.capacity[c] || D.TUNE.capDefault) * 0.85));
+        if (sys.depot) sys.depot[c] = Math.max(sys.depot[c] || 0, 50);
+      }
+      return { ok: true, msg: sys.name + ' stocked.' };
+    }
+    return err('Unknown cheat.');
   };
 
   // ---- News (the ticker's memory; serialized, capped) ----

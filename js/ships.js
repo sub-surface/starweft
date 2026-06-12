@@ -198,16 +198,23 @@ SW.ships = (function () {
   };
 
   // ---- Travel ----
-  S.send = function (state, ship, destId, mission) {
+  S.canSend = function (state, ship, destId) {
     if (ship.mode !== 'idle') return { ok: false, msg: ship.name + ' is in flight.' };
     if (ship.at === destId) return { ok: false, msg: 'Already there.' };
     const dest = state.systems[destId];
+    if (!dest) return { ok: false, msg: 'No such destination.' };
     if (dest.scourge === 2 && !hasTech(state, 'scourge2')) return { ok: false, msg: 'That system is corrupted. Ships entering would be unmade.' };
     if (dest.badlands && !hasTech(state, 'deepdrives')) return { ok: false, msg: 'The dark between webs swallows ordinary drives. Research Deep Drives.' };
     const path = S.findPath(state, ship.at, destId);
     if (!path) return { ok: false, msg: 'No safe lane exists.' };
     const upkeep = D.HULLS[ship.hull].upkeep * (S.inRange(state, dest) ? 1 : 2);
-    if (state.credits < upkeep) { ship.stranded = true; return { ok: false, msg: 'Cannot afford jump upkeep (' + upkeep + '¤).' }; }
+    if (state.credits < upkeep) return { ok: false, msg: 'Cannot afford jump upkeep (' + upkeep + '¤).' };
+    return { ok: true, path: path, upkeep: upkeep };
+  };
+  S.send = function (state, ship, destId, mission) {
+    const check = S.canSend(state, ship, destId);
+    if (!check.ok) { if (/upkeep/.test(check.msg || '')) ship.stranded = true; return check; }
+    const path = check.path, upkeep = check.upkeep;
     state.credits -= upkeep;
     ship.stranded = false;
     ship.path = path.slice(1);
@@ -382,6 +389,8 @@ SW.ships = (function () {
       state.credits += c;
       text = '✦ ' + ship.name + ' salvaged a relic cache at ' + sys.name + ' (+' + c + '¤).';
     }
+    ship.data = ship.data || [];
+    ship.data.push({ kind: 'anomalyTrace', sys: sys.id, c: Math.round(70 * distMult), r: Math.round(18 * distMult) });
     state.stats.finds = (state.stats.finds || 0) + 1;
     SW.game.emit('toast', { kind: 'good', text: text });
     SW.game.emit('sfx', 'discover');
@@ -504,6 +513,11 @@ SW.ships = (function () {
     if (ship.mode !== 'idle') return { ok: false, msg: ship.name + ' is in flight.' };
     const best = SW.economy.cheapestSource(state, c, Math.min(qty, 5));
     if (!best) return { ok: false, msg: 'No discovered market stocks ' + D.COMMODITIES[c].name + ' right now.' };
+    if (ship.at !== best.id) {
+      const check = S.canSend(state, ship, best.id);
+      if (!check.ok) return check;
+    }
+    S.unassign(state, ship);
     ship.mission = { kind: 'supply', stage: 'tobuy', c: c, qty: qty, source: best.id, target: targetSysId };
     if (ship.at === best.id) { tickSupply(state, ship); return { ok: true, source: best }; }
     const r = S.send(state, ship, best.id, ship.mission);
@@ -618,13 +632,25 @@ SW.ships = (function () {
 
   S.intent = function (state, ship, intent) {
     if (!intent || !intent.type) return { ok: false, msg: 'No intent.' };
+    if (ship.mode !== 'idle') return { ok: false, msg: ship.name + ' is in flight.' };
     const q = [];
     let note = '';
     if (intent.type === 'fetch') {
       const from = state.systems[intent.from], to = state.systems[intent.to];
       if (!from || !to || !from.discovered || !to.discovered) return { ok: false, msg: 'Both ends must be charted.' };
       if (!D.COMMODITIES[intent.c]) return { ok: false, msg: 'Unknown commodity.' };
-      if (ship.at !== intent.from) q.push({ op: 'move', sys: intent.from });
+      if (intent.deliver === 'drop' && !to.depot) return { ok: false, msg: to.name + ' has no Depot.' };
+      if (ship.at !== intent.from) {
+        const firstLeg = S.canSend(state, ship, intent.from);
+        if (!firstLeg.ok) return { ok: false, msg: firstLeg.msg };
+        q.push({ op: 'move', sys: intent.from });
+      }
+      const legProbe = {
+        id: ship.id, name: ship.name, hull: ship.hull, at: intent.from,
+        mode: 'idle', cargo: ship.cargo || {}, basis: ship.basis || {},
+      };
+      const secondLeg = intent.from === intent.to ? { ok: true } : S.canSend(state, legProbe, intent.to);
+      if (!secondLeg.ok) return { ok: false, msg: secondLeg.msg };
       q.push({ op: 'buy', c: intent.c, q: intent.q || 9999 });
       q.push({ op: 'move', sys: intent.to });
       q.push({ op: intent.deliver === 'drop' ? 'drop' : 'sell', c: null });
@@ -632,7 +658,11 @@ SW.ships = (function () {
     } else if (intent.type === 'goSellData') {
       const to = state.systems[intent.to];
       if (!to || to.type !== 'pop') return { ok: false, msg: 'Cartographers buy at populated systems.' };
-      if (ship.at !== intent.to) q.push({ op: 'move', sys: intent.to });
+      if (ship.at !== intent.to) {
+        const leg = S.canSend(state, ship, intent.to);
+        if (!leg.ok) return { ok: false, msg: leg.msg };
+        q.push({ op: 'move', sys: intent.to });
+      }
       q.push({ op: 'sellData' });
       note = 'REPORT IN · charts → ' + to.name;
     } else {
@@ -660,7 +690,7 @@ SW.ships = (function () {
       }
       case 'buy': {
         const r = S.buy(state, ship, cmd.c, cmd.q || 9999);
-        if (!r.ok) SW.game.emit('toast', { kind: 'bad', text: '⚠ ' + ship.name + ': ' + (ship.queueNote || 'orders') + ' — ' + r.msg });
+        if (!r.ok) { failQueue(state, ship, r.msg); return; }
         q.shift();
         break;
       }
@@ -685,7 +715,12 @@ SW.ships = (function () {
         q.shift();
         break;
       }
-      case 'sellData': { S.sellData(state, ship); q.shift(); break; }
+      case 'sellData': {
+        const r = S.sellData(state, ship);
+        if (!r.ok) { failQueue(state, ship, r.msg); return; }
+        q.shift();
+        break;
+      }
       case 'wait': {
         if (state.tick >= (cmd.until || 0)) q.shift();
         return;
@@ -698,6 +733,12 @@ SW.ships = (function () {
     if (ship.queueNote) SW.game.emit('toast', { kind: 'good', text: '✓ ' + ship.name + ': ' + ship.queueNote + ' — complete.' });
     ship.queue = [];
     ship.queueNote = null;
+  }
+  function failQueue(state, ship, msg) {
+    SW.game.emit('toast', { kind: 'bad', text: '⚠ ' + ship.name + ': ' + (ship.queueNote || 'orders') + ' — ' + msg });
+    ship.queue = [];
+    ship.queueNote = null;
+    ship.retryAt = 0;
   }
 
   // ---- Meta-routes (Weftworks): one route spanning a whole supply chain ----

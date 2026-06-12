@@ -5,17 +5,20 @@ SW.rivals = (function () {
   const U = SW.util, D = SW.data, E = function () { return SW.economy; };
   const R = {};
 
-  R.init = function (state, count) {
+  R.init = function (state) {
     state.rivals = [];
     const home = state.systems[state.homeId];
     const candidates = state.systems.filter(function (s) {
       return (s.type === 'pop' || s.type === 'industrial') && s.hops >= 3 && s.hops <= 6;
     });
-    for (let i = 0; i < count && i < D.RIVAL_DEFS.length; i++) {
+    const offices = U.shuffle(state, candidates.length ? candidates : state.systems.filter(function (s) { return s.id !== home.id; }));
+    for (let i = 0; i < D.RIVAL_DEFS.length && offices.length; i++) {
       const def = D.RIVAL_DEFS[i];
-      const office = U.pick(state, candidates.length ? candidates : state.systems.filter(function (s) { return s.id !== home.id; }));
+      const office = offices[i % offices.length];
       const rival = {
-        id: def.id, name: def.name, color: def.color, blurb: def.blurb,
+        id: def.id, name: def.name, color: def.color, blurb: def.blurb, archetype: def.archetype,
+        preferred: (def.preferred || []).slice(), expand: def.expand || 'ports',
+        lineTarget: def.lineTarget || 3, maxShips: def.maxShips || 6, qtyMult: def.qtyMult || 1,
         office: office.id, credits: 2000, alive: true, met: false,
         pact: false, rep: 0, ships: [], lastExpand: 0,
       };
@@ -69,7 +72,7 @@ SW.rivals = (function () {
         return margin > 1;
       });
       // establish new lines from the best margins in their zone
-      if (rival.lines.length < 3 && (state.tick - (rival.lastLinePick || 0)) > 40) {
+      if (rival.lines.length < rival.lineTarget && (state.tick - (rival.lastLinePick || 0)) > 40) {
         rival.lastLinePick = state.tick;
         const sample = zone.length > 14 ? U.shuffle(state, zone).slice(0, 14) : zone;
         let best = null;
@@ -82,7 +85,8 @@ SW.rivals = (function () {
             for (const b of sample) {
               if (b.id === a.id) continue;
               const margin = E().sellPrice(state, b, c, rival.id) - E().buyPrice(state, a, c, rival.id);
-              if (margin > 3 && (!best || margin > best.margin)) best = { a: a.id, b: b.id, c: c, margin: margin };
+              const score = margin * (rival.preferred.indexOf(c) >= 0 ? 1.35 : 1);
+              if (margin > 3 && (!best || score > best.score)) best = { a: a.id, b: b.id, c: c, margin: margin, score: score };
             }
           }
         }
@@ -90,11 +94,11 @@ SW.rivals = (function () {
       }
       // dispatch shipments along each line (≤2 in flight per line)
       for (const L of rival.lines) {
-        if (rival.ships.length >= 6) break;
+        if (rival.ships.length >= rival.maxShips) break;
         const sameLine = rival.ships.filter(function (sh) { return sh.from === L.a && sh.to === L.b && sh.c === L.c; }).length;
         if (sameLine >= 2) continue;
         const a = state.systems[L.a], b = state.systems[L.b];
-        const qty = Math.min(T.rivalQty, Math.floor(a.stocks[L.c] || 0));
+        const qty = Math.min(Math.round(T.rivalQty * rival.qtyMult), Math.floor(a.stocks[L.c] || 0));
         if (qty < 4) continue;
         const buy = E().marketBuy(state, a, L.c, qty, rival.id);
         rival.credits -= buy.cost;
@@ -112,7 +116,7 @@ SW.rivals = (function () {
             if ((nb.presence[rival.id] || 0) > 0.3 || nb.scourge === 2) continue;
             if (rival.pact && E().dominant(nb) === 'player') continue;
             if (state.ops && state.ops.embargo && state.ops.embargo.sys === nb.id) continue;
-            const score = nb.pop + 1;
+            const score = expansionScore(rival, nb);
             if (score > bestScore) { bestScore = score; bestNb = nb; }
           }
         }
@@ -132,6 +136,17 @@ SW.rivals = (function () {
       }
     }
   };
+
+  function expansionScore(rival, sys) {
+    let score = 1 + (sys.pop || 0);
+    if (rival.expand === 'industrial' && sys.type === 'industrial') score += 18;
+    if (rival.expand === 'ports' && (sys.type === 'pop' || sys.type === 'gas')) score += 12;
+    if (rival.expand === 'front' && (sys.scourge === 1 || sys.region === 'verge')) score += 20;
+    if (rival.expand === 'population' && sys.type === 'pop') score += 18;
+    if (rival.expand === 'ruins' && (sys.type === 'derelict' || sys.wonder || sys.region === 'oldstream')) score += 22;
+    if (rival.expand === 'reach' && sys.region === 'reach') score += 24;
+    return score;
+  }
 
   // Buyout cost scales with their footprint.
   R.buyoutCost = function (state, rival) {

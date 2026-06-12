@@ -327,6 +327,7 @@ section('Exploration economy (distance scaling, finds, first-light)');
   D.TUNE.surveyFindChance = findChance0;
   assert(near.surveyed, 'near survey completed');
   assert((st.stats.finds || 0) >= 1, 'forced anomaly find recorded');
+  assert((scout.data || []).some(function (b) { return b.kind === 'anomalyTrace' && b.sys === near.id; }), 'anomaly find left a sellable trace');
   // first-light: discovery banks data aboard too
   const hidden = st.systems.find(function (s) { return !s.discovered && s.scourge !== 2; });
   assert(!!hidden, 'an undiscovered system exists');
@@ -361,21 +362,23 @@ section('Opening economy sanity (no-player run)');
 }
 
 // ---------- 6a2b. world run parameters ----------
-section('World run parameters (density / wealth / rivals / badlands)');
+section('World run parameters (density / wealth / rich world defaults)');
 {
   const sparse = G.newGame({ seed: 'smoke-world', difficulty: 'relaxed', world: { density: 'sparse', wealth: 'gilded', rivals: 0, badlands: 'shallow' } });
   const bubbleN = sparse.systems.filter(function (s) { return !s.badlands; }).length;
   const badN = sparse.systems.filter(function (s) { return s.badlands; }).length;
   assert(bubbleN <= 185 && bubbleN >= 150, 'sparse bubble thinned (' + bubbleN + ')');
   assert(sparse.systems.some(function (s) { return !s.badlands && SW.util.dist(s, sparse.systems[0]) > 65; }), 'sparse bubble widened');
-  assert(badN <= 50, 'shallow badlands (' + badN + ')');
-  assert(sparse.rivals.length === 0, 'no rivals when asked');
+  assert(badN >= 150, 'badlands stay deep even when an old shallow override is supplied (' + badN + ')');
+  assert(sparse.rivals.length >= 4, 'many rivals spawn by default even when an old no-rivals override is supplied (' + sparse.rivals.length + ')');
+  assert(new Set(sparse.rivals.map(function (r) { return r.archetype; })).size >= 4, 'rivals have diverse archetypes');
   const std = G.newGame({ seed: 'smoke-world', difficulty: 'relaxed' });
   let gildStock = 0, stdStock = 0;
   for (const s of sparse.systems) for (const c in s.stocks) gildStock += s.stocks[c];
   for (const s of std.systems) for (const c in s.stocks) stdStock += s.stocks[c];
   assert(gildStock / Math.max(1, sparse.systems.length) > stdStock / std.systems.length, 'gilded worlds start richer per system');
   assert(std.systems.filter(function (s) { return !s.badlands; }).length >= 230, 'standard preset unchanged');
+  assert(std.systems.filter(function (s) { return s.badlands; }).length >= 150, 'standard worlds still include a deep badlands shell');
 }
 
 // ---------- 6a3. command grammar (intents → visible queues) ----------
@@ -415,6 +418,32 @@ section('Command grammar (FETCH intent, queue atoms)');
   assert(je.a === 'order' && je.args[1].type === 'fetch', 'intent journaled for replay');
   // cancel mid-orders
   assert(A.clearQueue(st, ship.id).ok && ship.queue.length === 0 && ship.queueNote === null, 'orders cancellable');
+
+  // failed manual commands must not silently clear existing automation
+  SW.ships.assignToRoute(st, ship, route);
+  const samePlace = A.shipSend(st, ship.id, ship.at, false);
+  assert(samePlace.ok === false, 'same-system send rejected');
+  assert(ship.routeId === route.id && route.ships.indexOf(ship.id) >= 0, 'failed send preserves route assignment');
+
+  // unreachable fetches reject before they erase assignments or queue impossible work
+  const bad = st.systems.find(function (s) { return s.badlands; });
+  assert(!!bad, 'badlands source exists for reachability test');
+  bad.discovered = true;
+  const unreachable = A.order(st, ship.id, { type: 'fetch', c: 'ORE', from: bad.id, to: st.homeId });
+  assert(unreachable.ok === false && /No safe lane|Deep Drives|unreachable/.test(unreachable.msg), 'unreachable fetch rejected before queueing: ' + (unreachable.msg || ''));
+  assert(ship.routeId === route.id && (!ship.queue || ship.queue.length === 0), 'rejected fetch preserves assignment and leaves no queue');
+
+  // failed queue buys abort loudly instead of continuing to a fake delivery
+  SW.ships.unassign(st, ship);
+  ship.mode = 'idle'; ship.at = mine.id; ship.path = []; ship.leg = null; ship.cargo = {}; ship.basis = {};
+  mine.prod = {};
+  mine.stocks.ORE = 0;
+  const emptyFetch = A.order(st, ship.id, { type: 'fetch', c: 'ORE', from: mine.id, to: st.homeId });
+  assert(emptyFetch.ok, 'fetch can be issued against a source that may be empty by execution time');
+  const d0 = st.stats.deliveries || 0;
+  G.tick(st);
+  assert((ship.queue || []).length === 0 && ship.queueNote === null, 'empty-source fetch aborts the queue');
+  assert((st.stats.deliveries || 0) === d0, 'aborted fetch does not count as delivery');
   invariants(st, 'post-grammar');
 }
 
@@ -797,7 +826,8 @@ section('Long run (standard, 3000 ticks, bot)');
   assert(st.stats.deliveries >= 10, 'bot made deliveries (' + st.stats.deliveries + ')');
   assert(st.story.flags.routes_unlocked, 'routes unlocked through play');
   assert(st.scourge.phase !== 'dormant', 'scourge activated');
-  assert(st.rivals.length === 2, 'rivals exist');
+  assert(st.rivals.length >= 4, 'many rivals exist (' + st.rivals.length + ')');
+  assert(new Set(st.rivals.map(function (r) { return r.archetype; })).size >= 4, 'rival archetypes stay diverse');
   assert(st.rivals.some(function (r) { return (r.lines || []).length > 0 || !r.alive; }), 'rivals run persistent trade lines');
 }
 

@@ -10,6 +10,7 @@ SW.ui = (function () {
   let mapMode = null;            // null | 'send' | 'route' | 'directive' | 'blitz' | 'embargo'
   let sendSellOnArrive = true;
   let directiveDraft = null;
+  let directiveForm = { c: 'FOOD', target: 60 };
   let lastRenderTick = -1;
   let editorOpen = false;
   let pinnedInfo = null;         // infobox fallback topic
@@ -18,6 +19,7 @@ SW.ui = (function () {
   let techHits = [];             // tech canvas hitboxes
   ui.techView = { x: 0, y: 0, zoom: 1, selected: null };
   let livePortraits = [];        // [{canvas, spec}] animated
+  let panelOpenSections = {};    // system-panel section key -> true when expanded
 
   function $(sel) { return document.querySelector(sel); }
   function st() { return SW.game.state; }
@@ -29,9 +31,11 @@ SW.ui = (function () {
   ui.init = function () {
     document.addEventListener('click', dispatch);
     document.addEventListener('change', dispatchChange);
+    document.addEventListener('input', dispatchInput);
     document.addEventListener('keydown', onKey);
     document.addEventListener('keyup', function (e) { simKeys(e, false); });
     document.addEventListener('mouseover', onHoverInfo);
+    document.addEventListener('click', onPanelSectionClick);
     document.addEventListener('pointerdown', function () { SW.audio.ensure(); }, { once: true });
 
     document.querySelectorAll('#dockTabs button').forEach(function (b) {
@@ -208,6 +212,7 @@ SW.ui = (function () {
     if (threatened.length) html += '<div class="alert" data-act="jumpThreat">⚠ ' + threatened.length + ' THREATENED</div>';
     if (stranded.length) html += '<div class="alert" data-act="jumpStranded">⛽ ' + stranded.length + ' STRANDED</div>';
     if (expiring.length) html += '<div class="alert" data-act="openOps">⌛ CONTRACT</div>';
+    if (s.story && s.story.hail) html += '<div class="alert" data-act="openHail" title="' + esc(s.story.hail.title || 'Incoming hail') + '">◌ HAIL</div>';
     $('#alerts').innerHTML = html;
     $('#objective span').textContent = s.story.objective || '…';
   }
@@ -355,6 +360,40 @@ SW.ui = (function () {
     else h.classList.add('hidden');
     SW.render.showRange = (mode === 'route');
   }
+  function stripTags(html) { return String(html).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); }
+  function sectionKey(panelKey, title, idx) {
+    const slug = stripTags(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+    return panelKey + ':' + idx + ':' + slug;
+  }
+  function sectionizePanelHtml(html, panelKey) {
+    const re = /<h4([^>]*)>([\s\S]*?)<\/h4>/gi;
+    let out = '', last = 0, section = null, idx = 0, m;
+    while ((m = re.exec(html))) {
+      if (!section) out += html.slice(last, m.index);
+      else {
+        out += html.slice(last, m.index) + '</div></div>';
+      }
+      const title = stripTags(m[2]);
+      const key = sectionKey(panelKey, title, idx++);
+      const open = !!panelOpenSections[key];
+      out += '<div class="panelSection' + (open ? '' : ' collapsed') + '" data-section="' + key + '">' +
+        '<h4' + m[1] + ' class="panelSectionHead" data-section="' + key + '" data-title="' + esc(title) + '" title="Click to expand/collapse">' +
+        m[2] + '</h4><div class="panelSectionBody">';
+      section = key;
+      last = re.lastIndex;
+    }
+    if (!section) return html;
+    out += html.slice(last) + '</div></div>';
+    return out;
+  }
+  function onPanelSectionClick(e) {
+    const h = e.target.closest && e.target.closest('#sysPanel h4[data-section]');
+    if (!h || !h.dataset || !h.dataset.section) return;
+    panelOpenSections[h.dataset.section] = !panelOpenSections[h.dataset.section];
+    if (e.preventDefault) e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+    renderSysPanel();
+  }
 
   // ============ system panel ============
   function renderSysPanel() {
@@ -408,7 +447,8 @@ SW.ui = (function () {
     // market
     const ship = selectedShip();
     const shipHere = ship && ship.mode === 'idle' && ship.at === sys.id;
-    const canFetch = ship && ship.mode === 'idle' && !shipHere; // FETCH: one-click gather-and-deliver
+    const fetchShip = !shipHere ? pickLogisticsShip(s, ship) : null; // FETCH: one-click gather-and-deliver
+    const canFetch = !!fetchShip;
     html += '<h4>Market</h4><table class="mkt"><tr><th>good</th><th>stock</th><th>price</th><th>Δ</th>' + (shipHere || canFetch ? '<th></th>' : '') + '</tr>';
     for (const c of D.COMM_IDS) {
       if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
@@ -429,7 +469,7 @@ SW.ui = (function () {
         html += '<td><button data-act="buy" data-c="' + c + '" data-q="5">+5</button> <button data-act="buy" data-c="' + c + '" data-q="999">max</button> ' +
           ((ship.cargo[c] || 0) > 0 ? '<button data-act="sellc" data-c="' + c + '">sell</button>' : '') + '</td>';
       } else if (canFetch) {
-        html += '<td><button data-act="fetchHere" data-c="' + c + '" title="Order ' + esc(ship.name) + ': buy ' + D.COMMODITIES[c].name + ' at the cheapest charted source, deliver it here">⇄ fetch</button></td>';
+        html += '<td><button data-act="fetchHere" data-c="' + c + '" title="Order ' + esc(fetchShip.name) + ': buy ' + D.COMMODITIES[c].name + ' at the cheapest charted source, deliver it here">⇄ fetch</button></td>';
       }
       html += '</tr>';
     }
@@ -533,7 +573,7 @@ SW.ui = (function () {
         html += '<div class="row" data-info="ship:' + sh.id + '"><span class="grow">' + D.HULLS[sh.hull].glyph + ' ' + esc(sh.name) + '</span><button data-act="selShip" data-id="' + sh.id + '">select</button></div>';
       }
     }
-    panel.innerHTML = html;
+    panel.innerHTML = sectionizePanelHtml(html, 'sys:' + sys.id);
   }
 
   // ============ ship chip ============
@@ -541,6 +581,26 @@ SW.ui = (function () {
     const s = st();
     if (!s || !SW.render.selectedShip) return null;
     return s.ships.find(function (x) { return x.id === SW.render.selectedShip; }) || null;
+  }
+  function freeForLogistics(sh) {
+    const hull = D.HULLS[sh.hull];
+    return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission &&
+      !(sh.queue && sh.queue.length) && !sh.stranded && hull && !hull.survey && hull.cap > 0;
+  }
+  function logisticsRank(sh) {
+    const hull = D.HULLS[sh.hull];
+    if (!hull) return 9999;
+    const role = hull.line === 'trade' ? 0 : (hull.line === 'vanguard' ? 1 : 2);
+    return role * 10000 - hull.cap * 20 - (hull.power || 0);
+  }
+  function logisticsShips(s) {
+    return s.ships.filter(freeForLogistics).sort(function (a, b) {
+      return logisticsRank(a) - logisticsRank(b);
+    });
+  }
+  function pickLogisticsShip(s, preferred) {
+    if (preferred && freeForLogistics(preferred)) return preferred;
+    return logisticsShips(s)[0] || null;
   }
   function renderShipChip() {
     const s = st(), chip = $('#shipChip');
@@ -798,16 +858,16 @@ SW.ui = (function () {
     if (SW.tech.has(s, 'directives')) {
       html += '<h4>Directives</h4>';
       html += '<div class="row"><select id="dirComm">' + D.COMM_IDS.filter(function (c) { return !D.COMMODITIES[c].locked || SW.tech.has(s, 'panacea'); }).map(function (c) {
-        return '<option value="' + c + '">' + D.COMMODITIES[c].name + '</option>';
+        return '<option value="' + c + '"' + (c === directiveForm.c ? ' selected' : '') + '>' + D.COMMODITIES[c].name + '</option>';
       }).join('') + '</select>' +
-        '<input id="dirTarget" type="number" value="60" min="10" max="500" style="width:54px">' +
+        '<input id="dirTarget" type="number" value="' + directiveForm.target + '" min="10" max="500" style="width:54px">' +
         '<button data-act="dirStart">＋ keep stocked…</button></div>';
       for (const d of s.directives) {
         html += '<div class="listItem"><div class="row"><span class="title grow">◎ ' + esc(s.systems[d.sys].name) + ' · ' + commName(d.c) + ' ≥ ' + d.target + '</span>' +
           '<button class="danger" data-act="dirDel" data-id="' + d.id + '">✕</button></div>' +
           '<div class="sub">' + s.ships.filter(function (sh) { return sh.directiveId === d.id; }).length + ' ships</div></div>';
       }
-      const idleShips = s.ships.filter(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId; });
+      const idleShips = logisticsShips(s);
       if (s.directives.length && idleShips.length) {
         html += '<div class="row"><select id="dirShip">' + idleShips.map(function (sh) { return '<option value="' + sh.id + '">' + esc(sh.name) + '</option>'; }).join('') + '</select>' +
           '<select id="dirPick">' + s.directives.map(function (d) { return '<option value="' + d.id + '">' + esc(s.systems[d.sys].name) + ' ' + D.COMMODITIES[d.c].icon + '</option>'; }).join('') + '</select>' +
@@ -1199,6 +1259,40 @@ SW.ui = (function () {
   }
 
   // ============ exchange (market dashboard) ============
+  function marketTarget(sys, c) {
+    const cap = sys.capacity[c] || D.TUNE.capDefault;
+    let target = 0;
+    if ((sys.cons[c] || 0) > 0) {
+      target = Math.max(target, Math.min(cap, Math.max(12, Math.ceil(cap * 0.25), Math.ceil(sys.cons[c] * 160))));
+    }
+    for (const out of sys.slots || []) {
+      const rec = D.RECIPES.find(function (r) { return r.out === out; });
+      if (rec && rec.inputs[c]) target = Math.max(target, Math.min(cap, rec.inputs[c] * 24));
+    }
+    return Math.ceil(target);
+  }
+  function inboundCargo(s, sysId, c) {
+    let n = 0;
+    for (const sh of s.ships) {
+      const cargo = sh.cargo[c] || 0;
+      if (sh.mission && sh.mission.kind === 'supply' && sh.mission.target === sysId && sh.mission.c === c) {
+        n += Math.max(cargo, sh.mission.stage === 'deliver' ? (sh.mission.qty || 0) : 0);
+        continue;
+      }
+      if (sh.directiveId && cargo > 0) {
+        const d = s.directives.find(function (x) { return x.id === sh.directiveId; });
+        if (d && d.sys === sysId && d.c === c) n += cargo;
+      }
+    }
+    return Math.floor(n);
+  }
+  function marketRole(sys, c, target, gap) {
+    if (gap > 0) return 'needs';
+    if (target > 0) return 'covered';
+    if ((sys.prod[c] || 0) > 0) return 'producer';
+    if ((sys.stocks[c] || 0) >= 5) return 'stock';
+    return 'watch';
+  }
   function toggleExchange() {
     const ex = $('#exchange');
     if (ex.classList.contains('hidden')) { ex.classList.remove('hidden'); renderExchange(); }
@@ -1215,11 +1309,20 @@ SW.ui = (function () {
     html += '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
     html += '<div id="exGrid"><div id="exMain">';
 
+    // Known Economy index
+    html += '<h4>Known Economy</h4>';
+    const totalWealth = s.systems.reduce(function (sum, sys) { return sum + (sys.credits || 0) + Object.keys(sys.stocks || {}).reduce(function (s2, c) { return s2 + (sys.stocks[c] || 0) * SW.economy.price(s, sys, c); }, 0); }, 0);
+    const activeRoutes = s.routes.filter(function (r) { return r.ships && r.ships.length > 0; }).length;
+    const totalFleetValue = s.ships.reduce(function (sum, sh) { const h = D.HULLS[sh.hull]; return sum + (h.cost || 0); }, 0);
+    html += '<div class="row"><span class="sub">wealth</span><span class="num">' + U.fmt(totalWealth) + '¤</span></div>';
+    html += '<div class="row"><span class="sub">fleet value</span><span class="num">' + U.fmt(totalFleetValue) + '¤</span></div>';
+    html += '<div class="row"><span class="sub">active routes</span><span class="num">' + activeRoutes + '</span></div>';
+
     // per-system table for the chosen commodity
     const rows = s.systems.filter(function (x) { return x.discovered && x.scourge !== 2; })
       .map(function (x) { return { sys: x, price: SW.economy.price(s, x, exchangeComm), stock: Math.floor(x.stocks[exchangeComm] || 0) }; })
       .sort(function (a, b) { return a.price - b.price; });
-    html += '<table class="mkt"><tr><th>system</th><th>stock</th><th>price</th><th>trend</th><th></th></tr>';
+    html += '<h4>Commodity Tape</h4><table class="mkt"><tr><th>system</th><th>stock</th><th>price</th><th>trend</th><th></th></tr>';
     for (const row of rows.slice(0, 30)) {
       const hist = row.sys.hist && row.sys.hist[exchangeComm];
       const ratio = row.price / D.COMMODITIES[exchangeComm].base;
@@ -1228,6 +1331,41 @@ SW.ui = (function () {
         '<td>' + sparkHtml(hist) + '</td>' +
         '<td><button data-act="centerSys" data-id="' + row.sys.id + '">◎</button></td></tr>';
     }
+    html += '</table>';
+
+    const depth = rows.map(function (row) {
+      const target = marketTarget(row.sys, exchangeComm);
+      const inbound = inboundCargo(s, row.sys.id, exchangeComm);
+      const gap = Math.max(0, target - row.stock - inbound);
+      return {
+        sys: row.sys, price: row.price, stock: row.stock, target: target,
+        inbound: inbound, gap: gap, role: marketRole(row.sys, exchangeComm, target, gap),
+      };
+    }).filter(function (row) {
+      return row.stock > 0 || row.target > 0 || row.inbound > 0 || (row.sys.prod[exchangeComm] || 0) > 0;
+    }).sort(function (a, b) {
+      if (b.gap !== a.gap) return b.gap - a.gap;
+      if (a.role !== b.role) return a.role < b.role ? -1 : 1;
+      return a.price - b.price;
+    });
+    html += '<h4>Supply map</h4><table class="mkt"><tr><th>system</th><th>role</th><th>stock</th><th>target</th><th>gap</th><th>in-flight</th><th>actions</th></tr>';
+    for (const row of depth.slice(0, 18)) {
+      const src = row.gap > 0 ? SW.economy.cheapestSource(s, exchangeComm, Math.min(5, row.gap), row.sys.id) : null;
+      let actions = '<span class="sub">' + '>' + 'focus' + '<' + '</span>';
+      if (src) actions += ' <span class="sub">' + '>' + 'fetch' + '<' + '</span>';
+      if (src && s.story.flags.routes_unlocked) actions += ' <span class="sub">' + '>' + 'route' + '<' + '</span>';
+      if (row.target > 0 && SW.tech.has(s, 'directives')) actions += ' <button data-act="marketKeep" data-sys="' + row.sys.id + '" data-c="' + exchangeComm + '" data-target="' + row.target + '">keep</button>';
+      html += '<tr data-info="system:' + row.sys.id + '"><td>' + esc(row.sys.name) + '</td>' +
+        '<td>' + row.role + '</td><td class="num">' + row.stock + '</td>' +
+        '<td class="num">' + (row.target || 'Â·') + '</td>' +
+        '<td class="num" style="color:' + (row.gap > 0 ? 'var(--danger)' : 'var(--ink-dim)') + '">' + (row.gap || 'Â·') + '</td>' +
+        '<td class="num">' + (row.inbound || 'Â·') + '</td><td>' +
+        '<button data-act="centerSys" data-id="' + row.sys.id + '" style="display:none"></button>' +
+        (src ? '<button data-act="fetchOp" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" style="display:none"></button>' : '') +
+        (src && s.story.flags.routes_unlocked ? '<button data-act="quickRoute" data-from="' + src.id + '" data-to="' + row.sys.id + '" data-c="' + exchangeComm + '" style="display:none"></button>' : '') +
+        actions + '</td></tr>';
+    }
+    if (!depth.length) html += '<tr><td colspan="7" class="sub">No discovered demand or supply yet.</td></tr>';
     html += '</table></div><div id="exSide">';
 
     // opportunities with one-click route creation
@@ -1237,6 +1375,16 @@ SW.ui = (function () {
       html += '<div class="row"><span class="grow sub">' + commName(op.c) + ' ' + esc(s.systems[op.from].name.split(' ')[0]) + '→' + esc(s.systems[op.to].name.split(' ')[0]) +
         ' <b class="num" style="color:var(--accent)">+' + Math.round(op.margin) + '</b></span>' +
         '<button data-act="quickRoute" data-from="' + op.from + '" data-to="' + op.to + '" data-c="' + op.c + '">＋ route</button></div>';
+    }
+    const recipe = D.RECIPES.find(function (r) { return r.out === exchangeComm && (!r.tech || SW.tech.has(s, r.tech)); });
+    if (recipe) {
+      html += '<h4>Supply chain</h4>';
+      html += '<div class="sub">' + Object.keys(recipe.inputs).map(function (c) {
+        return recipe.inputs[c] + ' ' + D.COMMODITIES[c].name;
+      }).join(' + ') + ' -> ' + D.COMMODITIES[exchangeComm].name + '</div>';
+      html += SW.tech.has(s, 'metaroutes') ?
+        '<div class="row"><button data-act="chainRoute" data-c="' + exchangeComm + '">weave route</button></div>' :
+        '<div class="sub">Weftworks can automate this into one chain route.</div>';
     }
     // movers: the terminal reads the same history the sparklines do
     html += '<h4>Movers</h4>';
@@ -1252,7 +1400,7 @@ SW.ui = (function () {
     html += '<div class="sub">' + esc(TICKER_FLAVOR[Math.floor(s.tick / 40) % TICKER_FLAVOR.length]) + '</div>';
     html += '<div class="sub">' + esc(TICKER_FLAVOR[(Math.floor(s.tick / 40) + 5) % TICKER_FLAVOR.length]) + '</div>';
     // fleet utilization
-    const idle = s.ships.filter(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission; });
+    const idle = logisticsShips(s);
     html += '<h4>Fleet</h4>';
     html += '<div class="sub">' + s.ships.length + ' ships · ' + idle.length + ' idle · ' + s.routes.length + ' routes</div>';
     if (idle.length) {
@@ -1448,8 +1596,7 @@ SW.ui = (function () {
     html += '<div class="row"><span class="sub" style="width:64px">world</span>' +
       '<select id="ngDen">' + Object.keys(D.WORLD.density).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.density[k].name + '</option>'; }).join('') + '</select>' +
       '<select id="ngWea">' + Object.keys(D.WORLD.wealth).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.wealth[k].name + '</option>'; }).join('') + '</select>' +
-      '<select id="ngBad">' + Object.keys(D.WORLD.badlands).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>badlands: ' + D.WORLD.badlands[k].name + '</option>'; }).join('') + '</select>' +
-      '<select id="ngRiv"><option value="2" selected>2 rivals</option><option value="1">1 rival</option><option value="0">no rivals</option></select></div>';
+      '<span class="sub">deep wilds and rival networks always active</span></div>';
     html += '<div class="row"><span class="sub" style="width:64px">aptitude</span><select id="ngApt" style="flex:1">' +
       '<option value="">— undecided (find yourself out there) —</option>' +
       Object.keys(D.PERKS).filter(function (id) { return !D.PERKS[id].req; }).map(function (id) {
@@ -1484,10 +1631,34 @@ SW.ui = (function () {
       '<button data-act="loadManual" ' + (SW.game.hasSave('manual') ? '' : 'disabled') + '>load</button>' +
       '<button data-act="exportSave">export save → clipboard</button>' +
       '<button data-act="importSave">import save</button>' +
+      '<button data-act="cheats">feature check</button>' +
       '<button data-act="help">how to play</button>' +
       '<button data-act="newGameMenu">new run</button>' +
       '<button data-act="closeModal">resume</button></div>';
     showModal('menuModal');
+  }
+  function showCheats() {
+    const s = st();
+    const sysId = SW.render.selectedSys !== null && SW.render.selectedSys !== undefined ? SW.render.selectedSys : s.homeId;
+    const sys = s.systems[sysId] || s.systems[s.homeId];
+    const hidden = s.systems.filter(function (x) { return !x.discovered; }).length;
+    const unlocked = s.tech.unlocked.length;
+    const html = '<h2>FEATURE CHECK</h2>' +
+      '<div class="statGrid">' +
+      '<div>credits</div><div class="v">' + U.fmt(s.credits) + '</div>' +
+      '<div>research</div><div class="v">' + Math.floor(s.research) + '</div>' +
+      '<div>tech</div><div class="v">' + unlocked + '/' + Object.keys(D.TECHS).length + '</div>' +
+      '<div>ships</div><div class="v">' + s.ships.length + '</div>' +
+      '<div>hidden systems</div><div class="v">' + hidden + '</div>' +
+      '</div><div class="choices">' +
+      '<button data-act="cheatResources">resources</button>' +
+      '<button data-act="cheatUnlock">unlock feature gates</button>' +
+      '<button data-act="cheatReveal">reveal + survey map</button>' +
+      '<button data-act="cheatStock" data-sys="' + sys.id + '">stock ' + esc(sys.name) + '</button>' +
+      '<button data-act="cheatFleet" data-sys="' + sys.id + '">spawn test fleet</button>' +
+      '<button data-act="closeModal">close</button></div>';
+    $('#cheatModal').innerHTML = html;
+    showModal('cheatModal');
   }
   function showHelp() {
     const modal = $('#helpModal');
@@ -1543,8 +1714,7 @@ SW.ui = (function () {
       case 'depotDrop': if (ship) A().depotDrop(s, ship.id, btn.dataset.c, 9999); break;
       case 'build': { const r = A().build(s, sysId, btn.dataset.b); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'supply': {
-        const idle = (ship && ship.mode === 'idle' && !ship.routeId) ? ship :
-          s.ships.find(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission; });
+        const idle = pickLogisticsShip(s, ship);
         if (!idle) { toast({ kind: 'bad', text: 'No idle ship for a supply run.' }); break; }
         const r = A().supplyMission(s, idle.id, sysId, btn.dataset.c, parseInt(btn.dataset.q, 10));
         toast(r.ok ? { kind: 'info', text: '▢ ' + idle.name + ' fetching ' + btn.dataset.q + ' ' + D.COMMODITIES[btn.dataset.c].name + ' from ' + r.source.name } : { kind: 'bad', text: r.msg });
@@ -1605,7 +1775,7 @@ SW.ui = (function () {
           { sys: parseInt(btn.dataset.to, 10), action: 'sell' },
         ]);
         if (!r.ok) { toast({ kind: 'bad', text: r.msg }); return; }
-        const idle = s.ships.find(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission && !D.HULLS[sh.hull].survey; });
+        const idle = pickLogisticsShip(s, null);
         if (idle) A().assignShip(s, idle.id, r.route.id);
         toast({ kind: 'good', text: '↻ ' + r.route.name + ' created' + (idle ? ' — ' + idle.name + ' assigned.' : '.') });
         break;
@@ -1613,7 +1783,7 @@ SW.ui = (function () {
       case 'chainRoute': {
         const r = A().createChainRoute(s, btn.dataset.c);
         if (!r.ok) { toast({ kind: 'bad', text: r.msg }); return; }
-        const idle = s.ships.find(function (sh) { return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission && !D.HULLS[sh.hull].survey; });
+        const idle = pickLogisticsShip(s, null);
         if (idle) A().assignShip(s, idle.id, r.route.id);
         break;
       }
@@ -1622,18 +1792,31 @@ SW.ui = (function () {
       case 'buyPerk': { const r = A().buyPerk(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'exComm': exchangeComm = btn.dataset.c; renderExchange(); break;
+      case 'marketKeep': {
+        const targetSys = parseInt(btn.dataset.sys, 10);
+        const targetQty = parseInt(btn.dataset.target, 10) || 60;
+        const dupe = s.directives.find(function (d) { return d.sys === targetSys && d.c === btn.dataset.c; });
+        if (dupe) { toast({ kind: 'info', text: 'Directive already tracks that stock.' }); break; }
+        const r = A().createDirective(s, targetSys, btn.dataset.c, targetQty);
+        if (!r.ok) { toast({ kind: 'bad', text: r.msg }); break; }
+        const idle = pickLogisticsShip(s, ship);
+        if (idle) A().assignShipDirective(s, idle.id, r.directive.id);
+        toast({ kind: 'good', text: 'Directive set: keep ' + D.COMMODITIES[btn.dataset.c].name + ' stocked' + (idle ? ' — ' + idle.name + ' assigned.' : '.') });
+        break;
+      }
       case 'clearQueue': if (ship) A().clearQueue(s, ship.id); break;
       case 'fetchHere': {
-        if (!ship || sysId === null) break;
+        if (sysId === null) break;
+        const hauler = pickLogisticsShip(s, ship);
+        if (!hauler) { toast({ kind: 'bad', text: 'No idle hauler for the job.' }); break; }
         const src = SW.economy.cheapestSource(s, btn.dataset.c, 5, sysId);
         if (!src) { toast({ kind: 'bad', text: 'No charted market stocks ' + D.COMMODITIES[btn.dataset.c].name + '.' }); break; }
-        const r = A().order(s, ship.id, { type: 'fetch', c: btn.dataset.c, from: src.id, to: sysId });
+        const r = A().order(s, hauler.id, { type: 'fetch', c: btn.dataset.c, from: src.id, to: sysId });
         if (!r.ok) toast({ kind: 'bad', text: r.msg });
         break;
       }
       case 'fetchOp': {
-        const hauler = (ship && ship.mode === 'idle') ? ship :
-          s.ships.find(function (x) { return x.mode === 'idle' && !x.routeId && !x.directiveId && !x.mission && !(x.queue && x.queue.length) && !D.HULLS[x.hull].survey; });
+        const hauler = pickLogisticsShip(s, ship);
         if (!hauler) { toast({ kind: 'bad', text: 'No idle hauler for the job.' }); break; }
         const r = A().order(s, hauler.id, { type: 'fetch', c: btn.dataset.c, from: parseInt(btn.dataset.from, 10), to: parseInt(btn.dataset.to, 10) });
         if (!r.ok) toast({ kind: 'bad', text: r.msg });
@@ -1655,8 +1838,8 @@ SW.ui = (function () {
         const route = s.routes.find(function (x) { return x.id === btn.dataset.id; });
         if (route) {
           let n = 0;
-          for (const sh of s.ships) {
-            if (sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission && !D.HULLS[sh.hull].survey) { A().assignShip(s, sh.id, route.id); n++; }
+          for (const sh of logisticsShips(s)) {
+            A().assignShip(s, sh.id, route.id); n++;
           }
           toast({ kind: 'info', text: n + ' ships assigned to ' + route.name + '.' });
         }
@@ -1664,8 +1847,7 @@ SW.ui = (function () {
       }
       case 'employAll': {
         let n = 0;
-        for (const sh of s.ships) {
-          if (sh.mode !== 'idle' || sh.routeId || sh.directiveId || sh.mission || D.HULLS[sh.hull].survey) continue;
+        for (const sh of logisticsShips(s)) {
           const route = s.routes.slice().sort(function (a, b) { return a.ships.length - b.ships.length; })[0];
           if (route && route.ships.length < 3) { A().assignShip(s, sh.id, route.id); n++; continue; }
           const ops = SW.economy.opportunities(s, 3).filter(function (o) {
@@ -1680,7 +1862,7 @@ SW.ui = (function () {
         break;
       }
       case 'dirStart': {
-        const c = $('#dirComm').value, target = parseInt($('#dirTarget').value, 10) || 60;
+        const c = directiveForm.c, target = directiveForm.target;
         directiveDraft = { c: c, target: target };
         setMapMode('directive', '◎ click the system to keep stocked with ' + D.COMMODITIES[c].name);
         return;
@@ -1703,8 +1885,37 @@ SW.ui = (function () {
       case 'hireRetainer': { const r = A().hireRetainer(s, $('#retRegion').value); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'blitzMode': setMapMode('blitz', '◎ click a system to blitz'); return;
       case 'embargoMode': setMapMode('embargo', '⊘ click a system to embargo'); return;
+      case 'bulkAssign': {
+        const pick = $('#bulkRoute');
+        const routeId = pick && pick.value;
+        const route = s.routes.find(function (r) { return r.id === routeId; });
+        if (!route) { toast({ kind: 'bad', text: 'Pick a route first.' }); break; }
+        let n = 0;
+        for (const sh of logisticsShips(s)) {
+          A().assignShip(s, sh.id, route.id);
+          n++;
+        }
+        toast({ kind: 'info', text: n + ' idle ships assigned to ' + route.name + '.' });
+        break;
+      }
 
       case 'choose': chooseEvent(parseInt(btn.dataset.i, 10)); return;
+      case 'openHail': { const r = A().openHail(s); if (!r.ok) toast({ kind: 'bad', text: r.msg || 'The channel is dead.' }); return; }
+      case 'dismissHail': A().dismissHail(s); break;
+      case 'cheatResources':
+      case 'cheatUnlock':
+      case 'cheatReveal':
+      case 'cheatFleet':
+      case 'cheatStock': {
+        const kind = act === 'cheatResources' ? 'resources' :
+          act === 'cheatUnlock' ? 'unlock' :
+            act === 'cheatReveal' ? 'reveal' :
+              act === 'cheatFleet' ? 'fleet' : 'stock';
+        const r = A().cheat(s, kind, parseInt(btn.dataset.sys, 10));
+        toast(r.ok ? { kind: 'good', text: r.msg || 'Cheat applied.' } : { kind: 'bad', text: r.msg });
+        if (r.ok) { ui.refresh(); showCheats(); }
+        break;
+      }
       case 'closeModal': hideModals(); break;
       case 'closeExchange': $('#exchange').classList.add('hidden'); break;
       case 'postgame': A().continuePostgame(s); hideModals(); break;
@@ -1721,8 +1932,6 @@ SW.ui = (function () {
           world: {
             density: ($('#ngDen') && $('#ngDen').value) || 'standard',
             wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
-            badlands: ($('#ngBad') && $('#ngBad').value) || 'standard',
-            rivals: ($('#ngRiv') && $('#ngRiv').value) || 2,
           },
           identity: {
             name: ($('#idName').value || 'The Provisional Weft').slice(0, 40),
@@ -1737,6 +1946,7 @@ SW.ui = (function () {
         return;
       }
       case 'help': showHelp(); return;
+      case 'cheats': showCheats(); return;
       case 'saveManual': { const r = SW.game.save('manual'); toast(r.ok ? { kind: 'good', text: 'Saved.' } : { kind: 'bad', text: r.msg || 'Save failed.' }); hideModals(); break; }
       case 'loadManual': { const r = SW.game.load('manual'); if (r.ok) { hideModals(); afterLoad(); toast({ kind: 'good', text: 'Loaded.' }); } else toast({ kind: 'bad', text: r.msg }); return; }
       case 'exportSave': {
@@ -1773,12 +1983,21 @@ SW.ui = (function () {
 
   function dispatchChange(e) {
     const t = e.target;
-    if (t.classList && t.classList.contains('draftAction')) {
+    if (t.id === 'dirComm') {
+      directiveForm.c = t.value;
+    } else if (t.classList && t.classList.contains('draftAction')) {
       const i = parseInt(t.dataset.roleidx, 10);
       if (ui.routeDraft && ui.routeDraft[i]) { ui.routeDraft[i].action = t.value; renderDock(true); }
     } else if (t.classList && t.classList.contains('draftComm')) {
       const i = parseInt(t.dataset.cidx, 10);
       if (ui.routeDraft && ui.routeDraft[i]) { ui.routeDraft[i].c = t.value; updateProjection(); }
+    }
+  }
+
+  function dispatchInput(e) {
+    const t = e.target;
+    if (t.id === 'dirTarget') {
+      directiveForm.target = parseInt(t.value, 10) || 60;
     }
   }
 

@@ -117,6 +117,28 @@ function fireClick(act, data) {
   const evt = { target: { closest: function () { return btn; }, tagName: 'BUTTON' } };
   for (const fn of (listeners.click || [])) fn(evt);
 }
+function fireSectionClick(section) {
+  const h = {
+    dataset: { section: section },
+    closest: function (sel) { return sel && sel.indexOf('#sysPanel h4') >= 0 ? h : null; },
+  };
+  const evt = {
+    target: { closest: function (sel) { return h.closest(sel); } },
+    preventDefault: function () {},
+    stopPropagation: function () {},
+  };
+  for (const fn of (listeners.click || [])) fn(evt);
+}
+function fireChangeTarget(id, value) {
+  const el = { id: id, value: value, dataset: {}, classList: { contains: function () { return false; } } };
+  const evt = { target: el };
+  for (const fn of (listeners.change || [])) fn(evt);
+}
+function fireInputTarget(id, value) {
+  const el = { id: id, value: value, dataset: {}, classList: { contains: function () { return false; } } };
+  const evt = { target: el };
+  for (const fn of (listeners.input || [])) fn(evt);
+}
 
 step('game state exists after boot', function () {
   if (!G.state || !G.state.systems.length) throw new Error('no state');
@@ -330,11 +352,155 @@ step('market buy/sell buttons through dispatcher', function () {
   if (ship.cargo.FOOD) throw new Error('sell via UI failed');
 });
 
+step('left system-panel sections start collapsed and toggle on click', function () {
+  SW.render.selectedSys = G.state.homeId;
+  SW.ui.refresh();
+  const html = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  const match = html.match(/<h4[^>]*data-section="([^"]+)"[^>]*data-title="Market"/);
+  if (!match) throw new Error('market heading is not a collapsible section heading: ' + html.slice(0, 400));
+  const section = match[1];
+  if (html.indexOf('class="panelSection collapsed" data-section="' + section + '"') < 0) {
+    throw new Error('market section is not collapsed by default');
+  }
+  fireSectionClick(section);
+  const opened = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (opened.indexOf('class="panelSection collapsed" data-section="' + section + '"') >= 0) {
+    throw new Error('click did not open market section');
+  }
+  fireSectionClick(section);
+  const closed = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (closed.indexOf('class="panelSection collapsed" data-section="' + section + '"') < 0) {
+    throw new Error('second click did not collapse market section');
+  }
+});
+
 step('build + supply buttons through dispatcher', function () {
   G.state.credits = 9999;
   fireClick('buyShip', { h: 'sparrow' });
   fireClick('supply', { c: 'ALLOY', q: '8' });
   fireClick('build', { b: 'relay' }); // expected to fail politely (no mats yet) — must not throw
+});
+
+step('supply defaults to cargo, then fighters, never selected scouts', function () {
+  const s = G.state;
+  const home = s.systems[s.homeId];
+  const nb = s.systems[home.links[0]];
+  s.story.flags.routes_unlocked = true;
+  s.credits = 9999;
+  home.stocks.ALLOY = 80;
+  home.stocks.GAS = 80;
+  home.discovered = true; nb.discovered = true;
+  const hold = A.createRoute(s, [
+    { sys: home.id, action: 'buy', c: 'FOOD' },
+    { sys: nb.id, action: 'sell' },
+  ]).route;
+  const existing = s.ships.slice();
+  const scout = SW.ships.create(s, 'pathfinder', home.id);
+  const fighter = SW.ships.create(s, 'corvette', home.id);
+  const cargo = SW.ships.create(s, 'courier', home.id);
+  existing.forEach(function (sh) {
+    if (sh.mode === 'idle') SW.ships.assignToRoute(s, sh, hold);
+  });
+  [scout, fighter, cargo].forEach(function (sh) {
+    SW.ships.unassign(s, sh);
+    sh.mode = 'idle'; sh.at = home.id; sh.path = []; sh.leg = null; sh.mission = null; sh.queue = []; sh.cargo = {}; sh.basis = {};
+  });
+  SW.render.selectedSys = home.id;
+  SW.render.selectedShip = scout.id;
+  fireClick('supply', { c: 'ALLOY', q: '6' });
+  if (!(cargo.cargo.ALLOY || (cargo.mission && cargo.mission.c === 'ALLOY'))) throw new Error('cargo ship was not chosen before scout/fighter');
+  if (scout.cargo.ALLOY || scout.mission) throw new Error('selected scout was drafted into supply');
+  cargo.mode = 'idle'; cargo.at = home.id; cargo.path = []; cargo.leg = null; cargo.mission = null;
+  SW.ships.assignToRoute(s, cargo, hold);
+  fireClick('supply', { c: 'GAS', q: '4' });
+  if (!(fighter.cargo.GAS || (fighter.mission && fighter.mission.c === 'GAS'))) throw new Error('fighter was not chosen after cargo ships were busy');
+  if (scout.cargo.GAS || scout.mission) throw new Error('scout was used before fighter fallback');
+});
+
+step('ambient hails render as actionable chips', function () {
+  const ship = G.state.ships[0];
+  G.state.story.pending = null;
+  G.state.story.hail = { id: 'ev_derelict', ctx: { sysId: G.state.homeId, shipId: ship.id }, at: G.state.tick, fac: 'drifter', title: 'Derelict signal' };
+  SW.ui.refresh();
+  const alerts = (elCache['#alerts'] && elCache['#alerts'].innerHTML) || '';
+  if (alerts.indexOf('openHail') < 0) throw new Error('hail chip not rendered in alerts: ' + alerts);
+  fireClick('openHail');
+  if (G.state.story.hail) throw new Error('hail was not consumed');
+  if (G.state.story.pending !== 'ev_derelict') throw new Error('hail did not open event: ' + G.state.story.pending);
+  G.state.story.pending = null;
+});
+
+step('exchange bulk assign button assigns idle ships', function () {
+  G.state.story.flags.routes_unlocked = true;
+  G.state.tech.unlocked.push('exchange');
+  const route = G.state.routes[0] || A.createRoute(G.state, [
+    { sys: G.state.homeId, action: 'buy', c: 'FOOD' },
+    { sys: G.state.systems[G.state.homeId].links[0], action: 'sell' },
+  ]).route;
+  const ship = G.state.ships[0];
+  SW.ships.unassign(G.state, ship);
+  ship.mode = 'idle'; ship.at = G.state.homeId; ship.leg = null; ship.path = []; ship.mission = null; ship.queue = [];
+  elCache['#bulkRoute'] = stubEl('select'); elCache['#bulkRoute'].value = route.id;
+  fireClick('bulkAssign');
+  if (ship.routeId !== route.id) throw new Error('bulkAssign did not assign idle ship');
+});
+
+step('exchange shows supply depth and can create keep-stocked directives', function () {
+  const s = G.state;
+  if (s.tech.unlocked.indexOf('exchange') < 0) s.tech.unlocked.push('exchange');
+  if (s.tech.unlocked.indexOf('directives') < 0) s.tech.unlocked.push('directives');
+  const home = s.systems[s.homeId];
+  const source = s.systems[home.links[0]];
+  home.discovered = true; source.discovered = true;
+  home.cons.FOOD = Math.max(home.cons.FOOD || 0, 0.2);
+  home.capacity.FOOD = 120;
+  home.stocks.FOOD = 3;
+  source.stocks.FOOD = 90;
+  const runner = SW.ships.create(s, 'courier', source.id);
+  runner.mode = 'travel';
+  runner.at = source.id;
+  runner.leg = { from: source.id, to: home.id, depart: s.tick, arrive: s.tick + 999 };
+  runner.path = [home.id];
+  runner.cargo.FOOD = 7;
+  runner.mission = { kind: 'supply', stage: 'deliver', c: 'FOOD', qty: 7, source: source.id, target: home.id };
+  elCache['#exchange'].classList.remove('hidden');
+  fireClick('exComm', { c: 'FOOD' });
+  const html = (elCache['#exchange'] && elCache['#exchange'].innerHTML) || '';
+  if (html.indexOf('Known Economy') < 0) throw new Error('known economy index missing');
+  if (html.indexOf('Commodity Tape') < 0) throw new Error('commodity tape side panel missing');
+  if (html.indexOf('Supply map') < 0) throw new Error('supply depth panel missing');
+  if (html.indexOf('in-flight') < 0) throw new Error('in-flight cargo column missing');
+  if (html.indexOf('>focus<') < 0 || html.indexOf('>fetch<') < 0 || html.indexOf('>route<') < 0) throw new Error('supply map actions are not clearly named');
+  if (html.indexOf('data-act="marketKeep"') < 0) throw new Error('keep-stocked action missing');
+  const before = s.directives.length;
+  fireClick('marketKeep', { sys: String(home.id), c: 'FOOD', target: '30' });
+  if (s.directives.length !== before + 1) throw new Error('marketKeep did not create directive');
+  const d = s.directives[s.directives.length - 1];
+  if (d.sys !== home.id || d.c !== 'FOOD' || d.target !== 30) throw new Error('directive details wrong');
+});
+
+step('directive form preserves edits across redraws and events', function () {
+  const s = G.state;
+  if (s.tech.unlocked.indexOf('directives') < 0) s.tech.unlocked.push('directives');
+  SW.ui.setTab('routes');
+  fireChangeTarget('dirComm', 'MEDS');
+  fireInputTarget('dirTarget', '140');
+  SW.ui.refresh();
+  const html = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (html.indexOf('<option value="MEDS" selected>') < 0) throw new Error('directive commodity reset after redraw');
+  if (html.indexOf('id="dirTarget" type="number" value="140"') < 0) throw new Error('directive target reset after redraw');
+  const before = s.directives.length;
+  fireClick('dirStart');
+  SW.ui.mapClick(s.systems[s.homeId]);
+  const d = s.directives[s.directives.length - 1];
+  if (s.directives.length !== before + 1 || d.c !== 'MEDS' || d.target !== 140) throw new Error('directive did not use preserved form values');
+});
+
+step('title screen omits shallow badlands and no-rivals selectors', function () {
+  SW.ui.showTitle();
+  const html = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
+  if (html.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
+  if (html.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
 });
 
 step('tech research through dispatcher', function () {
@@ -348,6 +514,21 @@ step('menu, help, save, load via dispatcher', function () {
   fireClick('saveManual');
   if (!storageMap.starweft_manual) throw new Error('manual save not written');
   fireClick('help');
+  fireClick('closeModal');
+  fireClick('cheats');
+  const cheatHtml = (elCache['#cheatModal'] && elCache['#cheatModal'].innerHTML) || '';
+  if (cheatHtml.indexOf('FEATURE CHECK') < 0 || cheatHtml.indexOf('cheatResources') < 0) throw new Error('cheat panel missing actions');
+  const cr0 = G.state.credits, res0 = G.state.research, shipN = G.state.ships.length;
+  fireClick('cheatResources');
+  if (G.state.credits <= cr0 || G.state.research <= res0) throw new Error('cheat resources did not apply');
+  fireClick('cheatUnlock');
+  if (!SW.tech.has(G.state, 'exchange') || !SW.tech.has(G.state, 'deepdrives') || !G.state.story.flags.routes_unlocked) throw new Error('cheat unlock did not open feature gates');
+  fireClick('cheatFleet');
+  if (G.state.ships.length <= shipN || !G.state.ships.some(function (sh) { return sh.hull === 'lancer'; })) throw new Error('cheat fleet did not spawn test hulls');
+  const hiddenBefore = G.state.systems.filter(function (sys) { return !sys.discovered; }).length;
+  fireClick('cheatReveal');
+  const hiddenAfter = G.state.systems.filter(function (sys) { return !sys.discovered; }).length;
+  if (!(hiddenAfter < hiddenBefore || hiddenAfter === 0)) throw new Error('cheat reveal did not discover systems');
   fireClick('closeModal');
   fireClick('loadManual');
   if (!G.state) throw new Error('load broke state');
