@@ -158,13 +158,20 @@ SW.ui = (function () {
     fleet: { title: 'FLEET ▲', sub: 'ships', lines: ['Your hulls. Buy more at Sol or Industrial hubs. Idle ships are wasted ships.'] },
     infamy: { title: 'INFAMY ☠', sub: 'reputation', lines: ['Raiding raises it. At ' + D.TUNE.infamyBlackMarket + '+ the Reach\'s black markets open to you; at 5+ the Vigil starts collecting.'] },
   };
+  function uiTopicInfo(id) {
+    if (id === 'infamy' && SW.combat && SW.combat.infamyStatus) {
+      const status = SW.combat.infamyStatus(st() && st().infamy);
+      return { title: 'INFAMY ' + status.label.toUpperCase(), sub: 'reputation', lines: SW.combat.infamyLines(st()) };
+    }
+    return UI_TOPICS[id];
+  }
   function renderInfobox(topic) {
     const s = st();
     const box = $('#infobox');
     const t = topic || pinnedInfo;
     let info = null;
     if (t) {
-      info = t.kind === 'ui' ? UI_TOPICS[t.id] : SW.codex.describe(s, t);
+      info = t.kind === 'ui' ? uiTopicInfo(t.id) : SW.codex.describe(s, t);
     }
     if (!info) {
       info = {
@@ -284,7 +291,8 @@ SW.ui = (function () {
     $('#stTick').textContent = s.tick;
     const inf = Math.floor(s.infamy || 0);
     $('#stInfamyWrap').style.display = inf > 0 ? '' : 'none';
-    $('#stInfamy').textContent = inf;
+    const infStatus = SW.combat.infamyStatus(s.infamy || 0);
+    $('#stInfamy').textContent = infStatus.label + ' ' + U.fmt1(s.infamy || 0);
     $('#btnExchange').disabled = !SW.tech.has(s, 'exchange');
     syncSpeedButtons();
     const threatened = s.systems.filter(function (x) { return x.scourge === 1 && x.discovered; });

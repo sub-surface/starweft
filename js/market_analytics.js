@@ -106,5 +106,51 @@ SW.market = (function () {
     }, 0);
   };
 
+  M.trend = function (sys, c) {
+    const h = sys.hist && sys.hist[c];
+    if (!h || h.length < 2) return { delta: 0, deltaPct: 0, hist: h || [] };
+    const first = h[Math.max(0, h.length - 5)];
+    const last = h[h.length - 1];
+    const delta = last - first;
+    return { delta: delta, deltaPct: first > 0 ? delta / first * 100 : 0, hist: h };
+  };
+
+  M.buildCommodityReport = function (state, c) {
+    const live = M.liveKnownSystems(state);
+    const inboundMap = M.buildInboundMap(state);
+    const rows = live.map(function (sys) {
+      const price = SW.economy.price(state, sys, c);
+      const stock = Math.floor(sys.stocks[c] || 0);
+      const target = M.marketTarget(sys, c);
+      const inbound = Math.floor((inboundMap[sys.id] && inboundMap[sys.id][c]) || 0);
+      const gap = Math.max(0, target - stock - inbound);
+      const tr = M.trend(sys, c);
+      const role = M.marketRole(sys, c, target, gap);
+      return {
+        sys: sys, price: price, stock: stock, target: target, inbound: inbound, gap: gap,
+        role: role, hist: tr.hist, delta: tr.delta, deltaPct: tr.deltaPct,
+        useful: gap * 1000 + Math.max(0, price - D().COMMODITIES[c].base),
+      };
+    });
+    const sources = rows.filter(function (r) { return r.stock > 0 || (r.sys.prod[c] || 0) > 0; })
+      .slice().sort(function (a, b) {
+        if (a.price !== b.price) return a.price - b.price;
+        return b.stock - a.stock;
+      });
+    const sinks = rows.filter(function (r) { return r.gap > 0 || r.target > 0; })
+      .slice().sort(function (a, b) {
+        if (b.gap !== a.gap) return b.gap - a.gap;
+        return b.price - a.price;
+      });
+    const sorted = rows.slice().sort(function (a, b) {
+      if (b.gap !== a.gap) return b.gap - a.gap;
+      if (b.useful !== a.useful) return b.useful - a.useful;
+      return b.price - a.price;
+    });
+    const movers = rows.filter(function (r) { return Math.abs(r.deltaPct) >= 3; })
+      .sort(function (a, b) { return Math.abs(b.deltaPct) - Math.abs(a.deltaPct); });
+    return { c: c, rows: sorted, sources: sources, sinks: sinks, movers: movers, inboundMap: inboundMap };
+  };
+
   return M;
 }());

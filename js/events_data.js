@@ -181,6 +181,28 @@ SW.eventsData = (function () {
       ],
     },
     {
+      id: 'ev_black_manifest', title: 'BLACK MANIFEST', arrival: true, repeat: 360, weight: 45, mood: 'bad',
+      when: function (s, sys, ship) { return ship && sys && sys.region === 'reach' && s.tick > 160; },
+      text: 'A broker in a dead transponder mask offers a sealed manifest. "Carry it one jump, no questions. The Reach remembers useful friends."',
+      choices: [
+        {
+          label: 'Take the sealed cargo.',
+          fx: function (s) {
+            const ship = ctxShip(s);
+            if (ship) { ship.cargo.TECH = (ship.cargo.TECH || 0) + 4; ship.basis.TECH = 0; }
+            s.credits += 250; s.infamy = (s.infamy || 0) + 0.8;
+            s.rep.severed = Math.min(10, (s.rep.severed || 0) + 0.6);
+            s.rep.vigil = Math.max(-10, (s.rep.vigil || 0) - 0.5);
+            return '+250 cr and 4 Tech. Infamy rises; the manifest stays sealed.';
+          },
+        },
+        {
+          label: 'Refuse the run.',
+          fx: function (s) { s.rep.severed = Math.max(-10, (s.rep.severed || 0) - 0.2); return 'The broker deletes your channel with theatrical slowness.'; },
+        },
+      ],
+    },
+    {
       id: 'ev_pod', title: 'DRIFTING POD', arrival: true, repeat: 320, weight: 50,
       text: 'An escape pod, transponder dead, cargo seals intact. Faint tapping from inside.',
       choices: [
@@ -276,6 +298,32 @@ SW.eventsData = (function () {
             const sys = pops.length ? U.pick(s, pops) : null;
             if (sys) { sys.stocks.TECH = 0; sys.stocks.MEDS = 0; return 'Shortage at ' + sys.name + ' — Tech and Meds prices are spiking there.'; }
             return 'The tremor passes.';
+          },
+        },
+      ],
+    },
+
+    {
+      id: 'ev_vigil_inspection', title: 'LEDGER INSPECTION', repeat: 520, weight: 35, mood: 'bad',
+      when: function (s) { return (s.infamy || 0) >= 2 && s.tick > 260; },
+      text: 'A Vigil auditor requests your ledger. Requests, in this context, means the guns are already warmed.',
+      choices: [
+        {
+          label: 'Open the books.',
+          fx: function (s) {
+            const cut = Math.min(s.credits, Math.floor(120 + (s.infamy || 0) * 80));
+            s.credits -= cut; s.infamy = Math.max(0, (s.infamy || 0) - 0.4);
+            s.rep.vigil = Math.min(10, (s.rep.vigil || 0) + 0.3);
+            return '-' + U.fmt(cut) + ' cr in fines. Infamy cools slightly.';
+          },
+        },
+        {
+          label: 'Bribe the audit team.',
+          req: function (s) { return s.credits >= 300; },
+          fx: function (s) {
+            s.credits -= 300; s.infamy = (s.infamy || 0) + 0.6;
+            s.rep.vigil = Math.max(-10, (s.rep.vigil || 0) - 0.8);
+            return '-300 cr. The books pass. The rumor does not.';
           },
         },
       ],
@@ -595,8 +643,8 @@ SW.eventsData = (function () {
     ev_fleet5: 'dockworker', ev_fleet12: 'dockworker', ev_rich: 'banker',
     ev_first_freighter: 'dockworker', ev_all_charted: 'weft7',
     ev_derelict: 'archivist', ev_archivist_fed: 'archivist',
-    ev_pirates: 'pirate', ev_cats: 'cat', ev_pod: 'engineer', ev_hermit: 'hermit',
-    ev_evac: 'refugee', ev_festival: 'mayor', ev_crash: 'banker',
+    ev_pirates: 'pirate', ev_cats: 'cat', ev_black_manifest: 'pirate', ev_pod: 'engineer', ev_hermit: 'hermit',
+    ev_evac: 'refugee', ev_festival: 'mayor', ev_crash: 'banker', ev_vigil_inspection: 'vigil',
     ev_meet_helix: 'helix', ev_meet_mariner: 'mariner',
     ev_pact_offer: 'helix', ev_price_war: 'helix', ev_rival_collapse: 'mariner',
     ev_whisper: 'hermit', ev_awake: 'vigil', ev_sample: 'weft7',

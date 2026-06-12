@@ -467,9 +467,10 @@ step('exchange shows supply depth and can create keep-stocked directives', funct
   fireClick('exComm', { c: 'FOOD' });
   const html = (elCache['#exchange'] && elCache['#exchange'].innerHTML) || '';
   if (html.indexOf('Known Economy') < 0) throw new Error('known economy index missing');
-  if (html.indexOf('Commodity Tape') < 0) throw new Error('commodity tape side panel missing');
+  if (html.indexOf('Sources & sinks') < 0) throw new Error('source/sink market graph panel missing');
   if (html.indexOf('Supply map') < 0) throw new Error('supply depth panel missing');
   if (html.indexOf('in-flight') < 0) throw new Error('in-flight cargo column missing');
+  if (html.indexOf('need-first') < 0) throw new Error('market sorting explanation missing');
   if (html.indexOf('>focus<') < 0 || html.indexOf('>fetch<') < 0 || html.indexOf('>route<') < 0) throw new Error('supply map actions are not clearly named');
   if (html.indexOf('data-act="marketKeep"') < 0) throw new Error('keep-stocked action missing');
   const before = s.directives.length;
@@ -477,6 +478,13 @@ step('exchange shows supply depth and can create keep-stocked directives', funct
   if (s.directives.length !== before + 1) throw new Error('marketKeep did not create directive');
   const d = s.directives[s.directives.length - 1];
   if (d.sys !== home.id || d.c !== 'FOOD' || d.target !== 30) throw new Error('directive details wrong');
+});
+
+step('infamy display uses tier labels', function () {
+  G.state.infamy = 6;
+  SW.ui.refresh();
+  const text = String((elCache['#stInfamy'] && elCache['#stInfamy'].textContent) || '');
+  if (text.indexOf('Most Wanted') < 0) throw new Error('infamy tier missing from topbar: ' + text);
 });
 
 step('directive form preserves edits across redraws and events', function () {

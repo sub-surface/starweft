@@ -15,6 +15,30 @@ SW.combat = (function () {
     state.combat = { nextRaidAt: 150 + D.TUNE.raidBaseEvery, nextHunterAt: 0 };
   };
 
+  C.infamyStatus = function (value) {
+    const n = Math.max(0, U.num(value));
+    let label = 'Clean';
+    if (n >= 5) label = 'Most Wanted';
+    else if (n >= D.TUNE.infamyBlackMarket) label = 'Known Pirate';
+    else if (n >= 1) label = 'Smuggler';
+    return {
+      value: n,
+      label: label,
+      tier: n >= 5 ? 3 : n >= D.TUNE.infamyBlackMarket ? 2 : n >= 1 ? 1 : 0,
+      blackMarket: n >= D.TUNE.infamyBlackMarket,
+      hunters: n >= 5,
+      finePct: n >= 5 ? 10 : 0,
+    };
+  };
+
+  C.infamyLines = function (state) {
+    const st = C.infamyStatus(state && state.infamy);
+    const lines = ['Current tier: ' + st.label + ' (' + U.fmt1(st.value) + '). Raids, theft, bribes, and black manifests raise it.'];
+    lines.push(st.blackMarket ? 'Reach black markets are open: sell prices get the pirate premium.' : 'Reach black markets open at infamy ' + D.TUNE.infamyBlackMarket + '.');
+    lines.push(st.hunters ? 'Vigil hunters are active: periodic fines cut credits and lower infamy.' : 'At infamy 5+, Vigil hunters start collecting.');
+    return lines;
+  };
+
   C.power = function (state, ship) {
     let p = D.HULLS[ship.hull].power || 0;
     if (SW.tech.has(state, 'doc_vanguard')) p *= 1.4;

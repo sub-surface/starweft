@@ -267,6 +267,8 @@ hr.thin { border: none; border-top: 1px solid var(--line); margin: 8px 0; }
 .commChip { padding: 2px 9px; border: 1px solid var(--line-bright); cursor: pointer; font-size: 11.5px; }
 .commChip.sel { border-color: var(--accent); color: var(--accent); }
 canvas.spark { background: rgba(255,255,255,0.02); }
+.marketPairs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border: 1px solid var(--line); padding: 7px; margin-bottom: 8px; }
+.marketPairs .row { gap: 8px; }
 
 /* tech tree canvas */
 #techCanvas { width: 100%; display: block; background: rgba(255,255,255,0.01); border: 1px solid var(--line); cursor: pointer; }

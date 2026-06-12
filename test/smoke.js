@@ -321,6 +321,27 @@ section('SW.market module');
     assert(map[home.id] && map[home.id].FOOD === 9, 'buildInboundMap records supply mission (got ' + (map[home.id] && map[home.id].FOOD) + ')');
   }
 
+  // buildCommodityReport: ranks urgent sinks first and exposes both sides of the tape
+  {
+    const st = G.newGame({ seed: 'smoke-4c-report', difficulty: 'relaxed' });
+    st.systems.forEach(function (sys) {
+      sys.discovered = false; sys.scourge = 0;
+      sys.stocks.FOOD = 50; sys.capacity.FOOD = 120; sys.cons.FOOD = 0; sys.hist = sys.hist || {};
+      sys.hist.FOOD = [50, 50, 50, 50, 50];
+    });
+    const src = st.systems[0], urgent = st.systems[1], rich = st.systems[2], quiet = st.systems[3];
+    [src, urgent, rich, quiet].forEach(function (sys) { sys.discovered = true; });
+    src.stocks.FOOD = 115; src.prod.FOOD = 1.2; src.hist.FOOD = [40, 38, 36, 34, 32];
+    urgent.stocks.FOOD = 0; urgent.cons.FOOD = 0.5; urgent.hist.FOOD = [70, 76, 82, 90, 96];
+    rich.stocks.FOOD = 1; rich.cons.FOOD = 0.1; rich.hist.FOOD = [55, 58, 62, 66, 70];
+    quiet.stocks.FOOD = 50; quiet.hist.FOOD = [50, 50, 50, 50, 50];
+    const report = M.buildCommodityReport(st, 'FOOD');
+    assert(report.rows[0].sys.id === urgent.id, 'commodity report sorts largest unmet gap first');
+    assert(report.sources[0].sys.id === src.id, 'commodity report cheapest/source side exposed');
+    assert(report.sinks[0].sys.id === urgent.id || report.sinks[0].sys.id === rich.id, 'commodity report sink side exposed');
+    assert(report.movers.length >= 2 && report.movers[0].deltaPct > 0, 'commodity report includes trend movers');
+  }
+
   // TUNE constants
   assert(typeof D.TUNE.marketReserveMin === 'number' && D.TUNE.marketReserveMin > 0, 'marketReserveMin tuning constant present');
   assert(typeof D.TUNE.marketReserveCapFraction === 'number', 'marketReserveCapFraction tuning constant present');
@@ -850,6 +871,17 @@ section('Combat & privateering');
   }
   assert(res && res.ok, 'raid action resolves');
   assert(st.infamy > infamy0, 'raiding raises infamy (' + st.infamy.toFixed(1) + ')');
+  const low = SW.combat.infamyStatus(2.5);
+  const high = SW.combat.infamyStatus(6);
+  assert(low.label === 'Smuggler' && low.blackMarket === false, 'infamy status labels low tier');
+  assert(high.label === 'Most Wanted' && high.blackMarket === true && high.hunters === true, 'infamy status labels high tier effects');
+  const black = st.systems.find(function (s) { return s.region === 'reach' && s.discovered && s.scourge !== 2; });
+  if (black) {
+    const before = st.infamy;
+    st.story.pending = 'ev_black_manifest'; st.story.ctx = { sysId: black.id, shipId: cv.id };
+    SW.story.choose(st, 0);
+    assert(st.infamy > before, 'black manifest encounter choice raises infamy');
+  }
   // retainer
   A.research(st, 'retainers');
   const ret = A.hireRetainer(st, 'reach');
