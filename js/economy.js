@@ -17,6 +17,18 @@ SW.economy = (function () {
     return D.COMMODITIES[c].base * mult * bias;
   };
 
+  // Berth character: a named body's local rate for a commodity (1 = hub rate).
+  // The hub station is neutral — it IS the system market; everything else
+  // prices by what it digs, grows, or hungers for.
+  E.berthMult = function (state, sys, bodyName, c) {
+    if (!bodyName || !SW.planets) return 1;
+    const body = SW.planets.body(state, sys.id, bodyName);
+    if (!body || body.station) return 1;
+    let m = (D.BERTH[body.type] && D.BERTH[body.type][c]) || 1;
+    if (body.settled && D.BERTH_SETTLED[c]) m = Math.max(m, D.BERTH_SETTLED[c]);
+    return m;
+  };
+
   // Faction with dominant trade presence here (gets a price edge).
   E.dominant = function (sys) {
     let best = null, bestV = 0.5, second = 0;
@@ -34,18 +46,18 @@ SW.economy = (function () {
     if (faction === 'player' && SW.perks && SW.perks.has(state, 'maker')) e *= 1.5;
     return e;
   }
-  E.buyPrice = function (state, sys, c, faction) {
+  E.buyPrice = function (state, sys, c, faction, body) {
     const dom = E.dominant(sys);
-    let p = E.price(state, sys, c);
+    let p = E.price(state, sys, c) * E.berthMult(state, sys, body, c);
     const edge = edgeFor(state, faction);
     if (dom === faction) p *= (1 - edge);
     else if (dom && faction) p *= (1 + D.TUNE.presenceEdge * 0.5);
     if (faction === 'player' && SW.perks && SW.perks.has(state, 'baron')) p *= 0.96;
     return p;
   };
-  E.sellPrice = function (state, sys, c, faction) {
+  E.sellPrice = function (state, sys, c, faction, body) {
     const dom = E.dominant(sys);
-    let p = E.price(state, sys, c);
+    let p = E.price(state, sys, c) * E.berthMult(state, sys, body, c);
     const edge = edgeFor(state, faction);
     if (dom === faction) p *= (1 + edge);
     else if (dom && faction) p *= (1 - D.TUNE.presenceEdge * 0.5);
@@ -60,19 +72,19 @@ SW.economy = (function () {
   };
 
   // Mutating trades. Caller handles credits. Returns actual qty + money moved.
-  E.marketBuy = function (state, sys, c, qty, faction) {
+  E.marketBuy = function (state, sys, c, qty, faction, body) {
     qty = Math.max(0, Math.min(Math.floor(qty), Math.floor(sys.stocks[c] || 0)));
     if (qty <= 0) return { qty: 0, cost: 0 };
-    const cost = Math.ceil(E.buyPrice(state, sys, c, faction) * qty);
+    const cost = Math.ceil(E.buyPrice(state, sys, c, faction, body) * qty);
     sys.stocks[c] -= qty;
     bumpPresence(state, sys, faction, qty);
     return { qty: qty, cost: cost };
   };
-  E.marketSell = function (state, sys, c, qty, faction) {
+  E.marketSell = function (state, sys, c, qty, faction, body) {
     const cap = sys.capacity[c] || D.TUNE.capDefault;
     qty = Math.max(0, Math.min(Math.floor(qty), Math.floor(cap - (sys.stocks[c] || 0))));
     if (qty <= 0) return { qty: 0, revenue: 0 };
-    const revenue = Math.floor(E.sellPrice(state, sys, c, faction) * qty);
+    const revenue = Math.floor(E.sellPrice(state, sys, c, faction, body) * qty);
     sys.stocks[c] += qty;
     bumpPresence(state, sys, faction, qty);
     return { qty: qty, revenue: revenue };

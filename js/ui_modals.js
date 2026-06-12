@@ -120,7 +120,7 @@ SW.uiModals = (function () {
     const s = st();
     const modal = $('#gameoverModal');
     const stats = s.stats;
-    let html = '<h2>' + (go.win ? '<i>✦</i> THE WEAVE HOLDS' : '✖ THE WEAVE UNRAVELS') + '</h2>';
+    let html = '<h2>' + (go.win ? '<i>✦</i> THE WEAVE HOLDS' : '✕ THE WEAVE UNRAVELS') + '</h2>';
     html += '<div class="body">' + esc(go.reason) + '</div>';
     html += '<div class="statGrid">' +
       gr('Origin · Doctrine', D.ORIGINS[s.origin].name + ' · ' + (SW.tech.doctrine(s) ? D.TECHS[SW.tech.doctrine(s)].name.replace('Doctrine: ', '') : 'none')) +
@@ -164,7 +164,7 @@ SW.uiModals = (function () {
       const def = D.ORIGINS[o];
       const unlocked = SW.game.originUnlocked(o);
       html += '<div class="originCard' + (chosenOrigin === o ? ' sel' : '') + (unlocked ? '' : ' lock') + '" data-origin="' + (unlocked ? o : '') + '">' +
-        '<div style="flex:1"><div class="oname">' + esc(def.name) + (unlocked ? '' : ' 🔒') + '</div>' +
+        '<div style="flex:1"><div class="oname">' + esc(def.name) + (unlocked ? '' : ' ⊘') + '</div>' +
         '<div class="sub">' + (unlocked ? esc(def.desc) : 'Locked — ' + esc(D.LEGACY_HINTS[def.locked])) + '</div></div></div>';
     }
     html += '<h4>Galaxy</h4>';

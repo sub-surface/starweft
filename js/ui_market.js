@@ -252,12 +252,8 @@ SW.uiMarket = (function () {
     const s = st();
     const ex = $('#exchange');
     let html = '<header><h2><i style="color:var(--accent)">▦</i> WEFT MERCANTILE WIRE</h2>' +
-      '<span class="sub mastheadEst">all prices final · all futures uncertain</span>';
-    for (const c of D.COMM_IDS) {
-      if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
-      html += '<span class="commChip' + (c === exchangeComm ? ' sel' : '') + '" data-exc="' + c + '" data-info="commodity:' + c + '">' + commName(c) + '</span>';
-    }
-    html += '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
+      '<span class="sub mastheadEst">all prices final · all futures uncertain</span>' +
+      '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
 
     // The tape: median known price per commodity, ticking heartbeat of the weave
     html += '<div id="exTape">';

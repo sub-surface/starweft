@@ -70,13 +70,13 @@ SW.scourge = (function () {
         if (chosen) {
           const tgt = chosen.tgt;
           if (tgt.buildings.indexOf('bastion') >= 0 && U.chance(state, T.bastionBlock)) {
-            SW.game.emit('toast', { kind: 'good', text: '🛡 The bastion at ' + tgt.name + ' held the line.' });
+            SW.game.emit('toast', { kind: 'good', text: '⛨ The bastion at ' + tgt.name + ' held the line.' });
             SW.game.emit('sfx', 'shield');
           } else {
             tgt.scourge = 1;
             tgt.threatAt = state.tick + T.scourgeWarnTicks;
             if (tgt.discovered) {
-              SW.game.emit('toast', { kind: 'bad', text: '⚠ The Scourge reaches for ' + tgt.name + '. ' + T.scourgeWarnTicks + ' ticks to act.' });
+              SW.game.emit('toast', { kind: 'bad', text: '△ The Scourge reaches for ' + tgt.name + '. ' + T.scourgeWarnTicks + ' ticks to act.' });
               SW.game.emit('sfx', 'dread');
             }
           }
@@ -153,7 +153,7 @@ SW.scourge = (function () {
       }
     }
     if (!isOrigin) {
-      SW.game.emit('toast', { kind: 'bad', text: '✖ ' + sys.name + ' has fallen to the Scourge.' });
+      SW.game.emit('toast', { kind: 'bad', text: '✕ ' + sys.name + ' has fallen to the Scourge.' });
       SW.game.emit('sfx', 'fall');
     }
   }

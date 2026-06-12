@@ -16,6 +16,13 @@ SW.story = (function () {
   };
 
   function ev(id) { return dynamic[id] || SW.eventsData.byId[id]; }
+  function prologueOnly(state) {
+    return !!(state && state.tutorial && state.tutorial.active);
+  }
+  function allowedNow(state, e) {
+    if (!e) return false;
+    return !prologueOnly(state) || !!e.prologue;
+  }
 
   ST.tick = function (state) {
     const st = state.story;
@@ -30,11 +37,14 @@ SW.story = (function () {
     }
     for (let i = 0; i < st.queue.length; i++) {
       if (state.tick >= st.queue[i].at) {
-        const item = st.queue.splice(i, 1)[0];
-        if (ev(item.id)) { fire(state, item.id, item.ctx); return; }
+        const item = st.queue[i];
+        if (!allowedNow(state, ev(item.id))) continue;
+        st.queue.splice(i, 1);
+        fire(state, item.id, item.ctx); return;
       }
     }
     const pool = SW.eventsData.EVENTS.filter(function (e) {
+      if (!allowedNow(state, e)) return false;
       if (e.arrival) return false;
       const last = st.seen[e.id];
       if (last !== undefined && !e.repeat) return false;

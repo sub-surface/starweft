@@ -455,18 +455,32 @@ step('left system-panel sections start collapsed and toggle on click', function 
   const match = html.match(/<h4[^>]*data-section="([^"]+)"[^>]*data-title="Market"/);
   if (!match) throw new Error('market heading is not a collapsible section heading: ' + html.slice(0, 400));
   const section = match[1];
-  if (html.indexOf('class="panelSection collapsed" data-section="' + section + '"') < 0) {
-    throw new Error('market section is not collapsed by default');
+  if (html.indexOf('class="panelSection collapsed" data-section="' + section + '"') >= 0) {
+    throw new Error('market section should be open by default');
   }
   fireSectionClick(section);
   const opened = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
   if (opened.indexOf('class="panelSection collapsed" data-section="' + section + '"') >= 0) {
     throw new Error('click did not open market section');
   }
+  const other = G.state.systems.find(function (sys) { return sys.id !== G.state.homeId && sys.discovered; });
+  if (!other) throw new Error('no discovered system available for cross-system section test');
+  SW.render.selectedSys = other.id;
+  SW.ui.refresh();
+  const reopened = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (reopened.indexOf('class="panelSection collapsed" data-section="' + section + '"') >= 0) {
+    throw new Error('market section did not stay open across systems');
+  }
   fireSectionClick(section);
   const closed = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
   if (closed.indexOf('class="panelSection collapsed" data-section="' + section + '"') < 0) {
     throw new Error('second click did not collapse market section');
+  }
+  SW.render.selectedSys = G.state.homeId;
+  SW.ui.refresh();
+  const returned = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (returned.indexOf('class="panelSection collapsed" data-section="' + section + '"') < 0) {
+    throw new Error('closed market section did not remain closed when returning to home');
   }
 });
 
@@ -651,6 +665,16 @@ step('game over modal (forced win) renders', function () {
   SW.ui.showGameOver(G.state.gameOver);
   fireClick('postgame');
   if (G.state.gameOver) throw new Error('postgame did not clear gameOver');
+});
+
+step('postgame continue resumes the simulation', function () {
+  G.state.gameOver = { win: true, reason: 'test', tick: G.state.tick, score: 0 };
+  G.state.paused = true;
+  const r = A.continuePostgame(G.state);
+  if (!r.ok) throw new Error('continuePostgame rejected: ' + (r.msg || 'no msg'));
+  if (G.state.gameOver) throw new Error('continuePostgame did not clear gameOver');
+  if (G.state.paused) throw new Error('continuePostgame left the game paused');
+  if (G.state.speed !== 1) throw new Error('continuePostgame did not restore normal speed');
 });
 
 step('interval loop bodies run without throwing', function () {

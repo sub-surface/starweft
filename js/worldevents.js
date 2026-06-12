@@ -66,7 +66,7 @@ SW.worldevents = (function () {
       sys.presence.player = (sys.presence.player || 0) + 1.5;
     }
     state.stats.contractsDone = (state.stats.contractsDone || 0) + 1;
-    SW.game.emit('toast', { kind: 'good', text: '✔ Contract fulfilled: ' + ct.label + ' (+' + U.fmt(ct.reward.credits || 0) + '¤, +' + (ct.reward.research || 0) + '◇)' });
+    SW.game.emit('toast', { kind: 'good', text: '✓ Contract fulfilled: ' + ct.label + ' (+' + U.fmt(ct.reward.credits || 0) + '¤, +' + (ct.reward.research || 0) + '◇)' });
     SW.game.emit('sfx', 'sell');
   }
 
@@ -76,9 +76,9 @@ SW.worldevents = (function () {
     const sys = state.systems[ct.sysId];
     if (ct.kind === 'famine' || ct.kind === 'medical') {
       sys.prosperity = Math.max(0, sys.prosperity - 18);
-      SW.game.emit('toast', { kind: 'bad', text: '✖ ' + ct.label + ' — too late. ' + sys.name + ' will remember.' });
+      SW.game.emit('toast', { kind: 'bad', text: '✕ ' + ct.label + ' — too late. ' + sys.name + ' will remember.' });
     } else {
-      SW.game.emit('toast', { kind: 'bad', text: '✖ Contract lapsed: ' + ct.label });
+      SW.game.emit('toast', { kind: 'bad', text: '✕ Contract lapsed: ' + ct.label });
     }
     state.stats.contractsFailed = (state.stats.contractsFailed || 0) + 1;
   }
@@ -107,7 +107,7 @@ SW.worldevents = (function () {
       label: (medical ? 'Outbreak' : 'Famine') + ' at ' + sys.name + ' — deliver ' + qty + ' ' + D.COMMODITIES[c].name,
     };
     state.contracts.push(ct);
-    SW.game.emit('toast', { kind: 'bad', text: '⚠ ' + ct.label + ' within ' + (ct.deadline - state.tick) + ' ticks.' });
+    SW.game.emit('toast', { kind: 'bad', text: '△ ' + ct.label + ' within ' + (ct.deadline - state.tick) + ' ticks.' });
     SW.game.emit('sfx', 'dread');
   }
 
@@ -154,7 +154,7 @@ SW.worldevents = (function () {
       state.rep.vigil = Math.min(10, state.rep.vigil + 0.5);
       state.rep.severed = Math.max(-10, state.rep.severed - 0.5);
       state.stats.blockadesBroken = (state.stats.blockadesBroken || 0) + 1;
-      SW.game.emit('toast', { kind: 'good', text: '⚔ Blockade broken by ' + ship.name + '. Bounty +350¤.' });
+      SW.game.emit('toast', { kind: 'good', text: '‡ Blockade broken by ' + ship.name + '. Bounty +350¤.' });
       SW.game.emit('sfx', 'shield');
       return { ok: true, win: true };
     }
@@ -184,7 +184,7 @@ SW.worldevents = (function () {
       }
     }
     if (sys.discovered) {
-      SW.game.emit('toast', { kind: 'bad', text: '☀ Superflare at ' + sys.name + (hurt ? ' — ' + hurt + ' of your ships riding it out with fried sensors.' : '. Local biostock scorched.') });
+      SW.game.emit('toast', { kind: 'bad', text: '✶ Superflare at ' + sys.name + (hurt ? ' — ' + hurt + ' of your ships riding it out with fried sensors.' : '. Local biostock scorched.') });
     }
   }
 
@@ -193,7 +193,7 @@ SW.worldevents = (function () {
     if (!cands.length) return;
     const sys = U.pick(state, cands);
     sys.prodBoostUntil = state.tick + 240;
-    SW.game.emit('toast', { kind: 'good', text: '☄ Comet breakup at ' + sys.name + ' — production ×2.5 for 240 ticks. Harvest window open.' });
+    SW.game.emit('toast', { kind: 'good', text: '⋆ Comet breakup at ' + sys.name + ' — production ×2.5 for 240 ticks. Harvest window open.' });
   }
 
   function spawnSurveyContract(state) {

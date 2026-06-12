@@ -14,6 +14,25 @@ SW.uiSystem = (function () {
   function selectedShip() { return SW.ui.selectedShip(); }
   function pickLogisticsShip(s, preferred) { return SW.ui.pickLogisticsShip(s, preferred); }
 
+  // ============ shared facility formatter ============
+  // Returns a short human-readable benefit string for a facility definition, e.g.
+  //   '+0.45 Ore/t to this market', '+0.25 research/t', '+40 storage', '+2M settlers'
+  function facilityFxText(fid) {
+    const f = D.FACILITIES[fid];
+    if (!f || !f.fx) return '';
+    const parts = [];
+    if (f.fx.prod) {
+      for (const c in f.fx.prod) {
+        const comm = D.COMMODITIES[c];
+        parts.push('+' + f.fx.prod[c].toFixed(2) + ' ' + (comm ? comm.name : c) + '/t');
+      }
+    }
+    if (f.fx.research) parts.push('+' + f.fx.research.toFixed(2) + ' research/t');
+    if (f.fx.cap)      parts.push('+' + f.fx.cap + ' storage cap');
+    if (f.fx.pop)      parts.push('+' + f.fx.pop + 'M settlers');
+    return parts.join(' · ');
+  }
+
   // ============ system panel ============
   function renderSysPanel() {
     const s = st(), panel = $('#sysPanel');
@@ -36,7 +55,7 @@ SW.uiSystem = (function () {
     if (!sys.surveyed) html += '<div class="sub">Unsurveyed — idle a scout here to chart its worlds' + (sys.surveyProg ? ' (' + Math.round(100 * sys.surveyProg / D.TUNE.surveyTicks) + '%)' : '') + '.</div>';
     if (SW.tech.has(s, 'driftholds') && sys.id !== s.homeId && sys.surveyed && sys.scourge !== 2) {
       html += '<div class="row"><button data-act="relocate" ' + (s.credits < D.TUNE.relocateCost ? 'disabled' : '') +
-        ' title="Move the Home anchorage here. The command web re-centers; the Scourge loses your scent.">⚓ relocate home (' + U.fmt(D.TUNE.relocateCost) + '¤)</button></div>';
+        ' title="Move the Home anchorage here. The command web re-centers; the Scourge loses your scent.">⌂ relocate home (' + U.fmt(D.TUNE.relocateCost) + '¤)</button></div>';
     }
 
     if (sys.scourge === 2) {
@@ -46,7 +65,7 @@ SW.uiSystem = (function () {
       return;
     }
     if (sys.scourge === 1) {
-      html += '<div class="listItem bad"><span style="color:var(--danger)">⚠ Scourge in ' + Math.max(0, sys.threatAt - s.tick) + ' ticks.</span><div class="sub">Evacuate. A ship with ' + D.TUNE.panaceaToInoculate + ' Panacea can inoculate.</div></div>';
+      html += '<div class="listItem bad"><span style="color:var(--danger)">△ Scourge in ' + Math.max(0, sys.threatAt - s.tick) + ' ticks.</span><div class="sub">Evacuate. A ship with ' + D.TUNE.panaceaToInoculate + ' Panacea can inoculate.</div></div>';
     }
     if (sys.pop > 0) {
       const cls = sys.prosperity > 60 ? 'hi' : sys.prosperity > 35 ? '' : 'lo';
@@ -64,16 +83,20 @@ SW.uiSystem = (function () {
     }
 
     // market
+    const locked = SW.tutorial && SW.tutorial.mapLocked(s); // prologue: the cradle only
     const ship = selectedShip();
     const shipHere = ship && ship.mode === 'idle' && ship.at === sys.id;
-    const fetchShip = !shipHere ? pickLogisticsShip(s, ship) : null; // FETCH: one-click gather-and-deliver
+    const fetchShip = !shipHere && !locked ? pickLogisticsShip(s, ship) : null; // FETCH: one-click gather-and-deliver
     const canFetch = !!fetchShip;
-    html += '<h4>Market</h4><table class="mkt"><tr><th>good</th><th>stock</th><th>price</th><th>Δ</th>' + (shipHere || canFetch ? '<th></th>' : '') + '</tr>';
+    const berth = shipHere ? ship.body : null; // berth rates color the whole table
+    html += '<h4>Market' + (berth ? ' <span class="sub">— berthed at ' + esc(berth) + '</span>' : '') + '</h4>' +
+      '<table class="mkt"><tr><th>good</th><th>stock</th><th>price</th><th>Δ</th>' + (shipHere || canFetch ? '<th></th>' : '') + '</tr>';
     for (const c of D.COMM_IDS) {
       if (D.COMMODITIES[c].locked && !SW.tech.has(s, 'panacea')) continue;
       const stock = Math.floor(sys.stocks[c] || 0);
       if (stock === 0 && !(sys.cons[c] > 0) && !shipHere) continue;
-      const price = SW.economy.price(s, sys, c);
+      const bm = berth ? SW.economy.berthMult(s, sys, berth, c) : 1;
+      const price = SW.economy.price(s, sys, c) * bm;
       const ratio = price / D.COMMODITIES[c].base;
       // deal colors: green = buy here, orange = sell here
       const pcol = ratio < 0.8 ? '#7fe0a8' : ratio > 1.35 ? '#ffb070' : 'var(--ink-dim)';
@@ -83,7 +106,8 @@ SW.uiSystem = (function () {
         const old = hist[Math.max(0, hist.length - 4)];
         trend = price > old * 1.06 ? '↑' : price < old * 0.94 ? '↓' : '·';
       }
-      html += '<tr data-info="commodity:' + c + '"><td>' + commName(c) + '</td><td>' + stock + '</td><td style="color:' + pcol + '">' + Math.round(price) + '</td><td>' + trend + '</td>';
+      const bmark = bm < 1 ? ' <span style="color:#7fe0a8" title="' + esc(berth || '') + ' rate">▾</span>' : bm > 1 ? ' <span style="color:#ffb070" title="' + esc(berth || '') + ' rate">▴</span>' : '';
+      html += '<tr data-info="commodity:' + c + '"><td>' + commName(c) + '</td><td>' + stock + '</td><td style="color:' + pcol + '">' + Math.round(price) + bmark + '</td><td>' + trend + '</td>';
       if (shipHere) {
         html += '<td><button data-act="buy" data-c="' + c + '" data-q="5">+5</button> <button data-act="buy" data-c="' + c + '" data-q="999">max</button> ' +
           ((ship.cargo[c] || 0) > 0 ? '<button data-act="sellc" data-c="' + c + '">sell</button>' : '') + '</td>';
@@ -110,8 +134,9 @@ SW.uiSystem = (function () {
       }
     }
 
-    // construction
-    const builds = Object.keys(D.BUILDINGS).filter(function (b) {
+    // construction — hidden in the prologue: the escrow is for the Hydrofarm,
+    // and a player who spends it on a Depot has bought themselves a wall
+    const builds = locked ? [] : Object.keys(D.BUILDINGS).filter(function (b) {
       const def = D.BUILDINGS[b];
       if (sys.buildings.indexOf(b) >= 0) return false;
       if (def.tech && !SW.tech.has(s, def.tech)) return false;
@@ -120,8 +145,8 @@ SW.uiSystem = (function () {
       if (def.onlyWonder && sys.wonder !== def.onlyWonder) return false;
       return true;
     });
-    if (sys.buildings.length || builds.length) html += '<h4>Construction</h4>';
-    if (sys.buildings.length) {
+    if ((!locked && sys.buildings.length) || builds.length) html += '<h4>Construction</h4>';
+    if (!locked && sys.buildings.length) {
       html += '<div class="row">' + sys.buildings.map(function (b) {
         return '<span class="tag acc" data-info="building:' + b + '">' + D.BUILDINGS[b].icon + ' ' + D.BUILDINGS[b].name + '</span>';
       }).join('') + '</div>';
@@ -156,27 +181,47 @@ SW.uiSystem = (function () {
     }
     const selBody = (SW.render.mode === 'system' && SW.render.systemId === sys.id) ? SW.render.selectedBody : null;
     if (selBody && sys.surveyed && sys.scourge !== 2) {
-      const opts = SW.sites.options(s, sys, selBody);
+      const optsAll = SW.sites.options(s, sys, selBody);
+      const opts = locked ? ((s.tutorial && s.tutorial.goal >= 4) ? optsAll.filter(function (fid) { return fid === 'hydrofarm'; }) : []) : optsAll;
       const curList = SW.sites.listAt(sys, selBody.name);
-      if (curList.length || opts.length) {
+      // the in-system verb: shuttle the selected (or any idle) local ship here
+      const hopShip = (ship && ship.mode === 'idle' && ship.at === sys.id) ? ship :
+        s.ships.find(function (sh) { return sh.mode === 'idle' && sh.at === sys.id; });
+      const hopping = s.ships.find(function (sh) { return sh.at === sys.id && sh.mode === 'shuttle' && sh.hop && sh.hop.to === selBody.name; });
+      if (curList.length || opts.length || hopShip || hopping) {
         const cap = SW.sites.slotCap(selBody);
         html += '<h4>' + esc(selBody.name) + ' <span class="sub">anchorage ' + curList.length + '/' + cap + '</span></h4>';
+        if (hopping) {
+          html += '<div class="sub">⇢ ' + esc(hopping.name) + ' en route — ' + Math.max(0, hopping.hop.arrive - s.tick) + 't.</div>';
+        } else if (hopShip && (hopShip.body || null) !== selBody.name) {
+          const eta = SW.ships.hopTicks(s, sys.id, hopShip.body, selBody.name);
+          html += '<div class="row"><button class="primary" data-act="hopHere" data-body="' + esc(selBody.name) + '" ' +
+            'title="Shuttle ' + esc(hopShip.name) + ' to a berth at ' + esc(selBody.name) + ' (~' + eta + 't). Berth rates apply to trades.">⇢ FLY HERE (' + eta + 't)</button></div>' +
+            (locked ? '<div class="sub">This is the prologue verb: berth, buy, haul, sell.</div>' : '');
+        } else if (hopShip) {
+          html += '<div class="sub">⇢ ' + esc(hopShip.name) + ' is berthed here.</div>';
+        }
         for (const cur of curList) {
           const cf = D.FACILITIES[cur.fac];
-          html += '<div class="sub">' + cf.icon + ' ' + cf.name + (cf.orbital ? ' (in orbit)' : '') + ' anchored here.</div>';
+          const fxLine = facilityFxText(cur.fac);
+          html += '<div class="sub">' + cf.icon + ' ' + cf.name + (cf.orbital ? ' (in orbit)' : '') + ' anchored here.' +
+            (fxLine ? ' <span class="sub num">' + esc(fxLine) + '</span>' : '') + '</div>';
         }
         for (const fid of opts) {
           const f = D.FACILITIES[fid];
           const fCost = SW.sites.costOf(s, fid);
+          const fxLine = facilityFxText(fid);
           html += '<div class="listItem"><div class="row"><span class="title grow">' + f.icon + ' ' + f.name + '</span>' +
             '<button data-act="buildSite" data-fac="' + fid + '" data-body="' + esc(selBody.name) + '" ' + (s.credits < fCost ? 'disabled' : '') + '>build</button></div>' +
-            '<div class="sub num">' + U.fmt(fCost) + '¤ + ' + Object.keys(f.mats).map(function (c) { return f.mats[c] + ' ' + D.COMMODITIES[c].icon; }).join(' + ') + ' · ' + esc(f.desc) + '</div></div>';
+            '<div class="sub num">' + U.fmt(fCost) + '¤ + ' + Object.keys(f.mats).map(function (c) { return f.mats[c] + ' ' + D.COMMODITIES[c].icon; }).join(' + ') + ' · ' + esc(f.desc) + '</div>' +
+            (fxLine ? '<div class="sub num">' + esc(fxLine) + '</div>' : '') +
+            '</div>';
         }
       }
     }
 
-    // shipyard
-    if (sys.id === s.homeId || sys.type === 'industrial') {
+    // shipyard — hidden in the prologue (one hull, one escrow, one lesson)
+    if (!locked && (sys.id === s.homeId || sys.type === 'industrial')) {
       html += '<h4>Shipyard</h4>';
       for (const h in D.HULLS) {
         const hull = D.HULLS[h];
@@ -190,10 +235,12 @@ SW.uiSystem = (function () {
     if (here.length) {
       html += '<h4>Ships here</h4>';
       for (const sh of here) {
-        html += '<div class="row" data-info="ship:' + sh.id + '"><span class="grow">' + D.HULLS[sh.hull].glyph + ' ' + esc(sh.name) + '</span><button data-act="selShip" data-id="' + sh.id + '">select</button></div>';
+        const where = sh.mode === 'shuttle' && sh.hop ? '⇢ → ' + esc(sh.hop.to) + ' (' + Math.max(0, sh.hop.arrive - s.tick) + 't)' :
+          sh.body ? '· ' + esc(sh.body) : '· anchorage';
+        html += '<div class="row" data-info="ship:' + sh.id + '"><span class="grow">' + D.HULLS[sh.hull].glyph + ' ' + esc(sh.name) + ' <span class="sub">' + where + '</span></span><button data-act="selShip" data-id="' + sh.id + '">select</button></div>';
       }
     }
-    panel.innerHTML = SW.ui.sectionizePanelHtml(html, 'sys:' + sys.id);
+    panel.innerHTML = SW.ui.sectionizePanelHtml(html, 'sys');
   }
 
   m.renderSysPanel = renderSysPanel;

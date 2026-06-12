@@ -19,7 +19,8 @@ SW.ui = (function () {
   let pinnedInfo = null;         // infobox fallback topic
   ui.techView = { x: 0, y: 0, zoom: 1, selected: null }; // shared with ui_tech.js
   let livePortraits = [];        // [{canvas, spec}] animated
-  let panelOpenSections = {};    // system-panel section key -> true when expanded
+  let panelOpenSections = {};    // system-panel section key -> true/false when toggled
+  let panelOpenSectionsLoaded = false;
   let uiPointerActive = false;   // interval redraws must not remove active click targets
   let deferredUiRefresh = false;
 
@@ -89,11 +90,32 @@ SW.ui = (function () {
 
   // ============ section helpers (exposed for ui_system) ============
   function stripTags(html) { return String(html).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); }
-  function sectionKey(panelKey, title, idx) {
+  function sectionKey(panelKey, title) {
     const slug = stripTags(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
-    return panelKey + ':' + idx + ':' + slug;
+    return panelKey + ':' + slug;
+  }
+  function panelSectionsStorageKey(state) {
+    return 'starweft_panel_sections:v2';
+  }
+  function loadPanelSections(state) {
+    if (panelOpenSectionsLoaded) return;
+    panelOpenSectionsLoaded = true;
+    panelOpenSections = {};
+    try {
+      const raw = localStorage.getItem(panelSectionsStorageKey(state));
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      for (const k in parsed) panelOpenSections[k] = !!parsed[k];
+    } catch (e) {}
+  }
+  function savePanelSections(state) {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage) localStorage.setItem(panelSectionsStorageKey(state), JSON.stringify(panelOpenSections));
+    } catch (e) {}
   }
   function sectionizePanelHtml(html, panelKey) {
+    loadPanelSections(st());
     const re = /<h4([^>]*)>([\s\S]*?)<\/h4>/gi;
     let out = '', last = 0, section = null, idx = 0, m;
     while ((m = re.exec(html))) {
@@ -102,14 +124,13 @@ SW.ui = (function () {
         out += html.slice(last, m.index) + '</div></div>';
       }
       const title = stripTags(m[2]);
-      const key = sectionKey(panelKey, title, idx++);
+      const key = sectionKey(panelKey, title);
       const selectedBodyOpen = SW.tutorial && SW.tutorial.mapLocked(st()) &&
         SW.render && SW.render.selectedBody &&
         title.toLowerCase().indexOf(String(SW.render.selectedBody.name).toLowerCase()) === 0;
-      const marketOpen = SW.tutorial && SW.tutorial.mapLocked(st()) &&
-        st() && st().tutorial && st().tutorial.goal >= 1 && st().tutorial.goal <= 3 &&
-        title.toLowerCase().indexOf('market') === 0;
-      const open = selectedBodyOpen || marketOpen || !!panelOpenSections[key];
+      const isMarket = title.toLowerCase().indexOf('market') === 0;
+      const stored = panelOpenSections[key];
+      const open = selectedBodyOpen || (stored === undefined ? isMarket : !!stored);
       out += '<div class="panelSection' + (open ? '' : ' collapsed') + '" data-section="' + key + '">' +
         '<h4' + m[1] + ' class="panelSectionHead" data-section="' + key + '" data-title="' + esc(title) + '" title="Click to expand/collapse">' +
         m[2] + '</h4><div class="panelSectionBody">';
@@ -125,7 +146,10 @@ SW.ui = (function () {
   function onPanelSectionClick(e) {
     const h = e.target.closest && e.target.closest('#sysPanel h4[data-section]');
     if (!h || !h.dataset || !h.dataset.section) return;
-    panelOpenSections[h.dataset.section] = !panelOpenSections[h.dataset.section];
+    const s = st();
+    loadPanelSections(s);
+    panelOpenSections[h.dataset.section] = !(panelOpenSections[h.dataset.section] === true);
+    savePanelSections(s);
     if (e.preventDefault) e.preventDefault();
     if (e.stopPropagation) e.stopPropagation();
     SW.uiSystem.renderSysPanel();
@@ -516,6 +540,7 @@ SW.ui = (function () {
   function afterLoad() {
     const s = SW.game.state;
     applyIdentity(s);
+    loadPanelSections(s);
     ui.exitSystem();
     SW.render.selectedSys = s.ships.length ? s.ships[0].at : s.homeId;
     SW.render.selectedShip = s.ships.length ? s.ships[0].id : null;

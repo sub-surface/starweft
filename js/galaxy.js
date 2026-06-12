@@ -441,6 +441,11 @@ SW.galaxy = (function () {
     home.cons.MEDS = 0.011 * home.pop;
     home.cons.TECH = 0.009 * home.pop;
     home.stocks.FOOD = Math.round(40 * wealth); home.stocks.FUEL = Math.round(30 * wealth);
+    // The Belt still works: a trickle of ore so the cradle has a trade loop
+    // (cheap at the Belt berth, dear at the Anchorage — the prologue's wage).
+    home.prod.ORE = 0.25;
+    home.capacity.ORE = Math.max(home.capacity.ORE || 0, T.capDefault);
+    home.stocks.ORE = Math.round(25 * wealth);
   }
 
   return G;

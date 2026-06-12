@@ -22,10 +22,11 @@ SW.uiShip = (function () {
     const hull = D.HULLS[ship.hull];
     let status;
     if (ship.mode === 'travel') status = '→ ' + esc(s.systems[ship.leg.to].name) + ' · ETA ' + Math.max(0, ship.leg.arrive - s.tick);
+    else if (ship.mode === 'shuttle' && ship.hop) status = '⇢ → ' + esc(ship.hop.to) + ' · ETA ' + Math.max(0, ship.hop.arrive - s.tick);
     else if (ship.routeId) { const r = s.routes.find(function (x) { return x.id === ship.routeId; }); status = '↻ ' + esc(r ? r.name : 'route'); }
     else if (ship.directiveId) status = '◎ directive';
     else if (ship.mission && ship.mission.kind === 'supply') status = '▢ supply run';
-    else status = 'idle · ' + esc(ship.at !== null ? s.systems[ship.at].name : '?');
+    else status = 'idle · ' + esc(ship.at !== null ? s.systems[ship.at].name : '?') + (ship.body ? ' · ' + esc(ship.body) : '');
 
     let html = '<div class="row" data-info="ship:' + ship.id + '"><span class="title grow">' + hull.glyph + ' ' + esc(ship.name) + '</span><span class="sub">' + hull.name + '</span>' +
       '<button data-act="deselShip">✕</button></div>';
@@ -39,7 +40,7 @@ SW.uiShip = (function () {
       if (R2.surveys) bits.push(R2.surveys + ' surveys');
       if (R2.charted) bits.push(R2.charted + ' first sightings');
       if (R2.raids) bits.push(R2.raids + ' raids');
-      if (bits.length) html += '<div class="sub" title="Service record — this hull\'s history">⚓ ' + bits.join(' · ') + '</div>';
+      if (bits.length) html += '<div class="sub" title="Service record — this hull\'s history">≡ ' + bits.join(' · ') + '</div>';
     }
     const cargo = Object.keys(ship.cargo);
     const chipDataV = SW.ships.dataValue(ship);
@@ -60,6 +61,7 @@ SW.uiShip = (function () {
     const hull = D.HULLS[ship.hull];
     let status;
     if (ship.mode === 'travel') status = 'en route to ' + esc(s.systems[ship.leg.to].name) + ' / ETA ' + Math.max(0, ship.leg.arrive - s.tick);
+    else if (ship.mode === 'shuttle' && ship.hop) status = 'shuttling to ' + esc(ship.hop.to) + ' / ETA ' + Math.max(0, ship.hop.arrive - s.tick);
     else if (ship.routeId) {
       const route = s.routes.find(function (x) { return x.id === ship.routeId; });
       status = 'route / ' + esc(route ? route.name : 'unknown');
@@ -100,7 +102,7 @@ SW.uiShip = (function () {
     if (sys && SW.combat.power(s, ship) >= 3 && sys.id !== s.homeId && sys.scourge !== 2) {
       const cd = Math.max(0, (ship.raidCooldownUntil || 0) - s.tick);
       const sim = SW.tech.has(s, 'simulacrum');
-      html += '<button class="danger" data-act="raidHere" ' + (cd ? 'disabled' : '') + ' title="' + (sim ? 'Plan the raid in the Tactical Simulacrum, then fly it or auto-resolve.' : 'Raid this system\'s commerce. Infamy will follow.') + '">☠ RAID' + (cd ? ' (' + cd + ')' : '') + '</button>';
+      html += '<button class="danger" data-act="raidHere" ' + (cd ? 'disabled' : '') + ' title="' + (sim ? 'Plan the raid in the Tactical Simulacrum, then fly it or auto-resolve.' : 'Raid this system\'s commerce. Infamy will follow.') + '">† RAID' + (cd ? ' (' + cd + ')' : '') + '</button>';
     }
     if (sys && sys.id === s.scourge.originId && (ship.cargo.PANACEA || 0) > 0) {
       html += '<button class="primary" data-act="deliverPanacea">✺ DELIVER PANACEA</button>';
@@ -130,10 +132,11 @@ SW.uiShip = (function () {
       const hull = D.HULLS[ship.hull];
       let statusTxt;
       if (ship.mode === 'travel') statusTxt = '→ ' + esc(s.systems[ship.leg.to].name) + ' (' + Math.max(0, ship.leg.arrive - s.tick) + ')';
+      else if (ship.mode === 'shuttle' && ship.hop) statusTxt = '⇢ → ' + esc(ship.hop.to) + ' (' + Math.max(0, ship.hop.arrive - s.tick) + ')';
       else if (ship.routeId) { const r = s.routes.find(function (x) { return x.id === ship.routeId; }); statusTxt = '↻ ' + esc(r ? r.name : '?'); }
       else if (ship.directiveId) statusTxt = '◎ directive';
       else if (ship.mission && ship.mission.kind === 'supply') statusTxt = '▢ supply';
-      else statusTxt = 'idle · ' + esc(s.systems[ship.at].name);
+      else statusTxt = 'idle · ' + esc(s.systems[ship.at].name) + (ship.body ? ' · ' + esc(ship.body) : '');
       const load = SW.ships.cargoTotal(ship);
       html += '<div class="listItem clicky" data-act="focusShip" data-id="' + ship.id + '" data-info="ship:' + ship.id + '">' +
         '<div class="row"><span class="title grow">' + hull.glyph + ' ' + esc(ship.name) + '</span><span class="sub">' + statusTxt + '</span></div>' +

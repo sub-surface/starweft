@@ -627,6 +627,8 @@ SW.game = (function () {
     if (!state.gameOver || !state.gameOver.win) return err('Nothing to continue.');
     state.story.flags.postgame = true;
     state.gameOver = null;
+    state.paused = false;
+    if (!state.speed || state.speed === 0) state.speed = 1;
     return { ok: true };
   };
   A.cheat = function (state, kind, arg) {

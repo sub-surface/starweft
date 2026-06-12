@@ -20,8 +20,10 @@ SW.sites = (function () {
     return D.SITE_SLOTS[body.type] || D.SITE_SLOTS_DEFAULT;
   };
   function hosts(fac, body) {
+    if (fac.requiresRing && !(body && body.ring)) return false;
     return fac.orbital || fac.sites.indexOf(body.type) >= 0;
   }
+  S.hosts = hosts;
 
   // Facilities this body could still anchor. Duplicates are allowed —
   // stacking farms is honest logistics; the price curve self-corrects.

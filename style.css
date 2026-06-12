@@ -270,28 +270,66 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 .marketPairs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border: 1px solid var(--line); padding: 7px; margin-bottom: 8px; }
 .marketPairs .row { gap: 8px; }
 
-/* tech tree canvas */
+/* tech tree canvas (legacy dock tab stub) */
 #techCanvas { width: 100%; display: block; background: rgba(255,255,255,0.01); border: 1px solid var(--line); cursor: pointer; }
-.techHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.techHead h2 { flex: 1; margin: 0; }
-.techToolbar {
-  display: flex; gap: 12px; color: var(--ink-dim); font-size: 11px;
-  border: 1px solid var(--line); padding: 5px 8px; margin-bottom: 10px;
+
+/* ---- tech overlay (full-viewport, below topbar) ---- */
+#techOverlay {
+  position: fixed; top: 42px; bottom: 0; left: 0; right: 0; z-index: 40;
+  background: var(--panel);
+  border-top: 1px solid var(--line-bright);
+  display: flex; flex-direction: column;
 }
-.techGrid { height: calc(100% - 72px); display: grid; grid-template-columns: minmax(520px, 1.35fr) minmax(300px, 0.75fr); gap: 14px; min-height: 0; }
-.techMap { min-height: 0; overflow: hidden; border: 1px solid var(--line); background: rgba(255,255,255,0.012); }
-.techSide { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
-#techCanvasFull { width: 100%; height: 100%; display: block; cursor: grab; }
+.techOvHead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.techOvTitle {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.2em;
+  color: var(--ink); flex: 1;
+}
+.techOvPts {
+  color: var(--accent); font-size: 12.5px; white-space: nowrap;
+}
+.techOvBody {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 340px);
+  gap: 0;
+}
+.techOvMap {
+  min-height: 0; overflow: hidden;
+  border-right: 1px solid var(--line);
+}
+#techCanvasFull {
+  width: 100%; height: 100%; display: block;
+  cursor: grab;
+  background: rgba(255,255,255,0.008);
+}
 #techCanvasFull:active { cursor: grabbing; }
+.techOvSide {
+  min-height: 0; overflow-y: auto;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.techDocHead { margin-top: 8px; }
 .techDetail {
   border: 1px solid var(--line-bright); padding: 10px 12px;
-  background: rgba(201,209,217,0.025); flex: 0 0 auto;
+  background: rgba(201,209,217,0.02); flex-shrink: 0;
 }
 .techDetail h3 { margin: 0; }
 .techDetail p { color: var(--ink); font-size: 12.5px; line-height: 1.45; margin: 8px 0; }
-.techList { min-height: 0; overflow-y: auto; padding-right: 4px; }
 .techPick { cursor: pointer; }
 .techPick.sel { border-color: var(--accent); background: var(--accent-dim); }
+/* legacy modal classes kept so old HTML references do not hard-error */
+.techHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.techHead h2 { flex: 1; margin: 0; }
+.techGrid { height: calc(100% - 72px); display: grid; grid-template-columns: minmax(520px, 1.35fr) minmax(300px, 0.75fr); gap: 14px; min-height: 0; }
+.techMap { min-height: 0; overflow: hidden; border: 1px solid var(--line); background: rgba(255,255,255,0.012); }
+.techSide { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.techList { min-height: 0; overflow-y: auto; padding-right: 4px; }
 
 /* codex */
 .codexTabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); }

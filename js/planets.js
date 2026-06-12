@@ -36,16 +36,99 @@ SW.planets = (function () {
 
   // ---- the real Solar System (home) ----
   const SOL_BODIES = [
-    { name: 'Mercury', type: 'rock',    a: 0.39, r: 0.38 },
-    { name: 'Venus',   type: 'rock',    a: 0.72, r: 0.95 },
-    { name: 'Earth',   type: 'terran',  a: 1.00, r: 1.00, pop: true, station: 'Earth Anchorage' },
-    { name: 'Mars',    type: 'desert',  a: 1.52, r: 0.53, settled: true },
-    { name: 'The Belt',type: 'belt',    a: 2.70, r: 0 },
-    { name: 'Jupiter', type: 'gas',     a: 5.20, r: 11.2 },
-    { name: 'Saturn',  type: 'gas',     a: 9.54, r: 9.4 },
-    { name: 'Uranus',  type: 'icegiant',a: 19.2, r: 4.0 },
-    { name: 'Neptune', type: 'icegiant',a: 30.1, r: 3.9 },
+    { name: 'Mercury', type: 'rock',    a: 0.39, r: 0.38, ring: false },
+    { name: 'Venus',   type: 'rock',    a: 0.72, r: 0.95, ring: false },
+    { name: 'Earth',   type: 'terran',  a: 1.00, r: 1.00, ring: false, pop: true, station: 'Earth Anchorage' },
+    { name: 'Mars',    type: 'desert',  a: 1.52, r: 0.53, ring: false, settled: true },
+    { name: 'The Belt',type: 'belt',    a: 2.70, r: 0, ring: false },
+    { name: 'Jupiter', type: 'gas',     a: 5.20, r: 11.2, ring: false },
+    { name: 'Saturn',  type: 'gas',     a: 9.54, r: 9.4, ring: true },
+    { name: 'Uranus',  type: 'icegiant',a: 19.2, r: 4.0, ring: 'faint' },
+    { name: 'Neptune', type: 'icegiant',a: 30.1, r: 3.9, ring: false },
   ];
+
+  // ---- detail rng: keyed separately so main body rng stream is unaffected ----
+  function detailRng(seedStr, sysId, bodyName) {
+    let s = U.seedFrom(seedStr + '|detail|' + sysId + '|' + bodyName);
+    return function () {
+      s = (s + 0x6D2B79F5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Build a short classification label from body fields (under ~45 chars)
+  function makeClassLabel(type, teq, radius) {
+    var g = radius > 0 ? radius.toFixed(1) + 'g' : null; // rough surface gravity for rocky
+    var re = radius > 0 ? radius.toFixed(1) + ' Re' : null;
+    var tempStr = Math.round(teq) + 'K';
+    switch (type) {
+      case 'lava':
+        if (teq > 1800) return 'cthonian lava world ' + tempStr;
+        return 'lava world ' + tempStr + (g ? ' ' + g : '');
+      case 'rock':
+        if (radius < 0.5) return 'sub-Earth rocky body ' + (g ? g : '');
+        return 'rocky world ' + tempStr + (g ? ' ' + g : '');
+      case 'desert':
+        return 'arid desert world ' + tempStr + (g ? ' ' + g : '');
+      case 'terran':
+        if (teq >= 270 && teq <= 310)
+          return 'temperate garden world ' + (g ? g + ' ' : '') + 'N2-O2';
+        return 'garden world ' + tempStr + (g ? ' ' + g : '');
+      case 'ocean':
+        return 'global ocean world ' + tempStr + (g ? ' ' + g : '');
+      case 'ice':
+        return 'frozen volatile world ' + tempStr;
+      case 'gas':
+        return 'gas giant ' + (re ? re : '');
+      case 'icegiant':
+        return 'cold Neptunian ' + (re ? re : '');
+      case 'carbon':
+        return 'carbon world ' + tempStr + (g ? ' ' + g : '');
+      case 'belt':
+        return 'main-belt rubble field';
+      default:
+        return type + ' ' + tempStr;
+    }
+  }
+
+  // Add detail fields to a body using a separate deterministic rng stream
+  function addBodyDetail(body, seedStr, sysId) {
+    var dr = detailRng(seedStr, sysId, body.name);
+    var type = body.type;
+    // Rings are a body property, not a type icon. Giants get them often;
+    // rocky/icy worlds can rarely keep faint debris rings after impacts.
+    if (body.ring !== undefined) {
+      dr(); // keep detail streams aligned for canonical bodies
+    } else if (type === 'gas') {
+      body.ring = dr() < 0.35;
+    } else if (type === 'icegiant') {
+      var rv = dr();
+      body.ring = rv < 0.20 ? 'faint' : false;
+    } else if (type === 'belt') {
+      dr();
+      body.ring = false;
+    } else {
+      body.ring = dr() < 0.12 ? 'faint' : false;
+    }
+    // visual character fields
+    if (type === 'gas' || type === 'icegiant') {
+      body.bands = 2 + Math.floor(dr() * 3);   // 2-4 bands
+      body.hueShift = (dr() - 0.5) * 30;        // +/-15 hue offset
+    } else if (type === 'rock' || type === 'desert' || type === 'lava') {
+      body.craters = dr() < 0.65;
+      body.scarred  = dr() < 0.35;
+    } else if (type === 'terran' || type === 'ocean' || type === 'ice') {
+      body.iceCaps = dr() < 0.70;
+      body.cloudy  = dr() < 0.55;
+    } else {
+      dr(); dr(); // keep stream length consistent
+    }
+    // classLabel
+    body.classLabel = makeClassLabel(type, body.teq, body.radius || 0);
+  }
 
   // ---- public: get bodies for a system (cached, deterministic) ----
   P.get = function (state, sysId) {
@@ -57,6 +140,20 @@ SW.planets = (function () {
     return out;
   };
   P.clearCache = function () { for (const k in cache) delete cache[k]; };
+
+  // Named body lookup (hops, berth pricing). Null when no such body.
+  P.body = function (state, sysId, name) {
+    if (!name) return null;
+    return P.get(state, sysId).bodies.find(function (b) { return b.name === name; }) || null;
+  };
+
+  // The system hub: where ships berth by default. Station first, then any
+  // peopled world, then nothing (deep-space anchorages have no docks to price).
+  P.hub = function (state, sysId) {
+    const bodies = P.get(state, sysId).bodies;
+    return bodies.find(function (b) { return b.station; }) ||
+           bodies.find(function (b) { return b.pop || b.settled; }) || null;
+  };
 
   function generate(state, sys) {
     const r = rng(state.seed + '|bodies|' + sys.id); // name-independent: renames must not reroll worlds
@@ -80,6 +177,7 @@ SW.planets = (function () {
     if (sys.wonder === 'husk') {
       const swarm = makeBody('The Heddle Swarm', 'belt', 0.8, mass, lum, { wonder: true });
       swarm.blurb = 'A partial Dyson swarm — millions of panels in a heddle pattern. Unfinished, or finished and incomprehensible.';
+      addBodyDetail(swarm, state.seed, sys.id);
       return {
         stars: stars, bodies: [swarm], hz: [hzIn, hzOut], frost: frost,
         note: 'The Loomkeeper Lattice. The only large Precursor structure known to survive.',
@@ -87,7 +185,9 @@ SW.planets = (function () {
     }
     if (sys.id === state.homeId) {
       const bodies = SOL_BODIES.map(function (b, i) {
-        return makeBody(b.name, b.type, b.a, mass, lum, { real: true, pop: b.pop, settled: b.settled, station: b.station, radius: b.r });
+        var body = makeBody(b.name, b.type, b.a, mass, lum, { real: true, pop: b.pop, settled: b.settled, station: b.station, radius: b.r, ring: b.ring });
+        addBodyDetail(body, state.seed, sys.id);
+        return body;
       });
       return { stars: [{ suffix: '', spec: 'G2V', cls: 'G' }], bodies: bodies, hz: [hzIn, hzOut], frost: frost, note: 'Home. The original orchard.' };
     }
@@ -119,7 +219,9 @@ SW.planets = (function () {
       if (type === 'terran' && cls === 'M' && r() < 0.6) type = 'ocean';
 
       const letter = String.fromCharCode(98 + i); // b, c, d, ...
-      bodies.push(makeBody((sys.cat || sys.name) + ' ' + letter, type, a, mass, lum, {}));
+      var procBody = makeBody((sys.cat || sys.name) + ' ' + letter, type, a, mass, lum, {});
+      addBodyDetail(procBody, state.seed, sys.id);
+      bodies.push(procBody);
       a *= 1.4 + r() * 0.7; // Titius–Bode-ish geometric spacing
       if (a > 60) break;
     }

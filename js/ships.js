@@ -97,6 +97,7 @@ SW.ships = (function () {
       name: name || U.shipName(state, state.stats.shipsBuilt || 0),
       hull: hullId, at: sysId, cargo: {}, basis: {},
       mode: 'idle', leg: null, path: [],
+      body: null, hop: null,   // in-system berth + shuttle leg
       mission: null, routeId: null, stopIdx: 0, directiveId: null,
       retryAt: 0, stranded: false,
     };
@@ -114,7 +115,7 @@ SW.ships = (function () {
     }
     state.stats.shipsLost = (state.stats.shipsLost || 0) + 1;
     const dataLost = S.dataValue(ship);
-    SW.game.emit('toast', { kind: 'bad', text: '☠ ' + ship.name + ' lost — ' + reason + (dataLost ? ' ' + U.fmt(dataLost) + '¤ of unsold charts went with her.' : '') });
+    SW.game.emit('toast', { kind: 'bad', text: '† ' + ship.name + ' lost — ' + reason + (dataLost ? ' ' + U.fmt(dataLost) + '¤ of unsold charts went with her.' : '') });
     SW.game.emit('sfx', 'loss');
   };
 
@@ -158,11 +159,11 @@ SW.ships = (function () {
     const space = S.cap(state, ship) - S.cargoTotal(ship);
     qty = Math.min(qty, space);
     if (qty <= 0) return { ok: false, msg: 'Cargo hold is full.' };
-    const unitPrice = SW.economy.buyPrice(state, sys, c, 'player');
+    const unitPrice = SW.economy.buyPrice(state, sys, c, 'player', ship.body);
     const afford = Math.floor(state.credits / Math.max(1, unitPrice));
     qty = Math.min(qty, afford);
     if (qty <= 0) return { ok: false, msg: 'Not enough credits.' };
-    const t = SW.economy.marketBuy(state, sys, c, qty, 'player');
+    const t = SW.economy.marketBuy(state, sys, c, qty, 'player', ship.body);
     if (t.qty <= 0) return { ok: false, msg: 'None in stock.' };
     state.credits -= t.cost;
     const had = ship.cargo[c] || 0;
@@ -176,7 +177,7 @@ SW.ships = (function () {
     if (!sys || sys.scourge === 2) return { ok: false, msg: 'No market here.' };
     qty = Math.min(qty, ship.cargo[c] || 0);
     if (qty <= 0) return { ok: false, msg: 'Nothing to sell.' };
-    const t = SW.economy.marketSell(state, sys, c, qty, 'player');
+    const t = SW.economy.marketSell(state, sys, c, qty, 'player', ship.body);
     if (t.qty <= 0) return { ok: false, msg: 'Their stores are full.' };
     ship.cargo[c] -= t.qty;
     if (ship.cargo[c] <= 0) { delete ship.cargo[c]; }
@@ -196,6 +197,45 @@ SW.ships = (function () {
     }
     return { revenue: total, profit: profit };
   };
+
+  // ---- In-system shuttle hops (berth to berth) ----
+  // sqrt(a) spacing matches the orrery's radial mapping: Neptune is far,
+  // but not thirty-AU-of-real-time far.
+  S.hopTicks = function (state, sysId, fromName, toName) {
+    const from = SW.planets.body(state, sysId, fromName);
+    const to = SW.planets.body(state, sysId, toName);
+    if (!to) return D.TUNE.hopTicksBase;
+    const a0 = from ? Math.sqrt(from.a) : 0; // null berth = inner anchorage
+    return Math.max(D.TUNE.hopTicksBase,
+      Math.round(D.TUNE.hopTicksBase + D.TUNE.hopTicksPerAU * Math.abs(a0 - Math.sqrt(to.a))));
+  };
+  S.canHop = function (state, ship, bodyName) {
+    if (ship.mode !== 'idle') return { ok: false, msg: ship.name + ' is in flight.' };
+    if (ship.at === null || ship.at === undefined) return { ok: false, msg: 'Not in a system.' };
+    const sys = state.systems[ship.at];
+    if (!sys || sys.scourge === 2) return { ok: false, msg: 'Nothing answers in that system.' };
+    const body = SW.planets.body(state, ship.at, bodyName);
+    if (!body) return { ok: false, msg: 'No such body here.' };
+    if ((ship.body || null) === bodyName) return { ok: false, msg: 'Already berthed there.' };
+    return { ok: true, body: body };
+  };
+  S.hop = function (state, ship, bodyName) {
+    const check = S.canHop(state, ship, bodyName);
+    if (!check.ok) return check;
+    const ticks = S.hopTicks(state, ship.at, ship.body, bodyName);
+    ship.hop = { from: ship.body || null, to: bodyName, depart: state.tick, arrive: state.tick + ticks };
+    ship.mode = 'shuttle';
+    ship.idleSince = null;
+    return { ok: true, eta: ticks };
+  };
+  function arriveHop(state, ship) {
+    ship.body = ship.hop.to;
+    ship.hop = null;
+    ship.mode = 'idle';
+    ship.idleSince = state.tick;
+    SW.game.emit('sfx', 'click');
+    SW.game.emit('hopArrive', { shipId: ship.id, sysId: ship.at, body: ship.body });
+  }
 
   // ---- Travel ----
   S.canSend = function (state, ship, destId) {
@@ -230,6 +270,7 @@ SW.ships = (function () {
     ship.leg = { from: ship.at, to: toId, depart: state.tick, arrive: state.tick + ticks, gate: gateJump };
     ship.mode = 'travel';
     ship.at = null;
+    ship.body = null; ship.hop = null; // leaving the system clears the berth
     ship.idleSince = null;
   }
 
@@ -299,6 +340,9 @@ SW.ships = (function () {
     for (const ship of state.ships.slice()) {
       if (ship.mode === 'travel') {
         if (state.tick >= ship.leg.arrive) arrive(state, ship);
+      } else if (ship.mode === 'shuttle') {
+        if (!ship.hop) { ship.mode = 'idle'; } // load from a save mid-cleanup
+        else if (state.tick >= ship.hop.arrive) arriveHop(state, ship);
       } else if (ship.mode === 'idle') {
         if ((D.HULLS[ship.hull].survey || 0) > 0) tickSurvey(state, ship);
         if (ship.routeId) tickRouteShip(state, ship);
@@ -550,7 +594,7 @@ SW.ships = (function () {
     }
     if (m.stage === 'deliver' && ship.at === m.target) {
       ship.mission = null;
-      SW.game.emit('toast', { kind: 'good', text: '📦 ' + ship.name + ' delivered supplies to ' + state.systems[m.target].name + '.' });
+      SW.game.emit('toast', { kind: 'good', text: '▢ ' + ship.name + ' delivered supplies to ' + state.systems[m.target].name + '.' });
     }
   }
 
@@ -746,7 +790,7 @@ SW.ships = (function () {
     ship.queueNote = null;
   }
   function failQueue(state, ship, msg) {
-    SW.game.emit('toast', { kind: 'bad', text: '⚠ ' + ship.name + ': ' + (ship.queueNote || 'orders') + ' — ' + msg });
+    SW.game.emit('toast', { kind: 'bad', text: '△ ' + ship.name + ': ' + (ship.queueNote || 'orders') + ' — ' + msg });
     ship.queue = [];
     ship.queueNote = null;
     ship.retryAt = 0;
@@ -803,7 +847,7 @@ SW.ships = (function () {
     if (starving) {
       if (idlers.length) {
         S.assignToRoute(state, idlers[0], starving);
-        SW.game.emit('toast', { kind: 'good', text: '⚒ Yards assigned ' + idlers[0].name + ' to ' + starving.name + '.' });
+        SW.game.emit('toast', { kind: 'good', text: '⊞ Yards assigned ' + idlers[0].name + ' to ' + starving.name + '.' });
         return;
       }
       let hullId = 'sparrow';
@@ -816,7 +860,7 @@ SW.ships = (function () {
         const ship = S.create(state, hullId, state.homeId);
         S.assignToRoute(state, ship, starving);
         state.stats.autoBuilt = (state.stats.autoBuilt || 0) + 1;
-        SW.game.emit('toast', { kind: 'good', text: '⚒ Yards laid down ' + ship.name + ' for ' + starving.name + ' (−' + U.fmt(cost) + '¤).' });
+        SW.game.emit('toast', { kind: 'good', text: '⊞ Yards laid down ' + ship.name + ' for ' + starving.name + ' (−' + U.fmt(cost) + '¤).' });
         SW.game.emit('sfx', 'build');
       }
       return;
@@ -829,7 +873,7 @@ SW.ships = (function () {
       state.ships.splice(state.ships.indexOf(stale), 1);
       state.credits += refund;
       state.stats.autoScrapped = (state.stats.autoScrapped || 0) + 1;
-      SW.game.emit('toast', { kind: 'good', text: '⚒ Yards reclaimed the idle ' + stale.name + ' (+' + U.fmt(refund) + '¤).' });
+      SW.game.emit('toast', { kind: 'good', text: '⊞ Yards reclaimed the idle ' + stale.name + ' (+' + U.fmt(refund) + '¤).' });
     }
   }
 

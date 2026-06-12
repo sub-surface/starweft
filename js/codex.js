@@ -139,7 +139,7 @@ SW.codex = (function () {
         if (sys.slots.length) lines.push('Factories: ' + sys.slots.map(function (o) { return o === 'ANY' ? 'Fabricator' : D.COMMODITIES[o].name; }).join(', '));
         lines.push(sys.surveyed ? (data.bodies.length + ' bodies · HZ ' + data.hz[0].toFixed(2) + '–' + data.hz[1].toFixed(2) + ' AU') : 'Unsurveyed — a scout idling here will chart its worlds.');
         if (sys.surveyed) lines.push(sys.charted ? '◈ Officially charted — your data is on the maps.' : '◌ Charts unsold — survey data has not reached a cartographer.');
-        if (sys.scourge === 1) lines.push('⚠ SCOURGE INCOMING — ' + Math.max(0, sys.threatAt - state.tick) + ' ticks.');
+        if (sys.scourge === 1) lines.push('△ SCOURGE INCOMING — ' + Math.max(0, sys.threatAt - state.tick) + ' ticks.');
         if (sys.scourge === 2) lines.push('† Corrupted. The market is ash.');
         if (sys.note) lines.push('"' + sys.note + '"');
         return { title: sys.name, sub: sub, lines: lines };
@@ -148,8 +148,41 @@ SW.codex = (function () {
         const b = topic.body;
         const t = SW.planets.TYPES[b.type] || {};
         lines.push(t.name + (b.pop ? ' · POPULATED' : b.settled ? ' · settled' : ''));
-        lines.push('a = ' + b.a + ' AU · P = ' + (b.period < 1 ? Math.round(b.period * 365) + ' days' : b.period + ' yr') + ' · T_eq ≈ ' + b.teq + ' K');
+        if (b.classLabel) lines.push(b.classLabel);
+        lines.push('a = ' + b.a + ' AU · P = ' + (b.period < 1 ? Math.round(b.period * 365) + ' days' : b.period + ' yr') + ' · T_eq ~' + b.teq + ' K');
+        if (b.ring === true)    lines.push('ring system (prominent)');
+        if (b.ring === 'faint') lines.push('ring system (faint)');
         lines.push(t.desc || '');
+        // anchorage slot count and compatible facility types
+        const slotCap = SW.sites ? SW.sites.slotCap(b) : 2;
+        const compatFacs = [];
+        for (const fid in D.FACILITIES) {
+          const f = D.FACILITIES[fid];
+          const canHost = SW.sites && SW.sites.hosts ? SW.sites.hosts(f, b) : (f.orbital || (f.sites && f.sites.indexOf(b.type) >= 0));
+          if (canHost) compatFacs.push(f.name);
+        }
+        lines.push('anchorage: ' + slotCap + ' slot' + (slotCap !== 1 ? 's' : '') +
+          (compatFacs.length ? ' · builds: ' + compatFacs.join(', ') : ''));
+        // berth trade character
+        const berth = D.BERTH && D.BERTH[b.type];
+        const berthLines = [];
+        if (berth) {
+          for (const c in berth) {
+            const comm = D.COMMODITIES[c];
+            const mult = berth[c];
+            const pct = Math.round((1 - mult) * 100);
+            berthLines.push((comm ? comm.name : c) + ' ' + (pct > 0 ? '-' + pct : '+' + (-pct)) + '%');
+          }
+        }
+        if (b.settled && D.BERTH_SETTLED) {
+          for (const c in D.BERTH_SETTLED) {
+            const comm = D.COMMODITIES[c];
+            const mult = D.BERTH_SETTLED[c];
+            const pct = Math.round((mult - 1) * 100);
+            berthLines.push((comm ? comm.name : c) + ' +' + pct + '%');
+          }
+        }
+        if (berthLines.length) lines.push('berth rates: ' + berthLines.join(', '));
         if (b.blurb) lines.push('"' + b.blurb + '"');
         return { title: b.name, sub: 'Astronomical record', lines: lines };
       }

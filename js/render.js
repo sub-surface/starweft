@@ -12,10 +12,18 @@ SW.render = (function () {
   R.mode = 'galaxy';              // 'galaxy' | 'system'
   R.systemId = null;              // when mode==='system'
   R.cam = { yaw: 0.6, pitch: 0.45, dist: 150, tx: 0, ty: 0, tz: 0 };
+  // System view camera: current values ease toward *T targets every frame
+  // (same damped feel as the galaxy orbit cam). Input writes targets only.
   R.systemPan = { x: 0, y: 0 };
+  R.systemPanT = { x: 0, y: 0 };
   R.systemZoom = 1;
+  R.systemZoomT = 1;
   R.systemAngle = 0;
+  R.systemAngleT = 0;
   R.systemPitch = 0.42;
+  R.systemPitchT = 0.42;
+  R.trackBody = null;             // body name the camera keeps centered (dblclick; pan breaks off)
+  const SYS_ZOOM_MIN = 0.4, SYS_ZOOM_MAX = 9;
   R.selectedSys = null;
   R.selectedShip = null;
   R.selectedBody = null;
@@ -44,6 +52,7 @@ SW.render = (function () {
   let fxLive = [];
   let pickables = [];             // [{x,y,r,sys}] rebuilt per frame
   let bodyPickables = [];
+  let shipPickables = [];         // system view: ships at berths / mid-hop
   let orbitGuideUntil = 0;
   const SYSTEM_PLANE_OFFSET = -Math.PI / 2;
 
@@ -63,22 +72,35 @@ SW.render = (function () {
       const f = D.FACILITIES[site.fac];
       if (f) (f.orbital ? orbital : ground).push(f);
     }
+    const st = SW.game.state;
+    const tick = st ? st.tick : 0;
     if (ground.length) {
-      ctx.fillStyle = accent(0.9);
+      // soft accent halo behind icon cluster
+      const haloW = ground.length * 10 + 6;
+      ctx.fillStyle = accent(0.10);
+      ctx.beginPath(); ctx.ellipse(bx, by - br - 7, haloW / 2, 5, 0, 0, Math.PI * 2); ctx.fill();
       ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
       for (let i = 0; i < ground.length; i++) {
-        ctx.fillText(ground[i].icon, bx + (i - (ground.length - 1) / 2) * 10, by - br - 6);
+        const gf = ground[i];
+        // pulse: producing facilities breathe with tick; deterministic phase per slot
+        const isProd = gf.fx && gf.fx.prod;
+        const pulse = isProd ? (0.65 + 0.35 * Math.abs(Math.sin(tick * 0.055 + i * 1.3))) : 0.9;
+        ctx.fillStyle = accent(pulse);
+        ctx.fillText(gf.icon, bx + (i - (ground.length - 1) / 2) * 10, by - br - 6);
       }
       ctx.textAlign = 'left';
     }
-    const st = SW.game.state;
     for (let i = 0; i < orbital.length; i++) {
-      const ang = (st ? st.tick : 0) * 0.045 + i * 2.1 + b.name.length * 0.7;
+      const ang = tick * 0.045 + i * 2.1 + b.name.length * 0.7;
       const orad = br + 7 + i * 4;
       const ox = bx + Math.cos(ang) * orad, oy = by + Math.sin(ang) * orad * 0.45;
+      // orbit guide ellipse
       ctx.strokeStyle = 'rgba(200,210,224,0.18)';
       ctx.lineWidth = 0.7;
       ctx.beginPath(); ctx.ellipse(bx, by, orad, orad * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+      // soft accent halo on orbital station marker
+      ctx.fillStyle = accent(0.12);
+      ctx.beginPath(); ctx.arc(ox, oy, 5, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = accent(0.95);
       ctx.save(); ctx.translate(ox, oy); ctx.rotate(Math.PI / 4);
       ctx.fillRect(-1.6, -1.6, 3.2, 3.2);
@@ -239,14 +261,21 @@ SW.render = (function () {
     if (R.cam.dist > 90) { R.cam.distTarget = 70; if (R.cam.dist > 600) R.cam.dist = 600; }
   };
   R.enterSystem = function (sysId) {
-    R.mode = 'system'; R.systemId = sysId; R.selectedBody = null;
-    R.systemPan.x = 0; R.systemPan.y = 0; R.systemZoom = 1; R.systemAngle = 0; R.systemPitch = 0.42;
+    R.mode = 'system'; R.systemId = sysId; R.selectedBody = null; R.trackBody = null;
+    R.systemPan.x = 0; R.systemPan.y = 0; R.systemPanT.x = 0; R.systemPanT.y = 0;
+    R.systemAngle = 0; R.systemAngleT = 0; R.systemPitch = 0.42; R.systemPitchT = 0.42;
+    R.systemZoom = 0.78; R.systemZoomT = 1; // short glide in: arriving, not teleporting
     SW.audio.setScene('system');
   };
   R.exitSystem = function () {
     const s = SW.game && SW.game.state;
     if (s && SW.tutorial && SW.tutorial.mapLocked(s)) return; // the prologue holds the door
-    R.mode = 'galaxy'; R.systemId = null; R.selectedBody = null; SW.audio.setScene('galaxy');
+    R.mode = 'galaxy'; R.systemId = null; R.selectedBody = null; R.trackBody = null;
+    SW.audio.setScene('galaxy');
+  };
+  R.resetSystemCam = function () {
+    R.systemPanT.x = 0; R.systemPanT.y = 0; R.systemZoomT = 1;
+    R.systemAngleT = R.systemAngle; R.systemPitchT = 0.42; R.trackBody = null;
   };
   function panDragComponents(dx, dy, thresholded) {
     if (!thresholded) return { dx: dx, dy: dy };
@@ -269,20 +298,49 @@ SW.render = (function () {
     R.cam.ty -= (-p.dx * sinY + p.dy * sinP * cosY) * k;
     R.cam.tz += p.dy * cosP * k;
   };
+  function sysPanBound() { return Math.max(W, H) * (0.25 + 0.75 * R.systemZoomT); }
+  // Drags are direct manipulation — 1:1 under the finger, targets snapped
+  // along. Easing is reserved for wheel zoom, body tracking, and glide-in.
   R.panSystemView = function (dx, dy, thresholded) {
+    R.trackBody = null; // a deliberate pan breaks the track
     const p = panDragComponents(dx, dy, thresholded);
-    R.systemPan.x = U.clamp(R.systemPan.x + p.dx, -W * 0.6, W * 0.6);
-    R.systemPan.y = U.clamp(R.systemPan.y + p.dy, -H * 0.6, H * 0.6);
+    const b = sysPanBound();
+    R.systemPan.x = U.clamp(R.systemPan.x + p.dx, -b, b);
+    R.systemPan.y = U.clamp(R.systemPan.y + p.dy, -b, b);
+    R.systemPanT.x = R.systemPan.x;
+    R.systemPanT.y = R.systemPan.y;
   };
   R.rotateSystemView = function (delta, tiltDelta) {
     R.systemAngle += delta;
+    R.systemAngleT = R.systemAngle;
     R.systemPitch = U.clamp(R.systemPitch + (tiltDelta || 0), 0.16, 0.95);
+    R.systemPitchT = R.systemPitch;
+  };
+  // Wheel zoom anchored on the cursor: the point under the mouse stays put.
+  // Screen mapping is C + pan + v*zoom, so pan' = m - C - (m - C - pan)·(z'/z).
+  R.zoomSystemView = function (factor, mx, my) {
+    const z0 = R.systemZoomT, z1 = U.clamp(z0 * factor, SYS_ZOOM_MIN, SYS_ZOOM_MAX);
+    if (z1 === z0) return;
+    R.systemZoomT = z1;
+    if (mx !== undefined && !R.trackBody) {
+      const cxr = mx - W / 2, cyr = my - (H / 2 + 10), k = z1 / z0;
+      const b = sysPanBound();
+      R.systemPanT.x = U.clamp(cxr - (cxr - R.systemPanT.x) * k, -b, b);
+      R.systemPanT.y = U.clamp(cyr - (cyr - R.systemPanT.y) * k, -b, b);
+    }
   };
   R.systemOrbitShape = function () {
     return { rotation: R.systemAngle + SYSTEM_PLANE_OFFSET, squash: R.systemPitch };
   };
   R.systemSkyPoint = function (base, other) {
     return systemSkyPointFor(base, other, W / 2, H / 2 + 10, systemSkyScale());
+  };
+  R.debugBodyPickables = function () {
+    return bodyPickables.map(function (p) {
+      const out = {};
+      for (const k in p) out[k] = p[k];
+      return out;
+    });
   };
 
   // ---------- projection ----------
@@ -405,8 +463,9 @@ SW.render = (function () {
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
         if (R.mode === 'system') {
-          const b = pickBody(mx, my);
-          SW.ui.bodyClick(b);
+          const sp = pickShip(mx, my);
+          if (sp) { R.selectedShip = sp.id; SW.ui.refresh(); }
+          else SW.ui.bodyClick(pickBody(mx, my));
         } else {
           SW.ui.mapClick(pickSystem(mx, my));
         }
@@ -417,8 +476,10 @@ SW.render = (function () {
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
       if (R.mode === 'system') {
-        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-        R.systemZoom = U.clamp(R.systemZoom * factor, 0.55, 2.4);
+        // continuous: smooth on trackpads, quick on notched wheels
+        const rect = canvas.getBoundingClientRect();
+        const factor = Math.exp(-U.clamp(e.deltaY, -160, 160) * 0.0016);
+        R.zoomSystemView(factor, e.clientX - rect.left, e.clientY - rect.top);
       } else {
         const cur = R.cam.distTarget == null ? R.cam.dist : R.cam.distTarget;
         // continuous zoom on screen center: factor scales with actual wheel delta
@@ -430,7 +491,18 @@ SW.render = (function () {
     }, { passive: false });
     canvas.addEventListener('dblclick', function (e) {
       const rect = canvas.getBoundingClientRect();
-      const sys = pickSystem(e.clientX - rect.left, e.clientY - rect.top);
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      if (R.mode === 'system') {
+        // dblclick a body: select it and keep the camera on it as it orbits
+        const b = pickBody(mx, my);
+        if (b) {
+          R.trackBody = b.name;
+          if (R.systemZoomT < 1.6) R.systemZoomT = 1.6;
+          SW.ui.bodyClick(b);
+        } else { R.trackBody = null; }
+        return;
+      }
+      const sys = pickSystem(mx, my);
       if (sys && sys.discovered && R.mode === 'galaxy') { R.selectedSys = sys.id; SW.ui.enterSystem(sys.id); }
     });
   }
@@ -440,7 +512,7 @@ SW.render = (function () {
       const b = pickBody(mx, my);
       R.hoverBody = b;
       SW.ui.bodyHover(b, cx, cy);
-      canvas.style.cursor = b ? 'pointer' : '';
+      canvas.style.cursor = (b || pickShip(mx, my)) ? 'pointer' : '';
     } else {
       const sys = pickSystem(mx, my);
       R.hoverSys = sys ? sys.id : null;
@@ -459,8 +531,25 @@ SW.render = (function () {
   function pickBody(mx, my) {
     let best = null, bestD = 17;
     for (const p of bodyPickables) {
+      let d;
+      if (p.kind === 'annulus') {
+        const squash = p.squash || 1;
+        const dx = mx - p.x, dy = (my - p.y) / Math.max(0.08, squash);
+        const rr = Math.sqrt(dx * dx + dy * dy);
+        d = rr >= p.innerR && rr <= p.outerR ? 0 : Math.min(Math.abs(rr - p.innerR), Math.abs(rr - p.outerR));
+      } else {
+        d = Math.hypot(p.x - mx, p.y - my);
+      }
+      const bonus = p.kind === 'annulus' ? 0 : p.r * 0.5;
+      if (d < bestD + bonus) { bestD = d; best = p.body; }
+    }
+    return best;
+  }
+  function pickShip(mx, my) {
+    let best = null, bestD = 11;
+    for (const p of shipPickables) {
       const d = Math.hypot(p.x - mx, p.y - my);
-      if (d < bestD + p.r * 0.5) { bestD = d; best = p.body; }
+      if (d < bestD) { bestD = d; best = p.ship; }
     }
     return best;
   }
@@ -478,6 +567,15 @@ SW.render = (function () {
       const dy2 = R.cam.yawTarget - R.cam.yaw, dp2 = R.cam.pitchTarget - R.cam.pitch;
       R.cam.yaw = Math.abs(dy2) < 0.0004 ? R.cam.yawTarget : R.cam.yaw + dy2 * 0.3;
       R.cam.pitch = Math.abs(dp2) < 0.0004 ? R.cam.pitchTarget : R.cam.pitch + dp2 * 0.3;
+    }
+    // system view camera glides toward its targets (input writes targets only)
+    if (R.mode === 'system') {
+      R.systemZoom += (R.systemZoomT - R.systemZoom) * 0.22;
+      if (Math.abs(R.systemZoomT - R.systemZoom) < 0.001) R.systemZoom = R.systemZoomT;
+      R.systemAngle += (R.systemAngleT - R.systemAngle) * 0.25;
+      R.systemPitch += (R.systemPitchT - R.systemPitch) * 0.25;
+      R.systemPan.x += (R.systemPanT.x - R.systemPan.x) * 0.2;
+      R.systemPan.y += (R.systemPanT.y - R.systemPan.y) * 0.2;
     }
     // follow camera: shadow the chosen ship
     if (R.followShip && st && R.mode === 'galaxy') {
@@ -711,7 +809,7 @@ SW.render = (function () {
     const eaten = st.systems.filter(function (s) { return s.scourge === 2; }).length;
     if (threats || eaten) {
       ctx.fillStyle = 'rgba(255,77,87,' + 0.85 * a + ')';
-      ctx.fillText((eaten ? eaten + ' SYSTEMS DARK' : '') + (threats ? (eaten ? ' · ' : '') + '⚠ ' + threats : ''), p.x, p.y + r + 14);
+      ctx.fillText((eaten ? eaten + ' SYSTEMS DARK' : '') + (threats ? (eaten ? ' · ' : '') + '△ ' + threats : ''), p.x, p.y + r + 14);
     }
     ctx.textAlign = 'left';
     pickables.push({ x: p.x, y: p.y, r: Math.max(12, r), sys: st.systems[st.homeId] });
@@ -1028,7 +1126,7 @@ SW.render = (function () {
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(255,77,87,' + blink + ')';
       ctx.font = '700 10px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('⚠ ' + Math.max(0, sys.threatAt - st.tick), p.x, p.y - radius - 10);
+      ctx.fillText('△ ' + Math.max(0, sys.threatAt - st.tick), p.x, p.y - radius - 10);
       ctx.textAlign = 'left';
     }
 
@@ -1312,6 +1410,114 @@ SW.render = (function () {
     ctx.fillText(text, p.x, p.y - 5);
   }
 
+  // ---------- system view body detail ----------
+
+  // Deterministic hash from a string to [0,1)
+  function bodyHash(name) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) h = (Math.imul(h, 31) + name.charCodeAt(i)) >>> 0;
+    return (h >>> 0) / 4294967296;
+  }
+
+  // Draw ring back half (behind disc) for a ringed body.
+  // rRx = ring x radius, rRy = ring y radius (squash applied outside)
+  function drawRingBack(bx, by, rRx, rRy, faint) {
+    ctx.strokeStyle = faint ? 'rgba(210,220,234,0.28)' : 'rgba(210,220,234,0.55)';
+    ctx.lineWidth = faint ? 1.2 : 2.2;
+    // back half = PI to 2PI (bottom of ellipse)
+    ctx.beginPath(); ctx.ellipse(bx, by, rRx, rRy, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    if (!faint) {
+      ctx.strokeStyle = 'rgba(190,200,218,0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(bx, by, rRx * 1.12, rRy * 1.12, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  function drawRingFront(bx, by, rRx, rRy, faint) {
+    ctx.strokeStyle = faint ? 'rgba(210,220,234,0.28)' : 'rgba(210,220,234,0.55)';
+    ctx.lineWidth = faint ? 1.2 : 2.2;
+    // front half = 0 to PI (top of ellipse)
+    ctx.beginPath(); ctx.ellipse(bx, by, rRx, rRy, 0, 0, Math.PI); ctx.stroke();
+    if (!faint) {
+      ctx.strokeStyle = 'rgba(190,200,218,0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(bx, by, rRx * 1.12, rRy * 1.12, 0, 0, Math.PI); ctx.stroke();
+    }
+  }
+
+  // Draw surface detail (bands, caps, embers, etc.) and day/night terminator.
+  // cx,cy = star center (day side faces toward star).
+  function drawBodyDetail(b, bx, by, br, starCx, starCy) {
+    var type = b.type;
+    var h = bodyHash(b.name);
+
+    // day/night terminator: darken the hemisphere facing away from the star.
+    // The terminator runs perpendicular to the star direction.
+    var sdx = starCx - bx, sdy = starCy - by;
+    var slen = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
+    var nsx = sdx / slen, nsy = sdy / slen; // unit vector toward star
+    // angle of the terminator plane (perpendicular to star direction)
+    var termAng = Math.atan2(nsy, nsx) + Math.PI / 2;
+    // night side: a dark overlay on the star-away hemisphere, clipped to the disc
+    ctx.save();
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = 'rgba(4,5,7,0.32)';
+    ctx.beginPath();
+    ctx.arc(bx, by, br, termAng, termAng + Math.PI);
+    ctx.fill();
+    ctx.restore();
+
+    // type-specific surface detail
+    if (type === 'gas' || type === 'icegiant') {
+      // horizontal band lines clipped to the disc
+      var bands = b.bands || 2;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx, by, br * 0.97, 0, Math.PI * 2); ctx.clip();
+      var bandAlpha = type === 'gas' ? 0.18 : 0.12;
+      ctx.strokeStyle = 'rgba(190,196,210,' + bandAlpha + ')';
+      ctx.lineWidth = 1.2;
+      for (var bi = 0; bi < bands; bi++) {
+        // distribute bands across the disc, skip equator and pole
+        var fy = ((bi + 1) / (bands + 1)) * 2 - 1; // -1 to 1
+        var py2 = by + fy * br * 0.82;
+        var halfW = Math.sqrt(Math.max(0, br * br - (py2 - by) * (py2 - by)));
+        if (halfW < 2) continue;
+        ctx.beginPath(); ctx.moveTo(bx - halfW, py2); ctx.lineTo(bx + halfW, py2); ctx.stroke();
+      }
+      ctx.restore();
+    } else if (type === 'terran' || type === 'ocean') {
+      // polar ice cap dot at the top of the disc
+      if (b.iceCaps) {
+        ctx.fillStyle = 'rgba(230,238,248,0.55)';
+        ctx.beginPath(); ctx.arc(bx, by - br * 0.72, br * 0.28, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (type === 'ice') {
+      // pale coverage on visible face
+      ctx.fillStyle = 'rgba(218,228,240,0.22)';
+      ctx.beginPath(); ctx.arc(bx, by - br * 0.35, br * 0.55, 0, Math.PI * 2); ctx.fill();
+    } else if (type === 'lava') {
+      // two ember specks, deterministic positions
+      var ex1 = bx + (h * 2 - 1) * br * 0.45;
+      var ey1 = by + ((h * 3.7 % 1) * 2 - 1) * br * 0.45;
+      var ex2 = bx + ((h * 5.1 % 1) * 2 - 1) * br * 0.35;
+      var ey2 = by + ((h * 7.3 % 1) * 2 - 1) * br * 0.35;
+      ctx.fillStyle = 'rgba(255,180,100,0.50)';
+      ctx.beginPath(); ctx.arc(ex1, ey1, Math.max(0.8, br * 0.22), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,130,80,0.40)';
+      ctx.beginPath(); ctx.arc(ex2, ey2, Math.max(0.6, br * 0.16), 0, Math.PI * 2); ctx.fill();
+    } else if (type === 'carbon') {
+      // single diagonal facet line
+      ctx.save();
+      ctx.beginPath(); ctx.arc(bx, by, br * 0.95, 0, Math.PI * 2); ctx.clip();
+      var fa = (h - 0.5) * Math.PI * 0.5; // slight random tilt
+      var fdx = Math.cos(fa) * br, fdy = Math.sin(fa) * br;
+      ctx.strokeStyle = 'rgba(180,180,195,0.30)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(bx - fdx, by - fdy); ctx.lineTo(bx + fdx, by + fdy); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // ---------- system view ----------
   function systemSkyScale() {
     return Math.max(2, Math.min(W || 900, H || 600) / ((D.TUNE.bubbleR || 90) * 2.35));
@@ -1356,21 +1562,25 @@ SW.render = (function () {
     const t = SW.game.smoothTick();
     drawSystemGalaxyBackdrop(st, sys, cx, cy);
 
-    // header
+    // header — HUD chrome stays put while the orrery pans under it
     ctx.fillStyle = 'rgba(201,209,217,0.9)';
     ctx.font = '600 14px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(sys.name.toUpperCase(), cx, 30);
+    ctx.fillText(sys.name.toUpperCase(), W / 2, 30);
     ctx.fillStyle = 'rgba(110,118,129,0.9)';
     ctx.font = '10px "Segoe UI", sans-serif';
     const starDesc = data.stars.map(function (s2) { return (s2.suffix ? sys.cat + ' ' + s2.suffix : sys.cat) + ' · ' + s2.spec; }).join('   ');
-    ctx.fillText(starDesc + (sys.region ? '   ·   ' + D.REGIONS[sys.region].name.toUpperCase() : ''), cx, 46);
-    if (data.note) { ctx.fillText(data.note, cx, 62); }
+    ctx.fillText(starDesc + (sys.region ? '   ·   ' + D.REGIONS[sys.region].name.toUpperCase() : ''), W / 2, 46);
+    if (data.note) { ctx.fillText(data.note, W / 2, 62); }
     ctx.textAlign = 'left';
 
     const maxA = Math.max(1, data.bodies.length ? data.bodies[data.bodies.length - 1].a : 1);
-    const scale = Math.min(W, H) * 0.40 * R.systemZoom / Math.sqrt(maxA + 0.4);
-    function orbitR(a) { return Math.sqrt(a) * scale + 30; }
+    // zoom scales the whole diagram (pad included): cursor-anchored wheel
+    // zoom stays exact, and deep zoom actually separates the inner worlds
+    const zoom = R.systemZoom;
+    const scale0 = Math.min(W, H) * 0.40 / Math.sqrt(maxA + 0.4);
+    const sizeK = U.clamp(Math.sqrt(zoom), 0.85, 2.2); // bodies grow gently, not linearly
+    function orbitR(a) { return (Math.sqrt(a) * scale0 + 30) * zoom; }
     const orbitShape = R.systemOrbitShape();
     const squash = orbitShape.squash; // orbital inclination from the viewer angle
     const viewRot = orbitShape.rotation;
@@ -1399,7 +1609,7 @@ SW.render = (function () {
         const sp = orbitPoint(sa, off);
         const sx2 = sp.x, sy2 = sp.y;
         const cls = star.cls, tint = (D.SPECTRAL[cls] || D.SPECTRAL.M).tint;
-        const sr = cls === 'D' ? 4 : cls === 'M' ? 7 : cls === 'III' ? 16 : 11;
+        const sr = (cls === 'D' ? 4 : cls === 'M' ? 7 : cls === 'III' ? 16 : 11) * sizeK;
         const g = ctx.createRadialGradient(sx2, sy2, 0, sx2, sy2, sr * 4);
         g.addColorStop(0, tint + 'cc');
         g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -1424,6 +1634,11 @@ SW.render = (function () {
       const bp = orbitPoint(angle, orad);
       const bx = bp.x, by = bp.y;
       bodyPos[b.name] = { x: bx, y: by };
+      // tracked body: steer the pan target so it stays centered as it orbits
+      if (R.trackBody === b.name) {
+        R.systemPanT.x = R.systemPan.x + (W / 2 - bx);
+        R.systemPanT.y = R.systemPan.y + (H / 2 + 10 - by);
+      }
       if (b.type === 'belt') {
         // belt: stippled arc near the body's position
         ctx.fillStyle = 'rgba(180,190,205,0.5)';
@@ -1433,13 +1648,29 @@ SW.render = (function () {
           const pp = orbitPoint(ba, orad + jitter);
           ctx.fillRect(pp.x, pp.y, 1, 1);
         }
-        drawBodySites(sys, b, bx, by, 8);
-        bodyPickables.push({ x: bx, y: by, r: 8, body: b });
+        drawBodySites(sys, b, bx, by, 8 * sizeK);
+        const beltSel = (R.selectedBody && R.selectedBody.name === b.name) || (R.hoverBody && R.hoverBody.name === b.name);
+        if (beltSel) {
+          ctx.strokeStyle = 'rgba(240,246,252,' + (R.selectedBody && R.selectedBody.name === b.name ? 0.95 : 0.5) + ')';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.ellipse(cx, cy, orad, orad * squash, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(bx, by, 10 * sizeK, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(201,209,217,0.6)';
+        ctx.font = '9.5px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.real ? b.name : 'belt', bx, by + 8 * sizeK + 11);
+        ctx.textAlign = 'left';
+        bodyPickables.push({ kind: 'annulus', x: cx, y: cy, r: 10 * sizeK, innerR: Math.max(1, orad - 10 * sizeK), outerR: orad + 10 * sizeK, squash: squash, body: b });
         continue;
       }
-      const br = b.type === 'gas' ? 8 : b.type === 'icegiant' ? 6 : b.radius > 1.5 ? 5 : 3.5;
+      const br = (b.type === 'gas' ? 8 : b.type === 'icegiant' ? 6 : b.radius > 1.5 ? 5 : 3.5) * sizeK;
       const sel = R.selectedBody && R.selectedBody.name === b.name;
       const hov = R.hoverBody && R.hoverBody.name === b.name;
+      // ring dimensions: ellipse squash matches orbital inclination
+      const rRx = br * 1.85, rRy = br * 1.85 * squash * 0.36;
+      // ring back half (behind disc)
+      if (b.ring) drawRingBack(bx, by, rRx, rRy, b.ring === 'faint');
       ctx.fillStyle = b.type === 'terran' ? accent(0.95) :
         b.type === 'ocean' ? 'rgba(200,215,232,0.95)' :
         b.type === 'lava' ? 'rgba(232,170,160,0.95)' :
@@ -1448,11 +1679,15 @@ SW.render = (function () {
         b.type === 'carbon' ? 'rgba(150,150,160,0.95)' :
         'rgba(190,196,206,0.95)';
       ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+      // surface detail + terminator (drawn on top of disc fill, under the selection ring)
+      drawBodyDetail(b, bx, by, br, cx, cy);
       if (b.pop || b.settled) {
         ctx.strokeStyle = accent(0.9);
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(bx, by, br + 3, 0, Math.PI * 2); ctx.stroke();
       }
+      // ring front half (over disc)
+      if (b.ring) drawRingFront(bx, by, rRx, rRy, b.ring === 'faint');
       drawBodySites(sys, b, bx, by, br);
       if (sel || hov) {
         ctx.strokeStyle = 'rgba(240,246,252,' + (sel ? 0.95 : 0.5) + ')';
@@ -1534,19 +1769,57 @@ SW.render = (function () {
       }
     }
 
-    // your ships docked here
-    const here = st.ships.filter(function (sh) { return sh.at === R.systemId; });
-    if (here.length) {
-      ctx.fillStyle = accent(0.9);
-      ctx.font = '10px "Segoe UI", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('▲ ' + here.length + ' of your ships docked', cx, H - 64);
-      ctx.textAlign = 'left';
+    // your ships, live in the orrery: berthed at bodies, or shuttling between
+    shipPickables = [];
+    function berthPos(name) {
+      if (name && bodyPos[name]) return bodyPos[name];
+      if (hubBody && bodyPos[hubBody.name]) return bodyPos[hubBody.name];
+      return { x: cx, y: cy };
     }
+    const here = st.ships.filter(function (sh) { return sh.at === R.systemId; });
+    here.forEach(function (sh, i) {
+      let px, py;
+      if (sh.mode === 'shuttle' && sh.hop) {
+        const f = U.clamp((t - sh.hop.depart) / Math.max(1, sh.hop.arrive - sh.hop.depart), 0, 1);
+        const p0 = berthPos(sh.hop.from), p1 = berthPos(sh.hop.to);
+        const ddx = p1.x - p0.x, ddy = p1.y - p0.y, len = Math.hypot(ddx, ddy) || 1;
+        const q = 1 - f, bowX = (p0.x + p1.x) / 2 - (ddy / len) * 16, bowY = (p0.y + p1.y) / 2 + (ddx / len) * 16;
+        px = q * q * p0.x + 2 * q * f * bowX + f * f * p1.x;
+        py = q * q * p0.y + 2 * q * f * bowY + f * f * p1.y;
+        // heading tick behind the hull
+        ctx.strokeStyle = accent(0.35);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px - ddx / len * 9, py - ddy / len * 9); ctx.lineTo(px, py); ctx.stroke();
+      } else {
+        const p = berthPos(sh.body);
+        const th = now / 1900 + i * 2.39;
+        px = p.x + Math.cos(th) * (12 + (i % 3) * 4);
+        py = p.y + Math.sin(th) * (12 + (i % 3) * 4) * 0.5 - 4;
+      }
+      const sel = R.selectedShip === sh.id;
+      ctx.fillStyle = accent(sel ? 1 : 0.85);
+      ctx.font = (sel ? '11px' : '10px') + ' "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(D.HULLS[sh.hull].glyph, px, py + 3.5);
+      if (sel) {
+        ctx.strokeStyle = accent(0.8);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = accent(0.75);
+        ctx.font = '9px "Segoe UI", sans-serif';
+        ctx.fillText(sh.name, px, py - 11);
+      }
+      ctx.textAlign = 'left';
+      shipPickables.push({ x: px, y: py, r: 9, ship: sh });
+    });
+
     ctx.fillStyle = 'rgba(110,118,129,0.8)';
     ctx.font = '10px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('[ESC] back to the bubble  ·  click a body for details', cx, H - 46);
+    const locked = SW.tutorial && SW.tutorial.mapLocked(st);
+    ctx.fillText(locked
+      ? 'drag to turn the orrery  ·  wheel to zoom  ·  double-click a body to track it'
+      : '[ESC] back to the bubble  ·  click a body for details  ·  double-click to track', W / 2, H - 46);
     ctx.textAlign = 'left';
   }
 

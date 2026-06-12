@@ -113,7 +113,7 @@ SW.combat = (function () {
       state.credits += bounty;
       state.rep.vigil = Math.min(10, state.rep.vigil + 0.3);
       state.stats.raidsRepelled = (state.stats.raidsRepelled || 0) + 1;
-      SW.game.emit('toast', { kind: 'good', text: '⚔ Severed raid repelled near ' + sysName + '. Bounty +' + bounty + '¤.' });
+      SW.game.emit('toast', { kind: 'good', text: '‡ Severed raid repelled near ' + sysName + '. Bounty +' + bounty + '¤.' });
       SW.game.emit('sfx', 'shield');
     } else {
       state.stats.raidsSuffered = (state.stats.raidsSuffered || 0) + 1;
@@ -126,7 +126,7 @@ SW.combat = (function () {
           victim.cargo[c] -= take; lost += take;
           if (victim.cargo[c] <= 0) { delete victim.cargo[c]; delete victim.basis[c]; }
         }
-        SW.game.emit('toast', { kind: 'bad', text: '⚔ ' + victim.name + ' raided near ' + sysName + ' — ' + lost + ' cargo seized. Escorts exist for a reason.' });
+        SW.game.emit('toast', { kind: 'bad', text: '‡ ' + victim.name + ' raided near ' + sysName + ' — ' + lost + ' cargo seized. Escorts exist for a reason.' });
         SW.game.emit('sfx', 'loss');
       }
     }
@@ -185,7 +185,7 @@ SW.combat = (function () {
       if (sys.ideology !== 'free') state.rep[sys.ideology] = Math.max(-10, (state.rep[sys.ideology] || 0) - 1);
       state.stats.raidsLed = (state.stats.raidsLed || 0) + 1;
       SW.ships.rec(ship, 'raids');
-      SW.game.emit('toast', { kind: 'good', text: '☠ Raid on ' + sys.name + ': +' + Math.round(lootCr) + '¤' + (tookGoods ? ', ' + tookGoods + ' ' + D.COMMODITIES[bestC].name + ' seized' : '') + '. Infamy rises.' });
+      SW.game.emit('toast', { kind: 'good', text: '† Raid on ' + sys.name + ': +' + Math.round(lootCr) + '¤' + (tookGoods ? ', ' + tookGoods + ' ' + D.COMMODITIES[bestC].name + ' seized' : '') + '. Infamy rises.' });
       SW.game.emit('sfx', 'sell');
       return { ok: true, win: true };
     }
@@ -195,7 +195,7 @@ SW.combat = (function () {
       return { ok: true, win: false, lost: true };
     }
     ship.raidCooldownUntil = state.tick + Math.round(T.raidCooldown * 2 * cdMult);
-    SW.game.emit('toast', { kind: 'bad', text: '☠ Raid on ' + sys.name + ' repelled. ' + ship.name + ' limps clear.' });
+    SW.game.emit('toast', { kind: 'bad', text: '† Raid on ' + sys.name + ' repelled. ' + ship.name + ' limps clear.' });
     return { ok: true, win: false };
   };
 
