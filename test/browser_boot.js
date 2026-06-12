@@ -234,7 +234,9 @@ step('interval refresh does not replace UI while pointer is down', function () {
   if (renders !== 0) throw new Error('panel rendered during active UI pointer press');
 
   firePointer('pointerup');
-  if (renders === 0) throw new Error('deferred refresh did not flush on pointer release');
+  if (renders !== 0) throw new Error('panel rendered synchronously on pointerup before click');
+  fireClick('sendMode');
+  if (!elCache['#map'] || elCache['#map']._cls.picking !== 1) throw new Error('first click after pointer release did not trigger SEND mode');
   SW.uiSystem.renderSysPanel = orig;
 });
 

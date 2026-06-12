@@ -131,11 +131,7 @@ SW.ui = (function () {
   function releaseUiPointer() {
     if (!uiPointerActive) return;
     uiPointerActive = false;
-    if (deferredUiRefresh) {
-      deferredUiRefresh = false;
-      lastRenderTick = -1;
-      ui.refresh();
-    }
+    deferredUiRefresh = false;
   }
 
   // ============ modal helpers (exposed for all modules) ============
