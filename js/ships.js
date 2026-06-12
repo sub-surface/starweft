@@ -459,7 +459,18 @@ SW.ships = (function () {
 
   function arrive(state, ship) {
     const sysId = ship.leg.to, sys = state.systems[sysId];
+    const legFrom = ship.leg.from; // capture before clearing
     ship.at = sysId; ship.mode = 'idle'; ship.leg = null;
+
+    // Living Weave: record this hop's cargo contribution to lane flow.
+    // Player ships add their cargo total (or 1 for empty — presence matters).
+    (function () {
+      const lf = state.laneFlow || (state.laneFlow = {});
+      const minId = Math.min(legFrom, sysId), maxId = Math.max(legFrom, sysId);
+      const k = minId + '-' + maxId;
+      const cargo = S.cargoTotal(ship);
+      lf[k] = (lf[k] || 0) + (cargo > 0 ? cargo : 1);
+    })();
 
     if (sys.scourge === 2 && !hasTech(state, 'scourge2')) {
       S.destroy(state, ship, 'unmade by the Scourge at ' + sys.name);

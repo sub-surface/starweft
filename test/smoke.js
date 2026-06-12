@@ -944,6 +944,60 @@ section('Long run (standard, 3000 ticks, bot)');
   }
 }
 
+// ---------- 10a. Living Weave: laneFlow ----------
+section('Living Weave: laneFlow after long bot run');
+{
+  // Re-use a fresh run rather than depending on section-10 state (which may have gameOver).
+  G._memLegacy = {};
+  const st = G.newGame({ seed: 'smoke-laneflow', difficulty: 'relaxed' });
+  // Run long enough for routes to form and ships to traverse lanes
+  for (let i = 0; i < 800 && !st.gameOver; i++) {
+    G.tick(st);
+    botStep(st);
+  }
+  assert(typeof st.laneFlow === 'object' && st.laneFlow !== null, 'laneFlow object exists');
+  const lf = st.laneFlow;
+  const keys = Object.keys(lf);
+  assert(keys.length > 0, 'laneFlow has entries after trading run (' + keys.length + ')');
+  // All values must be finite and >= 0.5 (below-threshold entries are deleted)
+  let allValid = true;
+  for (const k of keys) {
+    if (!isFinite(lf[k]) || lf[k] < 0.5) { allValid = false; break; }
+  }
+  assert(allValid, 'all laneFlow values are finite and >= 0.5');
+  // All keys must reference real lane endpoints
+  let allRealLanes = true;
+  for (const k of keys) {
+    const parts = k.split('-');
+    if (parts.length !== 2) { allRealLanes = false; break; }
+    const idA = Number(parts[0]), idB = Number(parts[1]);
+    if (!st.systems[idA] || !st.systems[idB]) { allRealLanes = false; break; }
+    // Both IDs must actually be linked (the key uses the canonical minId-maxId form)
+    const linked = st.systems[idA].links.indexOf(idB) >= 0;
+    if (!linked) { allRealLanes = false; break; }
+  }
+  assert(allRealLanes, 'all laneFlow keys reference real lane-graph edges');
+
+  // Decay: after ticks with no trade on a lane, flow should decrease
+  // Pick a lane currently in the flow map; freeze trade by clearing routes/ships, tick a lot
+  const pickKey = keys[0];
+  const flowBefore = lf[pickKey];
+  // Remove all routes so ships stop moving
+  st.routes = [];
+  for (const ship of st.ships) { ship.routeId = null; ship.mission = null; ship.queue = []; }
+  // Tick 60 more times (decay should clearly reduce the value)
+  for (let i = 0; i < 60; i++) G.tick(st);
+  const flowAfter = lf[pickKey] !== undefined ? lf[pickKey] : 0;
+  assert(flowAfter < flowBefore, 'laneFlow decays when trade stops (' + flowBefore.toFixed(1) + ' -> ' + flowAfter.toFixed(1) + ')');
+
+  // Old saves without laneFlow: defensive initialization check
+  // Simulate loading an old save by deleting laneFlow and running a tick
+  delete st.laneFlow;
+  G.tick(st);
+  assert(typeof st.laneFlow === 'object', 'laneFlow re-initialized defensively after missing from save');
+  invariants(st, 'post-laneflow');
+}
+
 // ---------- 10b. scourge / refugee BFS assertions ----------
 section('Scourge & refugee path-aware assertions');
 {

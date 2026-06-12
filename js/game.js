@@ -66,6 +66,7 @@ SW.game = (function () {
       perks: [], perkPoints: 0, milestones: {}, scourgeStance: null,
       world: D.resolveWorld(opts.world),
       news: [],
+      laneFlow: {},
     };
     SW.galaxy.generate(state);
     SW.story.init(state);
@@ -111,6 +112,15 @@ SW.game = (function () {
     SW.ships.tick(state);
     SW.combat.tick(state);
     SW.rivals.tick(state);
+    // Living Weave: decay lane flow after ships and rivals have contributed this tick
+    (function () {
+      const lf = state.laneFlow || (state.laneFlow = {});
+      const decay = D.TUNE.laneFlowDecay;
+      for (const k in lf) {
+        lf[k] *= decay;
+        if (lf[k] < 0.5) delete lf[k];
+      }
+    })();
     SW.scourge.tick(state);
     SW.worldevents.tick(state);
     SW.story.tick(state);

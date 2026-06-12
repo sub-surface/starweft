@@ -710,6 +710,47 @@ SW.render = (function () {
     }
   }
 
+  // Living Weave: lane-style cache — recomputed once per tick, read every frame.
+  // Keyed by lane key; each entry: { t, weavedStrand } where t is the flow param [0,1].
+  let laneStyleCache = {};
+  let laneStyleTick = -1;
+
+  function rebuildLaneStyleCache(st) {
+    if (st.tick === laneStyleTick) return;
+    laneStyleTick = st.tick;
+    laneStyleCache = {};
+    const lf = st.laneFlow || {};
+    const sat = D.TUNE.laneFlowSaturation || 400;
+    for (const k in lf) {
+      const flow = lf[k];
+      if (!isFinite(flow) || flow <= 0) continue;
+      const t = U.clamp(Math.log(1 + flow) / Math.log(1 + sat), 0, 1);
+      laneStyleCache[k] = { t: t, weaved: t > 0.6 };
+    }
+  }
+
+  // Lerp two RGB triplet strings at ratio r; base is 'r,g,b', acc is hsl-derived.
+  // We extract the accent's approximate RGB from HSL at the player's hue.
+  function accentRGB(st) {
+    const hue = (st && st.identity ? st.identity.hue : 195);
+    // HSL(hue,55%,72%) -> approximate RGB via math
+    const h = hue / 360, s = 0.55, l = 0.72;
+    function hue2rgb(p, q, t2) {
+      if (t2 < 0) t2 += 1; if (t2 > 1) t2 -= 1;
+      if (t2 < 1 / 6) return p + (q - p) * 6 * t2;
+      if (t2 < 1 / 2) return q;
+      if (t2 < 2 / 3) return p + (q - p) * (2 / 3 - t2) * 6;
+      return p;
+    }
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return {
+      r: Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+      g: Math.round(hue2rgb(p, q, h) * 255),
+      b: Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+    };
+  }
+
   function drawLanes(st, now, proj) {
     for (const k in laneHeat) { laneHeat[k] *= 0.995; if (laneHeat[k] < 0.02) delete laneHeat[k]; }
     for (const ship of st.ships) {
@@ -718,6 +759,11 @@ SW.render = (function () {
         laneHeat[k] = Math.min(1, (laneHeat[k] || 0) + 0.02);
       }
     }
+
+    // Rebuild per-lane weave style cache once per tick
+    rebuildLaneStyleCache(st);
+    const acc = accentRGB(st);
+
     ctx.lineCap = 'round';
     for (const sys of st.systems) {
       const a = proj[sys.id];
@@ -727,29 +773,66 @@ SW.render = (function () {
         const o = st.systems[nb];
         const b = proj[nb];
         if (!b) continue;
-        if ((a.x < 0 && b.x < 0) || (a.x > W && b.x > W) || (a.y < 0 && b.y < 0) || (a.y > H && b.y > H)) continue;
-        const f = fog((a.depth + b.depth) / 2);
+
         const corrupt = sys.scourge === 2 || o.scourge === 2;
+        const weaveStyle = !corrupt ? laneStyleCache[laneKey(sys.id, nb)] : null;
+
+        // LOD: ordinary dim lanes are culled beyond LOD.lanes, but high-weave lanes
+        // persist further so the tapestry remains visible at galaxy scale.
+        if (!weaveStyle || weaveStyle.t < 0.35) {
+          if ((a.x < 0 && b.x < 0) || (a.x > W && b.x > W) || (a.y < 0 && b.y < 0) || (a.y > H && b.y > H)) continue;
+        }
+        const f = fog((a.depth + b.depth) / 2);
         const blocked = SW.worldevents.laneBlocked(st, sys.id, nb);
         const known = sys.discovered || o.discovered;
         const heat = laneHeat[laneKey(sys.id, nb)] || 0;
         if (corrupt) {
           ctx.strokeStyle = 'rgba(255,77,87,' + 0.18 * f + ')';
           ctx.setLineDash([3, 7]); ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         } else if (blocked) {
           ctx.strokeStyle = 'rgba(255,77,87,' + 0.30 * f + ')';
           ctx.setLineDash([8, 5]); ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         } else if (sys.badlands || o.badlands) {
           // old weftlines into the dark: thin, broken, patient
           ctx.setLineDash([2, 6]);
           ctx.strokeStyle = 'rgba(190,200,216,' + ((known ? 0.05 + heat * 0.4 : 0.018) * f) + ')';
           ctx.lineWidth = 0.7 + heat * 1.5;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        } else if (weaveStyle && weaveStyle.t > 0) {
+          // Living Weave: threads thicken and brighten with sustained flow
+          const t = weaveStyle.t;
+          // Lerp base gray (190,200,216) toward accent color
+          const br = Math.round(190 + (acc.r - 190) * t);
+          const bg = Math.round(200 + (acc.g - 200) * t);
+          const bb = Math.round(216 + (acc.b - 216) * t);
+          // alpha: from dim base up to 0.85 at full saturation
+          const baseAlpha = known ? 0.07 + heat * 0.5 : 0.025;
+          const weaveAlpha = baseAlpha + (0.85 - baseAlpha) * t;
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(' + br + ',' + bg + ',' + bb + ',' + weaveAlpha * f + ')';
+          ctx.lineWidth = 0.8 + heat * 2 + t * 1.7; // hairline at t=0 → ~2.5px at t=1
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          // Second strand: "woven" doubling at t > 0.6 — subtle perpendicular offset
+          if (weaveStyle.weaved) {
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len2 = Math.hypot(dx, dy) || 1;
+            const nx2 = -dy / len2 * 1.4, ny2 = dx / len2 * 1.4; // offset ~1.4px perp
+            const strandA = (t - 0.6) / 0.4 * 0.28 * f; // fades in smoothly
+            ctx.strokeStyle = 'rgba(' + br + ',' + bg + ',' + bb + ',' + strandA + ')';
+            ctx.lineWidth = 0.7 + t * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(a.x + nx2, a.y + ny2);
+            ctx.lineTo(b.x + nx2, b.y + ny2);
+            ctx.stroke();
+          }
         } else {
           ctx.setLineDash([]);
           ctx.strokeStyle = 'rgba(190,200,216,' + ((known ? 0.07 + heat * 0.5 : 0.025) * f) + ')';
           ctx.lineWidth = 0.8 + heat * 2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
     }
     ctx.setLineDash([]);

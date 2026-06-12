@@ -46,6 +46,19 @@ SW.rivals = (function () {
             const sell = E().marketSell(state, dest, sh.c, sh.qty, rival.id);
             rival.credits += sell.revenue;
           }
+          // Living Weave: rival shipments build lane flow along their path on arrival
+          (function () {
+            const lf = state.laneFlow || (state.laneFlow = {});
+            const path = U.findPath(state.systems, sh.from, sh.to, function (s) { return s.scourge !== 2; });
+            if (path) {
+              for (let pi = 1; pi < path.length; pi++) {
+                const a = path[pi - 1], b = path[pi];
+                const minId = Math.min(a, b), maxId = Math.max(a, b);
+                const k = minId + '-' + maxId;
+                lf[k] = (lf[k] || 0) + sh.qty;
+              }
+            }
+          })();
         }
         return false;
       });

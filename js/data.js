@@ -356,6 +356,9 @@ SW.data = (function () {
     marketReserveCapFraction: 0.25, // fraction of capacity used as reserve floor
     marketConsumerReserveTicks: 160,// consumption ticks to cover as reserve
     marketFactoryReserveTicks: 24,  // factory input ticks to cover as reserve
+    // Living Weave: lane flow heat
+    laneFlowDecay: 0.9985,          // per-tick decay multiplier (~460 tick half-life ≈ several in-game weeks)
+    laneFlowSaturation: 400,        // flow value where visual t reaches 1
   };
 
   D.RIVAL_DEFS = [

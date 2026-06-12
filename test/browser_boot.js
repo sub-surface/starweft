@@ -98,7 +98,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
