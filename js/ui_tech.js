@@ -218,16 +218,35 @@ SW.uiTech = (function () {
   }
 
   // ---- overlay open / close ----
+  // The overlay is the Development surface: Research (canvas tree), Aptitudes
+  // and Milestones share one responsive home instead of three scattered corners.
   let _overlayOpen = false;
   let _overlayLayout = null;  // last computed layout for resize re-fit
+  let _devTab = 'research';   // research | aptitudes | milestones
 
   m.isOpen = function () { return _overlayOpen; };
 
-  m.open = function () {
+  function devHeadHtml(s) {
+    function tab(id, label) {
+      return '<button class="devTab' + (_devTab === id ? ' active' : '') + '" data-act="devTab" data-tab="' + id + '">' + label + '</button>';
+    }
+    return '<div class="techOvHead">' +
+      '<span class="techOvTitle">◈ DEVELOPMENT</span>' +
+      tab('research', '◇ RESEARCH') + tab('aptitudes', '✦ APTITUDES') + tab('milestones', '◆ MILESTONES') +
+      '<span class="techOvPts num" title="Research points · aptitude points">◇ <span id="techPtsBadge">' + Math.floor(s.research) + '</span> · ✦ ' + (s.perkPoints || 0) + '</span>' +
+      (_devTab === 'research' ? '<button data-act="techResetView" title="Fit tree to window" data-info="ui:research">reset view</button>' : '') +
+      '<button data-act="closeTechOverlay" title="Close (ESC)" aria-label="Close">✕</button>' +
+      '</div>';
+  }
+
+  m.open = function (tab) {
+    if (tab) _devTab = tab;
     _overlayOpen = true;
     const ovl = $('#techOverlay');
     if (!ovl) return;
     const s = st();
+    if (_devTab === 'aptitudes') { ovl.innerHTML = devHeadHtml(s) + aptitudesHtml(s); ovl.classList.remove('hidden'); return; }
+    if (_devTab === 'milestones') { ovl.innerHTML = devHeadHtml(s) + milestonesHtml(s); ovl.classList.remove('hidden'); return; }
     const tree = SW.tech.tree(s);
     _overlayLayout = computeLayout(tree);
 
@@ -251,6 +270,45 @@ SW.uiTech = (function () {
     });
   };
 
+  // ---- Aptitudes pane: a character sheet on a grid, not wrapped rows ----
+  function aptitudesHtml(s) {
+    const pts = s.perkPoints || 0;
+    const list = SW.perks.list(s);
+    const cats = [];
+    for (const p of list) if (cats.indexOf(p.cat) < 0) cats.push(p.cat);
+    let html = '<div class="devBody"><div class="sub">Research grows the network; aptitudes grow you. Points come from milestones — ' +
+      '<span class="num">' + pts + '</span> unspent.</div>';
+    for (const cat of cats) {
+      html += '<h4>' + esc(cat.toUpperCase()) + '</h4><div class="perkGrid">';
+      for (const p of list.filter(function (x) { return x.cat === cat; })) {
+        const cls = p.owned ? ' owned' : p.available ? '' : ' locked';
+        html += '<div class="perkCard' + cls + '">' +
+          '<div class="row"><span class="title grow">' + p.icon + ' ' + esc(p.name) + '</span>' +
+          (p.owned ? '<span class="tag acc">mastered</span>' :
+            p.available ? '<button class="primary" data-act="buyPerk" data-id="' + p.id + '" ' + (pts ? '' : 'disabled') + '>✦ 1</button>' :
+              '<span class="tag" title="Requires ' + esc((D.PERKS[p.req] || {}).name || '') + '">locked</span>') + '</div>' +
+          '<div class="sub">' + esc(p.desc) + (!p.owned && !p.available && p.req ? ' Requires ' + esc((D.PERKS[p.req] || {}).name || '') + '.' : '') + '</div>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+    return html + '</div>';
+  }
+
+  // ---- Milestones pane: where the points come from ----
+  function milestonesHtml(s) {
+    const done = D.PERK_MILESTONES.filter(function (mi) { return !!(s.milestones && s.milestones[mi.id]); });
+    let html = '<div class="devBody"><div class="sub">Each milestone grants one aptitude point, once. ' +
+      '<span class="num">' + done.length + '/' + D.PERK_MILESTONES.length + '</span> reached.</div><div class="perkGrid">';
+    for (const mi of D.PERK_MILESTONES) {
+      const hit = !!(s.milestones && s.milestones[mi.id]);
+      html += '<div class="perkCard' + (hit ? ' owned' : '') + '"><div class="row">' +
+        '<span class="title grow">' + (hit ? '◆' : '◇') + ' ' + esc(mi.label) + '</span>' +
+        (hit ? '<span class="tag acc">+1 ✦ at ⧗' + s.milestones[mi.id] + '</span>' : '') + '</div></div>';
+    }
+    return html + '</div></div>';
+  }
+
   m.close = function () {
     _overlayOpen = false;
     const ovl = $('#techOverlay');
@@ -258,12 +316,7 @@ SW.uiTech = (function () {
   };
 
   function _buildOverlayHtml(ovl, s, tree) {
-    let html = '<div class="techOvHead">';
-    html += '<span class="techOvTitle">◇ RESEARCH</span>';
-    html += '<span class="techOvPts num" title="Available research points">◇ <span id="techPtsBadge">' + Math.floor(s.research) + '</span></span>';
-    html += '<button data-act="techResetView" title="Fit tree to window" data-info="ui:research">reset view</button>';
-    html += '<button data-act="closeTechOverlay" title="Close research tree (ESC)" aria-label="Close">✕</button>';
-    html += '</div>';
+    let html = devHeadHtml(s);
     html += '<div class="techOvBody">';
     html += '<div class="techOvMap"><canvas id="techCanvasFull" title="Drag to pan · Wheel to zoom · Click node for details"></canvas></div>';
     html += '<div class="techOvSide" id="techOvSide">';

@@ -59,6 +59,24 @@ SW.market = (function () {
     return Math.floor(n);
   };
 
+  // One legible plan for a multi-resource requirement at a system: what is
+  // already on-site (depot + idle holds), what is committed inbound, and what
+  // still needs dispatching (with the cheapest charted source for each gap).
+  M.supplyPlan = function (state, sysId, needs) {
+    const sys = state.systems[sysId];
+    const localShips = state.ships.filter(function (sh) { return sh.at === sysId && sh.mode === 'idle'; });
+    const rows = [];
+    for (const c in needs) {
+      let local = (sys && sys.depot ? (sys.depot[c] || 0) : 0);
+      for (const sh of localShips) local += sh.cargo[c] || 0;
+      const inbound = M.inboundCargo(state, sysId, c);
+      const uncovered = Math.max(0, Math.ceil(needs[c] - local - inbound));
+      const source = uncovered > 0 ? SW.economy.cheapestSource(state, c, Math.min(uncovered, 5)) : null;
+      rows.push({ c: c, need: needs[c], local: Math.floor(local), inbound: inbound, uncovered: uncovered, source: source });
+    }
+    return rows;
+  };
+
   // Build a full inbound commitment map in one pass: { sysId: { c: n } }
   M.buildInboundMap = function (state) {
     const map = {};

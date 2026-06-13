@@ -71,6 +71,21 @@ SW.uiSystem = (function () {
       const cls = sys.prosperity > 60 ? 'hi' : sys.prosperity > 35 ? '' : 'lo';
       html += '<div class="row"><span class="sub">POP ' + U.fmt1(sys.pop) + 'M</span><div class="bar"><div class="' + cls + '" style="width:' + Math.round(sys.prosperity) + '%"></div></div><span class="sub num">' + Math.round(sys.prosperity) + '%</span></div>';
     }
+    const cohort = (s.cohorts || []).find(function (co) { return co.from === sys.id && co.n > 0; });
+    const charters = (s.charters || []).filter(function (ch) { return ch.from === sys.id; });
+    if (cohort || charters.length) {
+      html += '<h4>Passengers</h4>';
+      if (cohort) {
+        html += '<div class="listItem bad"><div class="row"><span class="grow">⇡ ' + U.fmt1(cohort.n) + 'M evacuees waiting</span>' +
+          '<button class="primary" data-act="boardEvac" title="Board the selected idle berthed hull, or any idle berthed hull here, then send it to the haven.">evacuate</button></div>' +
+          '<div class="sub">Haven: ' + esc(s.systems[cohort.haven].name) + ' · deadline ' + Math.max(0, (cohort.deadline || sys.threatAt) - s.tick) + 't.</div></div>';
+      }
+      for (const ch of charters) {
+        html += '<div class="listItem"><div class="row"><span class="grow">⇡ ' + U.fmt1(ch.n) + 'M charter to ' + esc(s.systems[ch.to].name) + '</span>' +
+          '<button data-act="boardCharter" data-id="' + ch.id + '" title="Board passengers onto an idle berthed hull here, then send it to the destination.">' + U.fmt(ch.fare) + '¤</button></div>' +
+          '<div class="sub">Expires in ' + Math.max(0, ch.expires - s.tick) + 't · needs ' + Math.ceil(ch.n / D.TUNE.berthPop) + ' berths.</div></div>';
+      }
+    }
     const pres = Object.keys(sys.presence).filter(function (f) { return sys.presence[f] > 0.2; });
     if (pres.length) {
       const dom = SW.economy.dominant(sys);
@@ -153,20 +168,33 @@ SW.uiSystem = (function () {
     }
     for (const b of builds) {
       const def = D.BUILDINGS[b];
-      const localShips = s.ships.filter(function (sh) { return sh.at === sys.id && sh.mode === 'idle'; });
-      let missing = [];
-      for (const c in def.mats) {
-        let have = (sys.depot ? (sys.depot[c] || 0) : 0);
-        for (const sh of localShips) have += sh.cargo[c] || 0;
-        if (have < def.mats[c]) missing.push({ c: c, need: Math.ceil(def.mats[c] - have) });
-      }
       const bCost = SW.game.buildingCost(s, b);
-      html += '<div class="listItem" data-info="building:' + b + '"><div class="row"><span class="title grow">' + def.icon + ' ' + def.name + '</span>' +
-        '<button data-act="build" data-b="' + b + '" ' + (missing.length || s.credits < bCost ? 'disabled' : '') + '>build</button></div>' +
-        '<div class="sub num">' + U.fmt(bCost) + '¤ + ' + Object.keys(def.mats).map(function (c) { return def.mats[c] + ' ' + D.COMMODITIES[c].icon; }).join(' + ') + '</div>';
-      if (missing.length) {
-        html += '<div class="row"><span class="sub">missing:</span>' + missing.map(function (ms) {
-          return '<span class="tag">' + ms.need + ' ' + D.COMMODITIES[ms.c].icon + '</span><button data-act="supply" data-c="' + ms.c + '" data-q="' + ms.need + '">supply</button>';
+      const plan = SW.market.supplyPlan(s, sys.id, def.mats);
+      const localReady = plan.every(function (row) { return row.local >= row.need; });
+      const project = (s.projects || []).find(function (p) { return p.sys === sys.id && p.b === b; });
+      html += '<div class="listItem" data-info="building:' + b + '"><div class="row"><span class="title grow">' + def.icon + ' ' + def.name + '</span>';
+      if (project) {
+        html += '<button class="danger" data-act="cancelProject" data-id="' + project.id + '" title="Cancel the project. Supplies already moving finish their delivery.">✕</button>';
+      } else if (localReady) {
+        html += '<button data-act="build" data-b="' + b + '" ' + (s.credits < bCost ? 'disabled' : '') + '>build</button>';
+      } else {
+        html += '<button class="primary" data-act="projectBuild" data-b="' + b + '" title="One order: idle haulers fetch every missing material, then the ' + def.name + ' is raised automatically.">▢ supply &amp; build</button>';
+      }
+      html += '</div><div class="sub num">' + U.fmt(bCost) + '¤ + ' + Object.keys(def.mats).map(function (c) { return def.mats[c] + ' ' + D.COMMODITIES[c].icon; }).join(' + ') + '</div>';
+      if (b === 'relay') {
+        const R = SW.ships.rangeOf(s);
+        const newly = s.systems.filter(function (x) { return x.discovered && !SW.ships.inRange(s, x) && U.dist(sys, x) <= R; }).length;
+        if (newly) html += '<div class="sub">◬ would bring ' + newly + ' charted system' + (newly === 1 ? '' : 's') + ' into command range.</div>';
+      }
+      if (project) {
+        html += '<div class="sub">▢ project under way' + (project.note ? ' — <span class="num">' + esc(project.note) + '</span>' : '') + '</div>';
+      }
+      if (!localReady) {
+        html += '<div class="row"><span class="sub">plan:</span>' + plan.map(function (row) {
+          const covered = row.local + row.inbound;
+          const tone = row.uncovered > 0 && !project ? '' : ' acc';
+          return '<span class="tag' + tone + '" title="' + D.COMMODITIES[row.c].name + ': ' + row.local + ' on-site, ' + row.inbound + ' inbound, need ' + row.need + '">' +
+            D.COMMODITIES[row.c].icon + ' ' + Math.min(covered, row.need) + '/' + row.need + (row.inbound > 0 ? ' ⇣' : '') + '</span>';
         }).join('') + '</div>';
       }
       html += '</div>';

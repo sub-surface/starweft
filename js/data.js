@@ -57,8 +57,9 @@ SW.data = (function () {
   D.HULLS = {
     // trade line
     sparrow:    { name: 'Sparrow',     cap: 10,  speed: 0.85, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
-    courier:    { name: 'Courier',     cap: 25,  speed: 1.10, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', desc: 'Faster, roomier, still cute.' },
-    freighter:  { name: 'Freighter',   cap: 60,  speed: 0.75, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', desc: 'The backbone of any serious weave.' },
+    courier:    { name: 'Courier',     cap: 25,  speed: 1.10, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
+    freighter:  { name: 'Freighter',   cap: 60,  speed: 0.75, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
+    liner:      { name: 'Liner',       cap: 15,  speed: 0.95, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
     superhauler:{ name: 'Superhauler', cap: 150, speed: 0.65, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
     // frontier line
     pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 1.60, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
@@ -344,6 +345,20 @@ SW.data = (function () {
     rivalTradeEvery: 6,
     rivalQty: 14,
     arrivalEventChance: 0.16,
+    hailMax: 8,                // bounded active hail list (oldest drops first)
+    hailTtl: 90,               // ticks before an unanswered hail expires
+    logGroupWindow: 10,        // recent journal entries scanned for repeat grouping
+    projectMax: 6,             // concurrent supply-and-build projects
+    berthPop: 0.05,            // population (M) carried per berth
+    evacFarePerPop: 600,       // ¤ per M of evacuees landed safely
+    cohortConvoyEvery: 10,     // ticks between NPC civilian convoy departures
+    cohortConvoyPop: 0.4,      // M per NPC convoy
+    cohortHopTicks: 4,         // travel ticks per lane hop for civilian convoys
+    charterEvery: 110,         // ticks between passenger charter offers
+    charterMax: 3,             // open charters at once
+    charterTtl: 240,           // ticks before a charter lapses
+    charterBase: 300,          // ¤ per M base fare
+    charterPerLy: 18,          // ¤ per M per ly
     // v2
     surveyTicks: 60,           // base ticks for a pathfinder to survey a system
     surveyResearch: 18,        // research per completed survey

@@ -75,6 +75,13 @@ input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
   animation: pulse 1.2s infinite;
 }
 @keyframes pulse { 50% { opacity: 0.5; } }
+/* hails are conversation, not crisis: quiet chips, no pulse */
+#alerts .alert.hailChip {
+  border-color: var(--line-bright); color: var(--ink-dim);
+  animation: none; max-width: 180px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+#alerts .alert.hailChip.grim { color: var(--danger); border-color: rgba(255,77,87,0.4); }
 
 #main { position: fixed; top: 42px; bottom: 30px; left: 0; right: 0; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
@@ -112,10 +119,6 @@ input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
 #dockTabs button.active { color: var(--ink); box-shadow: inset 0 -1px 0 var(--accent); }
 #dockBody { overflow-y: auto; padding: 10px; flex: 1; }
 
-#shipChip {
-  position: absolute; bottom: 158px; left: 8px; min-width: 270px; max-width: 340px;
-  padding: 9px 11px; z-index: 21;
-}
 #commandBar {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
   width: min(520px, 42vw); min-width: 360px;
@@ -314,6 +317,26 @@ canvas.spark { background: rgba(255,255,255,0.02); }
   padding: 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
+/* Development surface: tabs + grid panes for aptitudes and milestones */
+.devTab {
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  background: transparent; border: none; color: var(--ink-dim); padding: 4px 8px;
+}
+.devTab.active { color: var(--ink); box-shadow: inset 0 -1px 0 var(--accent); }
+.devBody {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px;
+}
+.perkGrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px; margin: 6px 0 12px;
+}
+.perkCard {
+  border: 1px solid var(--line); padding: 8px 10px;
+  background: rgba(201,209,217,0.02);
+}
+.perkCard.owned { border-color: var(--accent); }
+.perkCard.locked { opacity: 0.45; }
+
 .techDocHead { margin-top: 8px; }
 .techDetail {
   border: 1px solid var(--line-bright); padding: 10px 12px;

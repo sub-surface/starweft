@@ -97,11 +97,36 @@ SW.economy = (function () {
     sys.presence[faction] = U.clamp((sys.presence[faction] || 0) + gain, 0, 10);
   }
 
+  // Passenger charters: ordinary people wanting to be somewhere else.
+  // A bounded board of offers between charted population centers; lapse if ignored.
+  E.tickCharters = function (state) {
+    const T = D.TUNE;
+    state.charters = state.charters || [];
+    for (let i = state.charters.length - 1; i >= 0; i--) {
+      const ch = state.charters[i];
+      if (state.tick >= ch.expires || state.systems[ch.from].scourge === 2 || state.systems[ch.to].scourge === 2) state.charters.splice(i, 1);
+    }
+    if (state.tick === 0 || state.tick % T.charterEvery !== 0 || state.charters.length >= T.charterMax) return;
+    const pops = state.systems.filter(function (s) { return s.discovered && s.type === 'pop' && s.scourge === 0 && s.pop > 1; });
+    if (pops.length < 2) return;
+    const from = U.pick(state, pops);
+    const dests = pops.filter(function (s) { return s.id !== from.id; });
+    const to = U.pick(state, dests);
+    const n = Math.round((0.05 + U.rnd(state) * 0.25) * 100) / 100;
+    const fare = Math.round(n * (T.charterBase + T.charterPerLy * U.dist(from, to)));
+    state.charters.push({
+      id: 'ch' + (state.nextCharterId = (state.nextCharterId || 0) + 1),
+      from: from.id, to: to.id, n: n, fare: fare, expires: state.tick + T.charterTtl,
+    });
+    SW.game.news(state, '⇢ ' + U.fmt1(n) + 'M seek passage ' + from.name + ' → ' + to.name + ' (' + U.fmt(fare) + '¤ charter).', from.id);
+  };
+
   // ---- Tick ----
   E.tick = function (state) {
     const T = D.TUNE;
     const diff = D.DIFFICULTY[state.difficulty] || D.DIFFICULTY.standard;
     let research = 0;
+    E.tickCharters(state);
 
     const sampleHistory = state.tick % T.priceHistoryEvery === 0;
     for (const sys of state.systems) {

@@ -213,14 +213,17 @@ step('orbit guide is projected from galactic axes', function () {
   if (coreDy < 1 && spinDy < 1) throw new Error('guide is screen-flat instead of plane-projected');
 });
 
-step('command bar owns ship actions; chip is status-only', function () {
-  SW.render.selectedShip = G.state.ships.length ? G.state.ships[0].id : null;
+step('command bar is the single selected-ship surface (chip merged in)', function () {
+  const ship = G.state.ships.length ? G.state.ships[0] : null;
+  SW.render.selectedShip = ship ? ship.id : null;
+  if (ship) ship.cargo.FOOD = 3;
   SW.ui.refresh();
   const bar = (elCache['#commandBar'] && elCache['#commandBar'].innerHTML) || '';
-  const chip = (elCache['#shipChip'] && elCache['#shipChip'].innerHTML) || '';
   if (bar.indexOf('sendMode') < 0 || bar.indexOf('chkSellArrive') < 0) throw new Error('command bar missing send controls');
   if (bar.indexOf('followShip') < 0) throw new Error('command bar missing follow');
-  if (chip.indexOf('sendMode') >= 0) throw new Error('ship chip still duplicates send controls');
+  if (ship && bar.indexOf('commodity:FOOD') < 0) throw new Error('command bar does not show the manifest');
+  if (typeof SW.uiShip.renderShipChip === 'function') throw new Error('ship chip surface should be gone');
+  if (ship) { delete ship.cargo.FOOD; delete ship.basis.FOOD; }
 });
 
 step('interval refresh does not replace UI while pointer is down', function () {
@@ -538,6 +541,105 @@ step('ambient hails render as actionable chips', function () {
   if (G.state.story.hail) throw new Error('hail was not consumed');
   if (G.state.story.pending !== 'ev_derelict') throw new Error('hail did not open event: ' + G.state.story.pending);
   G.state.story.pending = null;
+});
+
+step('hail list renders quiet chips and a Journal signals inbox', function () {
+  const s = G.state;
+  s.story.pending = null;
+  s.story.hails = [
+    { key: 'ev_festival', id: 'ev_festival', ctx: null, at: s.tick, title: 'FESTIVAL OF LIGHTS', count: 3, mood: null },
+    { key: 'ev_pirates', id: 'ev_pirates', ctx: null, at: s.tick, title: 'TOLL COLLECTORS', count: 1, mood: 'bad' },
+  ];
+  SW.ui.refresh();
+  const alerts = (elCache['#alerts'] && elCache['#alerts'].innerHTML) || '';
+  if (alerts.indexOf('hailChip') < 0) throw new Error('hail list chips not rendered');
+  if (alerts.indexOf('×3') < 0) throw new Error('hail occurrence count not shown');
+  SW.ui.setTab('log');
+  const dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (dock.indexOf('Signals') < 0) throw new Error('Journal tab missing signals inbox');
+  if (dock.indexOf('dismissHail') < 0) throw new Error('signals inbox missing dismiss');
+  fireClick('openHail', { key: 'ev_festival' });
+  if (s.story.pending !== 'ev_festival') throw new Error('keyed hail did not open its event: ' + s.story.pending);
+  if (s.story.hails.length !== 1) throw new Error('opened hail not removed from list');
+  s.story.pending = null;
+  fireClick('dismissHail', { key: 'ev_pirates' });
+  if (s.story.hails.length !== 0) throw new Error('dismissed hail not removed');
+  SW.ui.setTab('fleet');
+});
+
+step('journal groups repeated entries as ×N', function () {
+  const s = G.state;
+  s.story.log.length = 0;
+  s.story.pending = 'ev_festival'; SW.story.choose(s, 0);
+  s.story.pending = 'ev_festival'; SW.story.choose(s, 0);
+  if (s.story.log.length !== 1) throw new Error('repeat log entries did not group: ' + s.story.log.length);
+  if (s.story.log[0].n !== 2) throw new Error('group count wrong: ' + s.story.log[0].n);
+  SW.ui.setTab('log');
+  const dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (dock.indexOf('×2') < 0) throw new Error('grouped count not rendered in journal');
+  SW.ui.setTab('fleet');
+});
+
+step('development surface tabs render aptitudes and milestones', function () {
+  SW.uiTech.open('aptitudes');
+  let ovl = (elCache['#techOverlay'] && elCache['#techOverlay'].innerHTML) || '';
+  if (ovl.indexOf('perkGrid') < 0) throw new Error('aptitude grid missing');
+  if (ovl.indexOf('DEVELOPMENT') < 0) throw new Error('development header missing');
+  SW.uiTech.open('milestones');
+  ovl = (elCache['#techOverlay'] && elCache['#techOverlay'].innerHTML) || '';
+  if (ovl.indexOf('MILESTONES') < 0 || ovl.indexOf('perkCard') < 0) throw new Error('milestones pane missing');
+  SW.uiTech.open('research');
+  pumpFrames(2);
+  ovl = (elCache['#techOverlay'] && elCache['#techOverlay'].innerHTML) || '';
+  if (ovl.indexOf('techCanvasFull') < 0) throw new Error('research canvas missing after tab switch');
+  SW.uiTech.close();
+});
+
+step('supply project dispatches haulers through one action', function () {
+  const s = G.state;
+  const home = s.systems[s.homeId];
+  const src = s.systems[home.links[0]];
+  src.discovered = true;
+  src.stocks.ALLOY = 60;
+  s.credits = 9999;
+  s.projects = [];
+  const hauler = SW.ships.create(s, 'courier', home.id);
+  SW.ships.unassign(s, hauler);
+  hauler.mode = 'idle'; hauler.at = home.id; hauler.path = []; hauler.leg = null; hauler.mission = null; hauler.queue = []; hauler.cargo = {}; hauler.basis = {};
+  home.buildings = home.buildings.filter(function (b) { return b !== 'relay'; });
+  if (home.depot) delete home.depot.ALLOY;
+  SW.render.selectedSys = home.id;
+  fireClick('projectBuild', { b: 'relay' });
+  if (!s.projects.length) throw new Error('project was not created');
+  if (!s.ships.some(function (sh) { return sh.mission && sh.mission.kind === 'supply' && sh.mission.c === 'ALLOY'; })) throw new Error('no supply mission dispatched');
+  SW.ui.refresh();
+  const panel = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (panel.indexOf('cancelProject') < 0) throw new Error('project status/cancel not rendered');
+  fireClick('cancelProject', { id: s.projects[0].id });
+  if (s.projects.length) throw new Error('project not cancelled');
+});
+
+step('passenger offers render and dispatch from the system panel', function () {
+  const s = G.state;
+  const home = s.systems[s.homeId];
+  const dest = s.systems.find(function (sys) { return sys.id !== home.id && sys.type === 'pop' && sys.scourge === 0; }) || s.systems[home.links[0]];
+  home.discovered = true; dest.discovered = true; dest.scourge = 0;
+  s.credits = 9999;
+  if (s.tech.unlocked.indexOf('freighters') < 0) s.tech.unlocked.push('freighters');
+  s.charters = [{ id: 'ch-boot', from: home.id, to: dest.id, n: 0.3, fare: 222, expires: s.tick + 50 }];
+  s.cohorts = [{ id: 'co-boot', from: home.id, haven: dest.id, hops: 1, n: 0.2, moving: [], deadline: s.tick + 40 }];
+  const liner = SW.ships.create(s, 'liner', home.id, 'Boot Liner');
+  SW.render.selectedSys = home.id;
+  SW.render.selectedShip = liner.id;
+  SW.ui.refresh();
+  const panel = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (panel.indexOf('boardEvac') < 0) throw new Error('evac boarding button not rendered');
+  if (panel.indexOf('boardCharter') < 0) throw new Error('charter boarding button not rendered');
+  fireClick('boardCharter', { id: 'ch-boot' });
+  if (!liner.pax || liner.pax.kind !== 'charter') throw new Error('charter dispatch did not board passengers');
+  liner.mode = 'idle'; liner.at = home.id; liner.pax = null;
+  fireClick('boardEvac');
+  if (!liner.pax || liner.pax.kind !== 'evac') throw new Error('evac dispatch did not board passengers');
 });
 
 step('exchange bulk assign button assigns idle ships', function () {

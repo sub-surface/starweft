@@ -43,25 +43,10 @@ SW.ui = (function () {
     return s.ships.find(function (x) { return x.id === SW.render.selectedShip; }) || null;
   }
   ui.selectedShip = selectedShip;
-  function freeForLogistics(sh) {
-    const hull = D.HULLS[sh.hull];
-    return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission &&
-      !(sh.queue && sh.queue.length) && !sh.stranded && hull && !hull.survey && hull.cap > 0;
-  }
-  function logisticsRank(sh) {
-    const hull = D.HULLS[sh.hull];
-    if (!hull) return 9999;
-    const role = hull.line === 'trade' ? 0 : (hull.line === 'vanguard' ? 1 : 2);
-    return role * 10000 - hull.cap * 20 - (hull.power || 0);
-  }
-  function logisticsShips(s) {
-    return s.ships.filter(freeForLogistics).sort(function (a, b) {
-      return logisticsRank(a) - logisticsRank(b);
-    });
-  }
+  function logisticsShips(s) { return SW.ships.idleLogistics(s); } // headless logic lives in ships.js
   ui.logisticsShips = logisticsShips;
   function pickLogisticsShip(s, preferred) {
-    if (preferred && freeForLogistics(preferred)) return preferred;
+    if (preferred && SW.ships.freeForLogistics(preferred)) return preferred;
     return logisticsShips(s)[0] || null;
   }
   ui.pickLogisticsShip = pickLogisticsShip;
@@ -339,7 +324,6 @@ SW.ui = (function () {
     if (!focused && s.tick !== lastRenderTick) {
       lastRenderTick = s.tick;
       SW.uiSystem.renderSysPanel();
-      SW.uiShip.renderShipChip();
       SW.uiShip.renderCommandBar();
       renderDock(false);
       if (!$('#exchange').classList.contains('hidden')) SW.uiMarket.renderExchange();
@@ -350,7 +334,6 @@ SW.ui = (function () {
     lastRenderTick = -1;
     renderTopbar();
     SW.uiSystem.renderSysPanel();
-    SW.uiShip.renderShipChip();
     SW.uiShip.renderCommandBar();
     // Prologue UI gating: shrink the interface while the map is locked
     const _st = st();
@@ -403,6 +386,11 @@ SW.ui = (function () {
     if (stranded.length) html += '<div class="alert" data-act="jumpStranded">▲ ' + stranded.length + ' STRANDED</div>';
     if (expiring.length) html += '<div class="alert" data-act="openOps">◷ CONTRACT</div>';
     if (s.story && s.story.hail) html += '<div class="alert" data-act="openHail" title="' + esc(s.story.hail.title || 'Incoming hail') + '">◌ HAIL</div>';
+    const hails = (s.story && s.story.hails) || [];
+    for (const h of hails.slice(0, 3)) {
+      html += '<div class="alert hailChip' + (h.mood === 'bad' ? ' grim' : '') + '" data-act="openHail" data-key="' + esc(h.key) + '" title="' + esc(h.title || 'Signal') + ' — click to answer, or let it lapse">◌ ' + esc(h.title || 'SIGNAL') + (h.count > 1 ? ' ×' + h.count : '') + '</div>';
+    }
+    if (hails.length > 3) html += '<div class="alert hailChip" data-act="openSignals" title="All waiting signals — Journal tab">◌ +' + (hails.length - 3) + '</div>';
     $('#alerts').innerHTML = html;
     $('#objective span').textContent = s.story.objective || '…';
   }
@@ -579,6 +567,31 @@ SW.ui = (function () {
         toast(r.ok ? { kind: 'info', text: '▢ ' + idle.name + ' fetching ' + btn.dataset.q + ' ' + D.COMMODITIES[btn.dataset.c].name + ' from ' + r.source.name } : { kind: 'bad', text: r.msg });
         break;
       }
+      case 'projectBuild': {
+        const r = A().projectBuild(s, sysId, btn.dataset.b);
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        break;
+      }
+      case 'cancelProject': A().cancelProject(s, btn.dataset.id); break;
+      case 'boardEvac': {
+        const sh = (ship && ship.at === sysId && SW.ships.berths(ship)) ? ship :
+          s.ships.find(function (x) { return x.mode === 'idle' && x.at === sysId && SW.ships.berths(x) && !x.pax; });
+        if (!sh) { toast({ kind: 'bad', text: 'No idle berthed hull here. Couriers, Freighters and Liners carry souls.' }); break; }
+        const r = A().boardEvac(s, sh.id);
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        else { SW.render.selectedShip = sh.id; A().shipSend(s, sh.id, r.haven, false); }
+        break;
+      }
+      case 'boardCharter': {
+        const sh = (ship && ship.at === sysId && SW.ships.berths(ship)) ? ship :
+          s.ships.find(function (x) { return x.mode === 'idle' && x.at === sysId && SW.ships.berths(x) && !x.pax; });
+        if (!sh) { toast({ kind: 'bad', text: 'No idle berthed hull here.' }); break; }
+        const r = A().boardCharter(s, sh.id, btn.dataset.id);
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        else { SW.render.selectedShip = sh.id; const ch = sh.pax; if (ch) A().shipSend(s, sh.id, ch.to, false); }
+        break;
+      }
+      case 'landPax': if (ship) { const r = A().landPax(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'buyShip': { const r = A().buyShip(s, btn.dataset.h, sysId); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'selShip': SW.render.selectedShip = btn.dataset.id; break;
       case 'deselShip': SW.render.selectedShip = null; SW.render.followShip = null; break;
@@ -661,7 +674,13 @@ SW.ui = (function () {
         else { SW.render.selectedShip = sh.id; toast({ kind: 'info', text: '⇢ ' + sh.name + ' → ' + btn.dataset.body + ' (' + r.eta + 't)' }); SW.audio.sfx('click'); }
         break;
       }
-      case 'buyPerk': { const r = A().buyPerk(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
+      case 'buyPerk': {
+        const r = A().buyPerk(s, btn.dataset.id);
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        else if (SW.uiTech.isOpen()) SW.uiTech.open('aptitudes');
+        break;
+      }
+      case 'devTab': SW.uiTech.open(btn.dataset.tab); return;
       case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'exComm': SW.uiMarket.setComm(btn.dataset.c); SW.uiMarket.renderExchange(); break;
       case 'marketKeep': {
@@ -752,7 +771,12 @@ SW.ui = (function () {
       case 'techZoomIn': SW.uiTech.zoomTechView(1.18); return;
       case 'techZoomOut': SW.uiTech.zoomTechView(1 / 1.18); return;
       case 'techResetView': SW.ui.techView.x = 0; SW.ui.techView.y = 0; SW.ui.techView.zoom = 1; return;
-      case 'research': { const r = A().research(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
+      case 'research': {
+        const r = A().research(s, btn.dataset.id);
+        if (!r.ok) toast({ kind: 'bad', text: r.msg });
+        else if (SW.uiTech.isOpen()) SW.uiTech.open('research');
+        break;
+      }
       case 'buyout': { const r = A().buyoutRival(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'payToll': { const r = A().payToll(s, parseInt(btn.dataset.i, 10)); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'breakBlockade': if (ship) { const r = A().breakBlockade(s, parseInt(btn.dataset.i, 10), ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
@@ -774,8 +798,9 @@ SW.ui = (function () {
       }
 
       case 'choose': SW.uiModals.chooseEvent(parseInt(btn.dataset.i, 10)); return;
-      case 'openHail': { const r = A().openHail(s); if (!r.ok) toast({ kind: 'bad', text: r.msg || 'The channel is dead.' }); return; }
-      case 'dismissHail': A().dismissHail(s); break;
+      case 'openHail': { const r = A().openHail(s, btn.dataset.key || undefined); if (!r.ok) toast({ kind: 'bad', text: r.msg || 'The channel is dead.' }); return; }
+      case 'dismissHail': A().dismissHail(s, btn.dataset.key || undefined); break;
+      case 'openSignals': ui.setTab('log'); break;
       case 'cheatResources':
       case 'cheatUnlock':
       case 'cheatReveal':

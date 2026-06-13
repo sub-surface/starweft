@@ -53,13 +53,13 @@ Already present at the baseline:
 
 Important limitations at baseline:
 
-- [ ] hailing chips/protocol not implemented;
-- [ ] repeated story log remains ungrouped;
-- [ ] supply UI remains project/resource-specific;
-- [ ] relay expansion remains manual;
-- [ ] selected ship is represented by overlapping status/control surfaces;
-- [ ] tech mini view duplicates the full tree;
-- [ ] aptitudes wrap poorly and progression lacks one coherent home;
+- [x] hailing chips/protocol not implemented; *(2026-06-13: bounded deduped `story.hails` list, topbar chips, Journal signals inbox; reruns of repeatable events hail instead of blocking — Wave 1 lite, persistent escalation semantics still open)*
+- [x] repeated story log remains ungrouped; *(2026-06-13: journal groups same title+choice as ×N)*
+- [x] supply UI remains project/resource-specific; *(2026-06-13: `SW.market.supplyPlan` + `A.projectBuild` — one SUPPLY & BUILD order computes local/inbound/uncovered and dispatches haulers; per-resource buttons removed — Wave 2 lite, reserve targets/relief packages still open)*
+- [x] relay expansion remains manual; *(2026-06-13: relay one-shot via supply project with coverage preview — Wave 3 persistent expansion policy still open)*
+- [x] selected ship is represented by overlapping status/control surfaces; *(2026-06-13: ship chip removed; command bar is the single selection surface with manifest)*
+- [x] tech mini view duplicates the full tree; *(2026-06-13: dead `#techModal` removed; overlay is the only representation)*
+- [x] aptitudes wrap poorly and progression lacks one coherent home; *(2026-06-13: Development surface — Research/Aptitudes/Milestones tabs, perk grid; You tab is a launcher)*
 - [ ] refugees still transfer instantly rather than travelling as cohorts;
 - [ ] no passenger capacity, hull line or manifest;
 - [ ] faction crisis response is mostly abstract;

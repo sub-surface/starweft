@@ -10,7 +10,7 @@ SW.story = (function () {
   ST.init = function (state) {
     state.story = {
       seen: {}, encSeen: {}, flags: {}, pending: null, ctx: null,
-      queue: [], log: [], objective: 'Wake up.', lastDropIn: -999,
+      queue: [], log: [], hails: [], objective: 'Wake up.', lastDropIn: -999,
     };
     state.fragments = [];
   };
@@ -30,6 +30,16 @@ SW.story = (function () {
     if (st.hail) {
       if (!ev(st.hail.id)) st.hail = null; // dynamic encounter lost across a load
       else if (state.tick - st.hail.at > 60) ST.dismissHail(state);
+    }
+    if (st.hails && st.hails.length) {
+      for (let i = st.hails.length - 1; i >= 0; i--) {
+        const h = st.hails[i];
+        if (!ev(h.id)) { st.hails.splice(i, 1); continue; } // dynamic encounter lost across a load
+        if (state.tick - h.at > D.TUNE.hailTtl) {
+          st.hails.splice(i, 1);
+          if (h.fac) { const fd = SW.lore.ENC_FACTIONS[h.fac]; if (fd && fd.rep) rep(state, fd.rep, -0.2); }
+        }
+      }
     }
     if (st.pending) {
       if (!ev(st.pending)) st.pending = null; // dynamic event lost across a load: let it go
@@ -53,7 +63,7 @@ SW.story = (function () {
     });
     if (pool.length) {
       const choice = U.weightedPick(state, pool, function (e) { return e.weight || 1; });
-      if (choice) fire(state, choice.id, null);
+      if (choice) hailOrFire(state, choice.id, null);
     }
   };
 
@@ -65,6 +75,30 @@ SW.story = (function () {
     state.story.seen[id] = state.tick;
     SW.game.emit('event', e);
     SW.game.emit('sfx', e.mood === 'bad' ? 'dread' : 'chime');
+  }
+
+  // ---- the hail list: bounded, deduped, non-blocking ----
+  // First occurrence of an event is a story moment (modal). Reruns of
+  // repeatable events hail instead: a chip the player answers in their own time.
+  ST.pushHail = function (state, h) {
+    const st = state.story;
+    st.hails = st.hails || [];
+    const dupe = st.hails.find(function (x) { return x.key === h.key; });
+    if (dupe) { dupe.count = (dupe.count || 1) + 1; dupe.at = state.tick; dupe.ctx = h.ctx || dupe.ctx; return dupe; }
+    h.count = 1;
+    st.hails.push(h);
+    while (st.hails.length > D.TUNE.hailMax) st.hails.shift();
+    SW.game.emit('sfx', 'click');
+    return h;
+  };
+
+  function hailOrFire(state, id, ctx) {
+    const e = ev(id);
+    if (!e) return;
+    const rerun = e.repeat && state.story.seen[id] !== undefined && !e.dynamic;
+    if (!rerun) { fire(state, id, ctx); return; }
+    state.story.seen[id] = state.tick; // rerun cooldown starts at the hail, not the answer
+    ST.pushHail(state, { key: id, id: id, ctx: ctx, at: state.tick, title: e.title, mood: e.mood || null });
   }
 
   ST.pendingEvent = function (state) {
@@ -79,14 +113,32 @@ SW.story = (function () {
     let result = null;
     try { result = choice.fx ? choice.fx(state) : null; } catch (err) { result = null; }
     state.story.pending = null;
-    state.story.log.push({
+    pushLog(state, {
       tick: state.tick, title: e.title,
       text: typeof e.text === 'function' ? e.text(state) : e.text,
       choice: choice.label, result: result || null, speaker: e.speaker || null,
     });
-    if (state.story.log.length > 80) state.story.log.shift();
     return { ok: true, result: result };
   };
+
+  // Repeats group: the same scene answered the same way becomes "×N",
+  // not another wall of identical journal entries.
+  function pushLog(state, entry) {
+    const log = state.story.log;
+    const from = Math.max(0, log.length - D.TUNE.logGroupWindow);
+    for (let i = log.length - 1; i >= from; i--) {
+      if (log[i].title === entry.title && log[i].choice === entry.choice) {
+        const g = log.splice(i, 1)[0];
+        g.n = (g.n || 1) + 1;
+        g.tick = entry.tick;
+        g.result = entry.result; // the freshest outcome speaks for the group
+        log.push(g);
+        return;
+      }
+    }
+    log.push(entry);
+    if (log.length > 80) log.shift();
+  }
 
   ST.schedule = function (state, id, inTicks, ctx) {
     state.story.queue.push({ at: state.tick + inTicks, id: id, ctx: ctx || null });
@@ -249,20 +301,27 @@ SW.story = (function () {
     return null;
   }
 
-  // ---- hails: ambient encounters that don't block the game ----
+  // ---- hails: ambient encounters and routine reruns that don't block the game ----
   // A chip appears; the player can open it (modal) or let it pass.
-  ST.openHail = function (state) {
-    const h = state.story.hail;
-    if (!h || !ev(h.id)) { state.story.hail = null; return { ok: false, msg: 'The channel is dead.' }; }
+  // No key: the legacy single-slot hail (kept for old saves), else the oldest listed hail.
+  function takeHail(state, key) {
+    const st = state.story;
+    if (!key && st.hail) { const h = st.hail; st.hail = null; return h; }
+    st.hails = st.hails || [];
+    const i = key ? st.hails.findIndex(function (x) { return x.key === key; }) : 0;
+    if (i < 0 || !st.hails.length) return null;
+    return st.hails.splice(i, 1)[0];
+  }
+  ST.openHail = function (state, key) {
     if (state.story.pending) return { ok: false, msg: 'Another matter holds the line.' };
-    state.story.hail = null;
+    const h = takeHail(state, key);
+    if (!h || !ev(h.id)) return { ok: false, msg: 'The channel is dead.' };
     fire(state, h.id, h.ctx);
     return { ok: true };
   };
-  ST.dismissHail = function (state) {
-    const h = state.story.hail;
+  ST.dismissHail = function (state, key) {
+    const h = takeHail(state, key);
     if (!h) return { ok: false };
-    state.story.hail = null;
     const fdef = SW.lore.ENC_FACTIONS[h.fac];
     if (fdef && fdef.rep) rep(state, fdef.rep, -0.2); // they remember being left on read
     return { ok: true };
@@ -285,11 +344,12 @@ SW.story = (function () {
 
     // half the drop-ins are assembled encounters — they hail rather than block
     if (U.chance(state, 0.5)) {
-      if (st.hail) return; // one open channel at a time
       const enc = ST.buildEncounter(state, sys, ship);
       if (enc) {
-        st.hail = { id: enc.id, ctx: ctx, at: state.tick, fac: enc.speaker.faction, title: enc.title };
-        SW.game.emit('sfx', 'click');
+        ST.pushHail(state, {
+          key: 'enc:' + enc.speaker.faction, id: enc.id, ctx: ctx, at: state.tick,
+          fac: enc.speaker.faction, title: enc.title, mood: enc.mood || null,
+        });
         return;
       }
     }
@@ -302,7 +362,7 @@ SW.story = (function () {
     });
     if (pool.length) {
       const choice = U.weightedPick(state, pool, function (e) { return e.weight || 1; });
-      if (choice) fire(state, choice.id, ctx);
+      if (choice) hailOrFire(state, choice.id, ctx);
     }
   };
 

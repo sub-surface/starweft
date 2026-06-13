@@ -13,46 +13,8 @@ SW.uiShip = (function () {
   function selectedShip() { return SW.ui.selectedShip(); }
   function logisticsShips(s) { return SW.ui.logisticsShips(s); }
 
-  // ============ ship chip ============
-  function renderShipChip() {
-    const s = st(), chip = $('#shipChip');
-    const ship = selectedShip();
-    if (!ship) { chip.classList.add('hidden'); return; }
-    chip.classList.remove('hidden');
-    const hull = D.HULLS[ship.hull];
-    let status;
-    if (ship.mode === 'travel') status = '→ ' + esc(s.systems[ship.leg.to].name) + ' · ETA ' + Math.max(0, ship.leg.arrive - s.tick);
-    else if (ship.mode === 'shuttle' && ship.hop) status = '⇢ → ' + esc(ship.hop.to) + ' · ETA ' + Math.max(0, ship.hop.arrive - s.tick);
-    else if (ship.routeId) { const r = s.routes.find(function (x) { return x.id === ship.routeId; }); status = '↻ ' + esc(r ? r.name : 'route'); }
-    else if (ship.directiveId) status = '◎ directive';
-    else if (ship.mission && ship.mission.kind === 'supply') status = '▢ supply run';
-    else status = 'idle · ' + esc(ship.at !== null ? s.systems[ship.at].name : '?') + (ship.body ? ' · ' + esc(ship.body) : '');
-
-    let html = '<div class="row" data-info="ship:' + ship.id + '"><span class="title grow">' + hull.glyph + ' ' + esc(ship.name) + '</span><span class="sub">' + hull.name + '</span>' +
-      '<button data-act="deselShip">✕</button></div>';
-    html += '<div class="sub">' + status + ' · hold ' + SW.ships.cargoTotal(ship) + '/' + SW.ships.cap(s, ship) +
-      (hull.power ? ' · pwr ' + SW.combat.power(s, ship) : '') +
-      (ship.stranded ? ' · <span style="color:var(--danger)">stranded</span>' : '') + '</div>';
-    if (ship.rec) {
-      const R2 = ship.rec;
-      const bits = [];
-      if (R2.hauls) bits.push(R2.hauls + ' hauls');
-      if (R2.surveys) bits.push(R2.surveys + ' surveys');
-      if (R2.charted) bits.push(R2.charted + ' first sightings');
-      if (R2.raids) bits.push(R2.raids + ' raids');
-      if (bits.length) html += '<div class="sub" title="Service record — this hull\'s history">≡ ' + bits.join(' · ') + '</div>';
-    }
-    const cargo = Object.keys(ship.cargo);
-    const chipDataV = SW.ships.dataValue(ship);
-    if (cargo.length || chipDataV > 0) {
-      html += '<div class="row">' + cargo.map(function (c) {
-        return '<span class="tag" data-info="commodity:' + c + '">' + D.COMMODITIES[c].icon + ' ' + Math.floor(ship.cargo[c]) + '</span>';
-      }).join('') +
-      (chipDataV > 0 ? '<span class="tag acc" title="Unsold cartography data — worth ' + U.fmt(chipDataV) + '¤ at a populated port, lost if the ship is.">◈ ' + U.fmt(chipDataV) + '¤</span>' : '') + '</div>';
-    }
-    chip.innerHTML = html; // the chip is status + cargo; all commands live in the command bar
-  }
-
+  // The old ship chip merged into the command bar: one selection surface,
+  // one status line, manifest tags, grouped actions. Detail lives in the infobox.
   function renderCommandBar() {
     const s = st(), bar = $('#commandBar');
     if (!bar) return;
@@ -79,8 +41,20 @@ SW.uiShip = (function () {
     const following = SW.render.followShip === ship.id;
     let html = '<div class="cmdTitle">COMMAND</div>' +
       '<div class="cmdUnit" data-info="ship:' + ship.id + '"><b>' + hull.glyph + ' ' + esc(ship.name) + '</b>' +
-      '<span>' + esc(hull.name) + '</span><span class="num">' + load + '</span><span>' + status + '</span></div>' +
-      '<div class="cmdActions">' +
+      '<span>' + esc(hull.name) + '</span><span class="num">' + load + '</span>' +
+      (hull.power ? '<span class="num">pwr ' + SW.combat.power(s, ship) + '</span>' : '') +
+      '<span>' + status + '</span>' +
+      (ship.stranded ? '<span style="color:var(--danger)">stranded</span>' : '') + '</div>';
+    const manifest = Object.keys(ship.cargo);
+    const cargoDataV = SW.ships.dataValue(ship);
+    if (manifest.length || cargoDataV > 0 || ship.pax) {
+      html += '<div class="cmdUnit">' + manifest.map(function (c) {
+        return '<span class="tag" data-info="commodity:' + c + '">' + D.COMMODITIES[c].icon + ' ' + Math.floor(ship.cargo[c]) + '</span>';
+      }).join('') +
+        (ship.pax ? '<span class="tag acc" title="' + (ship.pax.kind === 'evac' ? 'Evacuees — any safe population center pays on landing.' : 'Charter — pays ' + U.fmt(ship.pax.fare) + '¤ at ' + esc(s.systems[ship.pax.to].name) + '.') + '">⇡ ' + U.fmt1(ship.pax.n) + 'M souls → ' + esc(s.systems[ship.pax.to].name) + '</span>' : '') +
+        (cargoDataV > 0 ? '<span class="tag acc" title="Unsold cartography data — worth ' + U.fmt(cargoDataV) + '¤ at a populated port, lost if the ship is.">◈ ' + U.fmt(cargoDataV) + '¤</span>' : '') + '</div>';
+    }
+    html += '<div class="cmdActions">' +
       '<button class="primary" data-act="sendMode" ' + (idle ? '' : 'disabled') + '>SEND</button>' +
       '<label class="sub" style="cursor:pointer"><input type="checkbox" id="chkSellArrive" ' + (SW.ui.sendSellOnArrive ? 'checked' : '') + '> sell on arrival</label>' +
       '<button data-act="focusShip" data-id="' + ship.id + '">FOCUS</button>' +
@@ -146,7 +120,6 @@ SW.uiShip = (function () {
     body.innerHTML = html;
   }
 
-  m.renderShipChip = renderShipChip;
   m.renderCommandBar = renderCommandBar;
   m.renderFleet = renderFleet;
   return m;

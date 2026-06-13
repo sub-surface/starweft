@@ -719,13 +719,19 @@ section('Weftworks, Tessellation Yards, Exodus');
   const popsBefore = {};
   for (const s of st.systems) if (s.type === 'pop' && s.id !== doomed.id) popsBefore[s.id] = s.pop;
   const fleeing = doomed.pop;
-  doomed.scourge = 1; doomed.threatAt = st.tick;
+  doomed.scourge = 1; doomed.threatAt = st.tick + 99999;
+  const cohort = SW.scourge.ensureCohort(st, doomed);
+  assert(!!cohort && cohort.n > 0, 'doomed world forms a refugee cohort');
+  const havenId = cohort ? cohort.haven : null;
+  const arriveBy = st.tick + (cohort ? cohort.hops * D.TUNE.cohortHopTicks : 0) + D.TUNE.cohortConvoyEvery + 2;
+  while (st.tick < arriveBy) { G.tick(st); chooseAny(st); }
+  const gained = st.systems.some(function (s) {
+    return s.type === 'pop' && popsBefore[s.id] !== undefined && s.pop > popsBefore[s.id];
+  });
+  assert(gained && havenId !== null && st.systems[havenId].pop > popsBefore[havenId], 'refugees reached a haven world');
+  doomed.threatAt = st.tick;
   G.tick(st); chooseAny(st);
   assert(doomed.scourge === 2, 'doomed world fell');
-  const gained = st.systems.some(function (s) {
-    return s.type === 'pop' && popsBefore[s.id] !== undefined && s.pop > popsBefore[s.id] + fleeing * 0.15;
-  });
-  assert(gained, 'refugees reached a haven world');
 
   // -- backend fundamentals: action journal + market index
   assert(Array.isArray(st.journal) && st.journal.length > 5, 'action journal recorded entries (' + (st.journal || []).length + ')');
@@ -889,6 +895,106 @@ section('Stance, aptitudes, encounter dedupe');
   assert(built >= 10, 'encounters keep assembling (' + built + ')');
   assert(dup <= 2, 'combos rest before recurring (' + dup + ' repeats in ' + built + ')');
   invariants(st, 'post-stance');
+}
+
+// ---------- 6g. hails, journal grouping, supply projects ----------
+section('Hails, journal grouping, supply projects');
+{
+  const st = G.newGame({ seed: 'smoke-6g', difficulty: 'relaxed' });
+
+  // same-key hails aggregate instead of stacking
+  st.story.hails = [];
+  for (let i = 0; i < 5; i++) SW.story.pushHail(st, { key: 'ev_festival', id: 'ev_festival', ctx: null, at: st.tick, title: 'FESTIVAL OF LIGHTS' });
+  assert(st.story.hails.length === 1, 'same-key hails aggregate');
+  assert(st.story.hails[0].count === 5, 'occurrence count accumulates (' + st.story.hails[0].count + ')');
+
+  // the list stays bounded
+  for (let i = 0; i < 12; i++) SW.story.pushHail(st, { key: 'k' + i, id: 'ev_pod', ctx: null, at: st.tick, title: 'POD ' + i });
+  assert(st.story.hails.length === D.TUNE.hailMax, 'hail list bounded at ' + D.TUNE.hailMax + ' (' + st.story.hails.length + ')');
+
+  // unanswered faction hails expire and the faction notices
+  st.story.hails = [{ key: 'enc:severed', id: 'ev_pod', ctx: null, at: st.tick - D.TUNE.hailTtl - 1, title: 'X', fac: 'severed', count: 1 }];
+  const rep0 = st.rep.severed || 0;
+  SW.story.tick(st);
+  assert(st.story.hails.length === 0, 'expired hail removed');
+  assert((st.rep.severed || 0) < rep0, 'ignored faction hail dings rep (' + (st.rep.severed || 0) + ')');
+
+  // a keyed hail opens its event
+  st.story.pending = null;
+  st.story.hails = [{ key: 'ev_festival', id: 'ev_festival', ctx: null, at: st.tick, title: 'F', count: 2 }];
+  const ro = A.openHail(st, 'ev_festival');
+  assert(ro.ok && st.story.pending === 'ev_festival', 'keyed hail opens its event');
+  assert(st.story.hails.length === 0, 'opened hail leaves the list');
+
+  // the journal groups repeats as one ×N line
+  st.story.log.length = 0;
+  SW.story.choose(st, 0);
+  st.story.pending = 'ev_festival'; SW.story.choose(st, 0);
+  st.story.pending = 'ev_festival'; SW.story.choose(st, 0);
+  assert(st.story.log.length === 1, 'repeat journal entries group (' + st.story.log.length + ')');
+  assert(st.story.log[0].n === 3, 'group counts occurrences (' + st.story.log[0].n + ')');
+
+  // supply plan: local stock subtracts from the requirement
+  const home = st.systems[st.homeId];
+  const nb = st.systems[home.links[0]];
+  nb.discovered = true; nb.stocks.ALLOY = 60;
+  home.depot = home.depot || {}; home.depot.ALLOY = 3;
+  const plan = SW.market.supplyPlan(st, home.id, { ALLOY: 8 });
+  assert(plan.length === 1 && plan[0].local === 3 && plan[0].uncovered === 5,
+    'supply plan covers local stock (local ' + plan[0].local + ', uncovered ' + plan[0].uncovered + ')');
+
+  // one project order: haulers fetch the gap, the building raises itself
+  st.credits = 9999;
+  const hauler = SW.ships.create(st, 'courier', st.homeId);
+  SW.ships.unassign(st, hauler);
+  hauler.mode = 'idle'; hauler.at = st.homeId; hauler.path = []; hauler.leg = null;
+  nb.buildings = nb.buildings.filter(function (b) { return b !== 'relay'; });
+  const rp = A.projectBuild(st, nb.id, 'relay');
+  assert(rp.ok, 'relay project accepted (' + (rp.msg || 'ok') + ')');
+  assert((st.projects || []).length === 1, 'project recorded');
+  assert(A.projectBuild(st, nb.id, 'relay').ok === false, 'duplicate project refused');
+  let guard = 0;
+  while (nb.buildings.indexOf('relay') < 0 && guard++ < 600) G.tick(st);
+  assert(nb.buildings.indexOf('relay') >= 0, 'project raised the relay (' + guard + ' ticks)');
+  assert(st.projects.length === 0, 'completed project cleared');
+  invariants(st, 'post-project');
+}
+
+// ---------- 6h. passengers, charters, refugee cohorts ----------
+section('Passengers, charters, refugee cohorts');
+{
+  const st = G.newGame({ seed: 'smoke-pax', difficulty: 'relaxed' });
+  st.credits = 9999;
+  st.tech.unlocked.push('freighters');
+  const from = st.systems.find(function (s) { return s.type === 'pop' && s.pop > 4 && s.id !== st.homeId; });
+  const haven = st.systems[st.homeId];
+  from.discovered = true; haven.discovered = true;
+  from.scourge = 1; from.threatAt = st.tick + 100;
+  const co = SW.scourge.ensureCohort(st, from);
+  assert(!!co && co.from === from.id && co.n > 0, 'threatened population creates a waiting cohort');
+  const liner = SW.ships.create(st, 'liner', from.id, 'Test Liner');
+  const popBefore = from.pop;
+  const rb = A.boardEvac(st, liner.id);
+  assert(rb.ok && liner.pax && liner.pax.kind === 'evac', 'evacuees board berths through action');
+  assert(from.pop < popBefore && co.n < Math.round(popBefore * 0.25 * 100) / 100, 'boarding removes people from the threatened port queue');
+  liner.at = haven.id; liner.mode = 'idle';
+  const creditsBefore = st.credits;
+  const savedBefore = st.stats.popSaved || 0;
+  const rl = A.landPax(st, liner.id);
+  assert(rl.ok && !liner.pax, 'evacuees land through action');
+  assert(st.credits > creditsBefore && st.stats.popSaved > savedBefore, 'evac landing pays and records saved population');
+
+  st.charters = [{ id: 'ch-test', from: haven.id, to: from.id, n: 0.4, fare: 321, expires: st.tick + 50 }];
+  from.scourge = 0;
+  liner.at = haven.id; liner.mode = 'idle';
+  const rc = A.boardCharter(st, liner.id, 'ch-test');
+  assert(rc.ok && liner.pax && liner.pax.kind === 'charter', 'charter boards through action');
+  assert(st.charters.length === 0, 'accepted charter leaves the board');
+  liner.at = from.id; liner.mode = 'idle';
+  const c0 = st.credits;
+  G.tick(st);
+  assert(!liner.pax && st.credits === c0 + 321, 'charter auto-lands and pays at destination');
+  invariants(st, 'post-passengers');
 }
 
 // ---------- 7. combat: pirate raids, escorts, player raiding ----------

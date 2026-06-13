@@ -30,28 +30,17 @@ SW.uiRoutes = (function () {
       ((s.infamy || 0) >= 1 ? '<span class="tag bad">infamy ' + Math.floor(s.infamy) + '</span>' : '') +
       '</div>';
 
-    // aptitudes: a character sheet, not a tech-tree footnote
+    // progression lives in the Development surface; this is the launcher
     const pts = s.perkPoints || 0;
-    html += '<h4>Aptitudes <span class="tag' + (pts ? ' acc' : '') + '">' + pts + ' point' + (pts === 1 ? '' : 's') + '</span></h4>';
-    const perkList = SW.perks.list(s);
-    const cats = [];
-    for (const p of perkList) if (cats.indexOf(p.cat) < 0) cats.push(p.cat);
-    for (const cat of cats) {
-      html += '<div class="row"><span class="sub" style="width:86px">' + cat.toUpperCase() + '</span>';
-      for (const p of perkList.filter(function (x) { return x.cat === cat; })) {
-        if (p.owned) html += '<span class="tag acc" title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</span>';
-        else if (p.available) html += '<button data-act="buyPerk" data-id="' + p.id + '" ' + (pts ? '' : 'disabled') + ' title="' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</button>';
-        else html += '<span class="tag" style="opacity:0.4" title="Requires ' + esc((D.PERKS[p.req] || {}).name || '') + ' — ' + esc(p.desc) + '">' + p.icon + ' ' + esc(p.name) + '</span>';
-      }
-      html += '</div>';
-    }
-    // milestones: where the points come from
-    html += '<h4>Milestones</h4>';
-    for (const mi of D.PERK_MILESTONES) {
-      const done = !!(s.milestones && s.milestones[mi.id]);
-      html += '<div class="row"><span class="sub grow"' + (done ? '' : ' style="opacity:0.55"') + '>' + (done ? '◆ ' : '◇ ') + esc(mi.label) + '</span>' +
-        (done ? '<span class="tag acc">+1</span>' : '') + '</div>';
-    }
+    const owned = (s.perks || []).length;
+    const msDone = Object.keys(s.milestones || {}).length;
+    html += '<h4>Development</h4>';
+    html += '<div class="row"><span class="sub grow">◇ ' + U.fmt(Math.floor(s.research)) + ' research · ✦ ' + pts + ' aptitude point' + (pts === 1 ? '' : 's') +
+      ' · ' + owned + ' mastered · ◆ ' + msDone + '/' + D.PERK_MILESTONES.length + ' milestones</span></div>';
+    html += '<div class="row">' +
+      '<button class="' + (pts ? 'primary' : '') + '" data-act="devTab" data-tab="aptitudes" title="Spend aptitude points — the Development surface">✦ aptitudes</button>' +
+      '<button data-act="devTab" data-tab="research" title="The research tree">◇ research</button>' +
+      '<button data-act="devTab" data-tab="milestones" title="Where aptitude points come from">◆ milestones</button></div>';
     // the fleet's collected history
     let hauls = 0, surveys = 0, charted = 0, raids = 0;
     for (const sh of s.ships) {
@@ -267,6 +256,22 @@ SW.uiRoutes = (function () {
   function renderLog(body) {
     const s = st();
     let html = '';
+    // signals inbox: waiting hails, answered or dismissed in your own time
+    const hails = (s.story && s.story.hails) || [];
+    if (hails.length || (s.story && s.story.hail)) {
+      html += '<h4 title="Open channels. Answer them, or let them lapse — silence is also an answer.">Signals</h4>';
+      if (s.story.hail) {
+        html += '<div class="listItem"><div class="row"><span class="title grow">◌ ' + esc(s.story.hail.title || 'Incoming hail') + '</span>' +
+          '<button class="primary" data-act="openHail">open</button>' +
+          '<button data-act="dismissHail">✕</button></div></div>';
+      }
+      for (const h of hails) {
+        html += '<div class="listItem' + (h.mood === 'bad' ? ' bad' : '') + '"><div class="row"><span class="title grow">◌ ' + esc(h.title || 'Signal') +
+          (h.count > 1 ? ' <span class="tag">×' + h.count + '</span>' : '') + '</span><span class="sub num">⧗' + h.at + '</span>' +
+          '<button class="primary" data-act="openHail" data-key="' + esc(h.key) + '">open</button>' +
+          '<button data-act="dismissHail" data-key="' + esc(h.key) + '" title="Decline. Some callers remember.">✕</button></div></div>';
+      }
+    }
     if (SW.quests && SW.quests.markJournalViewed) SW.quests.markJournalViewed(s);
     const contracts = (SW.quests && SW.quests.company) ? SW.quests.company(s) : [];
     if (contracts.length) {
@@ -289,7 +294,9 @@ SW.uiRoutes = (function () {
     const log = s.story.log.slice().reverse();
     if (!log.length) html += '<div class="sub">The story will find you.</div>';
     for (const entry of log) {
-      html += '<div class="listItem"><div class="row"><span class="title grow">' + esc(entry.title) + '</span><span class="sub num">⧗' + entry.tick + '</span></div>' +
+      html += '<div class="listItem"><div class="row"><span class="title grow">' + esc(entry.title) +
+        ((entry.n || 1) > 1 ? ' <span class="tag" title="This scene repeated; the journal keeps one line.">×' + entry.n + '</span>' : '') +
+        '</span><span class="sub num">⧗' + entry.tick + '</span></div>' +
         '<div class="sub">' + esc(entry.text).slice(0, 200) + '</div>' +
         '<div class="sub" style="color:var(--accent)">→ ' + esc(entry.choice) + (entry.result ? ' · ' + esc(entry.result) : '') + '</div></div>';
     }

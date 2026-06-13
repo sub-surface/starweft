@@ -112,6 +112,7 @@ SW.game = (function () {
     state.tick++;
     SW.economy.tick(state);
     SW.ships.tick(state);
+    tickProjects(state);
     SW.combat.tick(state);
     SW.rivals.tick(state);
     SW.civics.tick(state);
@@ -491,9 +492,8 @@ SW.game = (function () {
     return cost;
   };
 
-  // Build: consumes credits + materials from (depot + idle ships' holds) at the site.
-  A.build = function (state, sysId, buildingId) {
-    const sys = state.systems[sysId];
+  // Eligibility shared by the direct build action and supply projects.
+  function buildEligible(state, sys, buildingId) {
     const b = D.BUILDINGS[buildingId];
     if (!sys || !b) return err('Unknown.');
     if (sys.scourge === 2) return err('The Scourge holds that system.');
@@ -503,6 +503,16 @@ SW.game = (function () {
     if (b.onlyType === 'producer' && Object.keys(sys.prod).length === 0) return err('Only useful at producing systems.');
     if (b.onlyType === 'pop' && !(sys.pop > 0 && sys.type === 'pop')) return err('Only useful at population centers.');
     if (buildingId !== 'relay' && !SW.ships.inRange(state, sys)) return err('Outside command range — relays first.');
+    return { ok: true };
+  }
+
+  // Build: consumes credits + materials from (depot + idle ships' holds) at the site.
+  // Internal (unjournaled) so the project tick can raise buildings deterministically.
+  function doBuild(state, sysId, buildingId) {
+    const sys = state.systems[sysId];
+    const b = D.BUILDINGS[buildingId];
+    const el = buildEligible(state, sys, buildingId);
+    if (!el.ok) return el;
     const bCost = G.buildingCost(state, buildingId);
     if (state.credits < bCost) return err('Needs ' + U.fmt(bCost) + '¤.');
 
@@ -541,7 +551,79 @@ SW.game = (function () {
     G.emit('toast', { kind: 'good', text: b.icon + ' ' + b.name + ' built at ' + sys.name + '.' });
     G.emit('sfx', 'build');
     return { ok: true };
+  }
+  A.build = function (state, sysId, buildingId) { return doBuild(state, sysId, buildingId); };
+
+  // ---- supply projects: one order gathers the requirement, then builds ----
+  // Replaces per-commodity supply bookkeeping: the plan subtracts what is
+  // on-site and inbound, drafts idle haulers for the gaps, and the tick
+  // raises the building the moment credits and materials are all present.
+  A.projectBuild = function (state, sysId, buildingId) {
+    const sys = state.systems[sysId];
+    const b = D.BUILDINGS[buildingId];
+    const el = buildEligible(state, sys, buildingId);
+    if (!el.ok) return el;
+    state.projects = state.projects || [];
+    if (state.projects.find(function (p) { return p.sys === sysId && p.b === buildingId; })) {
+      return err('Already planned — supplies are moving.');
+    }
+    if (state.projects.length >= D.TUNE.projectMax) return err('Too many projects in motion.');
+    const plan = SW.market.supplyPlan(state, sysId, b.mats);
+    const gaps = plan.filter(function (row) { return row.uncovered > 0; });
+    const pool = SW.ships.idleLogistics(state);
+    for (const row of gaps) {
+      if (!row.source) return err('No charted market stocks ' + D.COMMODITIES[row.c].name + '.');
+    }
+    if (gaps.length > pool.length) return err('Needs ' + gaps.length + ' idle hauler' + (gaps.length === 1 ? '' : 's') + ' (' + pool.length + ' free).');
+    const dispatched = [];
+    for (const row of gaps) {
+      const ship = SW.ships.idleLogistics(state)[0]; // re-pick: each mission consumes one
+      const r = SW.ships.supplyMission(state, ship, sysId, row.c, row.uncovered);
+      if (!r.ok) return r;
+      dispatched.push({ c: row.c, qty: row.uncovered, ship: ship.name, from: r.source.name });
+    }
+    state.projects.push({ id: 'prj' + (state.nextProjectId = (state.nextProjectId || 0) + 1), sys: sysId, b: buildingId, at: state.tick, note: null });
+    G.emit('toast', {
+      kind: 'good', text: b.icon + ' ' + b.name + ' planned at ' + sys.name +
+        (dispatched.length ? ' — ' + dispatched.map(function (d) { return d.qty + ' ' + D.COMMODITIES[d.c].icon + ' (' + d.ship + ')'; }).join(', ') + ' inbound.' : ' — materials on-site, building shortly.'),
+    });
+    return { ok: true, dispatched: dispatched, plan: plan };
   };
+  A.cancelProject = function (state, projectId) {
+    const ps = state.projects || [];
+    const i = ps.findIndex(function (p) { return p.id === projectId; });
+    if (i < 0) return err('No such project.');
+    ps.splice(i, 1); // supply ships finish their delivery; the goods stay usable
+    return { ok: true };
+  };
+
+  // Projects tick: build when ready, re-dispatch when a gap reopens, explain when stuck.
+  function tickProjects(state) {
+    const ps = state.projects;
+    if (!ps || !ps.length || state.tick % 5 !== 0) return;
+    for (let i = ps.length - 1; i >= 0; i--) {
+      const p = ps[i];
+      const sys = state.systems[p.sys];
+      const b = D.BUILDINGS[p.b];
+      if (!sys || !b || sys.buildings.indexOf(p.b) >= 0 || sys.scourge === 2) { ps.splice(i, 1); continue; }
+      const r = doBuild(state, p.sys, p.b);
+      if (r.ok) {
+        ps.splice(i, 1);
+        G.news(state, b.icon + ' ' + b.name + ' raised at ' + sys.name + ' — project complete.', p.sys);
+        continue;
+      }
+      p.note = r.msg;
+      if (state.tick % 25 === 0) { // self-heal: a lost or stalled hauler reopens a gap
+        const plan = SW.market.supplyPlan(state, p.sys, b.mats);
+        for (const row of plan) {
+          if (row.uncovered <= 0 || !row.source) continue;
+          const ship = SW.ships.idleLogistics(state)[0];
+          if (!ship) break;
+          SW.ships.supplyMission(state, ship, p.sys, row.c, row.uncovered);
+        }
+      }
+    }
+  }
 
   A.buildSite = function (state, sysId, bodyName, facId) {
     return SW.sites.build(state, sysId, bodyName, facId);
@@ -554,8 +636,46 @@ SW.game = (function () {
     if (!ship) return err('No such ship.');
     return SW.ships.sellData(state, ship);
   };
-  A.openHail = function (state) { return SW.story.openHail(state); };
-  A.dismissHail = function (state) { return SW.story.dismissHail(state); };
+  // ---- passengers: berths carry souls, not crates ----
+  A.boardEvac = function (state, shipId) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    if (ship.mode !== 'idle' || ship.at === null) return err(ship.name + ' is in flight.');
+    if (ship.pax) return err('Berths already taken — land them first.');
+    const berths = SW.ships.berths(ship);
+    if (!berths) return err(ship.name + ' has no berths. Couriers, Freighters and Liners do.');
+    const co = (state.cohorts || []).find(function (x) { return x.from === ship.at && x.n > 0; });
+    if (!co) return err('No one is waiting at this port.');
+    const sys = state.systems[ship.at];
+    const take = Math.min(Math.round(berths * D.TUNE.berthPop * 100) / 100, co.n);
+    co.n = Math.round((co.n - take) * 100) / 100;
+    sys.pop = Math.max(0, sys.pop - take);
+    ship.pax = { kind: 'evac', n: take, from: sys.id, to: co.haven };
+    G.emit('toast', { kind: 'good', text: '⇡ ' + ship.name + ' boards ' + U.fmt1(take) + 'M evacuees. Haven: ' + state.systems[co.haven].name + ' — any safe port pays.' });
+    G.emit('sfx', 'click');
+    return { ok: true, n: take, haven: co.haven };
+  };
+  A.boardCharter = function (state, shipId, charterId) {
+    const ship = findShip(state, shipId);
+    const ch = (state.charters || []).find(function (x) { return x.id === charterId; });
+    if (!ship || !ch) return err('Ship or charter missing.');
+    if (ship.mode !== 'idle' || ship.at !== ch.from) return err('The ship must be idle at ' + state.systems[ch.from].name + '.');
+    if (ship.pax) return err('Berths already taken.');
+    const berths = SW.ships.berths(ship);
+    if (Math.round(berths * D.TUNE.berthPop * 100) / 100 < ch.n) return err('Needs ' + Math.ceil(ch.n / D.TUNE.berthPop) + ' berths (' + berths + ' aboard).');
+    state.charters.splice(state.charters.indexOf(ch), 1);
+    ship.pax = { kind: 'charter', n: ch.n, from: ch.from, to: ch.to, fare: ch.fare };
+    G.emit('toast', { kind: 'good', text: '⇡ ' + ship.name + ' boards ' + U.fmt1(ch.n) + 'M for ' + state.systems[ch.to].name + ' (' + U.fmt(ch.fare) + '¤ on landing).' });
+    return { ok: true };
+  };
+  A.landPax = function (state, shipId) {
+    const ship = findShip(state, shipId);
+    if (!ship) return err('No such ship.');
+    return SW.ships.landPax(state, ship);
+  };
+
+  A.openHail = function (state, key) { return SW.story.openHail(state, key); };
+  A.dismissHail = function (state, key) { return SW.story.dismissHail(state, key); };
   // Command grammar: issue an intent; it compiles to a visible queue of atoms.
   A.order = function (state, shipId, intent) {
     const ship = findShip(state, shipId);

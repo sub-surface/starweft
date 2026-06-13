@@ -26,6 +26,7 @@ SW.scourge = (function () {
 
   SC.tick = function (state) {
     const sc = state.scourge, T = D.TUNE;
+    tickCohorts(state); // convoys in flight settle even after the cure
     if (sc.phase === 'never' || sc.phase === 'cured') return;
 
     if (sc.phase === 'dormant') {
@@ -75,6 +76,7 @@ SW.scourge = (function () {
           } else {
             tgt.scourge = 1;
             tgt.threatAt = state.tick + T.scourgeWarnTicks;
+            SC.ensureCohort(state, tgt);
             if (tgt.discovered) {
               SW.game.emit('toast', { kind: 'bad', text: '△ The Scourge reaches for ' + tgt.name + '. ' + T.scourgeWarnTicks + ' ticks to act.' });
               SW.game.emit('sfx', 'dread');
@@ -85,47 +87,99 @@ SW.scourge = (function () {
     }
   };
 
+  // Nearest haven by BFS lane hops, corrupted systems impassable; Euclidean
+  // fallback so refugees flee rather than vanish when the lanes are severed.
+  SC.chooseHaven = function (state, sys) {
+    let haven = null, bestHops = Infinity;
+    for (const s of state.systems) {
+      if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
+      const lp = U.findPath(state.systems, sys.id, s.id, function (ns) { return ns.scourge !== 2; });
+      if (lp && lp.length - 1 < bestHops) { bestHops = lp.length - 1; haven = s; }
+    }
+    if (!haven) {
+      let hd = Infinity;
+      for (const s of state.systems) {
+        if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
+        const d = U.dist(s, sys);
+        if (d < hd) { hd = d; haven = s; }
+      }
+      bestHops = 3; // severed lanes: the long way round, abstracted
+    }
+    return haven ? { haven: haven, hops: Math.max(1, bestHops) } : null;
+  };
+
+  // ---- refugee cohorts: civilians wait, board convoys, and travel ----
+  // A quarter of a threatened world queues at the port. NPC convoys drain the
+  // queue down real lanes over time; the player can board them onto berths.
+  // Whoever is still waiting when the Scourge lands is lost with the system.
+  SC.ensureCohort = function (state, sys) {
+    if (!(sys.pop > 0)) return null;
+    state.cohorts = state.cohorts || [];
+    let co = state.cohorts.find(function (x) { return x.from === sys.id; });
+    if (co) return co;
+    const pick = SC.chooseHaven(state, sys);
+    if (!pick) return null;
+    co = {
+      id: 'co' + (state.nextCohortId = (state.nextCohortId || 0) + 1),
+      from: sys.id, haven: pick.haven.id, hops: pick.hops,
+      n: Math.round(sys.pop * 0.25 * 100) / 100, // waiting at the port (still counted in sys.pop)
+      moving: [], deadline: sys.threatAt,
+    };
+    state.cohorts.push(co);
+    if (sys.discovered) {
+      SW.story.pushHail(state, { key: 'evac:' + sys.id, id: 'ev_evac', ctx: { sysId: sys.id }, at: state.tick, title: 'EVACUATION — ' + sys.name.toUpperCase(), mood: 'bad' });
+      SW.game.news(state, '⇢ ' + sys.name + ' calls for evacuation — ' + U.fmt1(co.n) + 'M waiting at the port.', sys.id);
+    }
+    return co;
+  };
+
+  function settle(state, sysId, n, fromName) {
+    const sys = state.systems[sysId];
+    if (!sys || sys.scourge === 2 || !(n > 0)) { // dead haven: the convoy is lost
+      state.stats.popLost = Math.round(((state.stats.popLost || 0) + n) * 100) / 100;
+      return;
+    }
+    const ratio = (sys.pop + n) / Math.max(1, sys.pop);
+    sys.pop += n;
+    for (const c in sys.cons) sys.cons[c] *= ratio;
+    if (sys.discovered) SW.game.news(state, '⇢ Refugee convoys from ' + fromName + ' swell the markets at ' + sys.name, sys.id);
+  }
+
+  function tickCohorts(state) {
+    const cos = state.cohorts;
+    if (!cos || !cos.length) return;
+    const T = D.TUNE;
+    for (let i = cos.length - 1; i >= 0; i--) {
+      const co = cos[i];
+      const from = state.systems[co.from];
+      // arrivals integrate over time
+      for (let j = co.moving.length - 1; j >= 0; j--) {
+        if (state.tick >= co.moving[j].arriveAt) {
+          settle(state, co.haven, co.moving[j].n, from.name);
+          co.moving.splice(j, 1);
+        }
+      }
+      // the threat resolved (inoculated or fallen): no one else boards
+      if (from.scourge !== 1) {
+        co.n = 0; // safe again: they unpack; fallen: already counted with the system
+        if (!co.moving.length) cos.splice(i, 1);
+        continue;
+      }
+      // NPC convoys depart on a steady cadence
+      if (co.n > 0 && state.tick % T.cohortConvoyEvery === 0) {
+        const dep = Math.min(T.cohortConvoyPop, co.n);
+        co.n = Math.round((co.n - dep) * 100) / 100;
+        from.pop = Math.max(0, from.pop - dep);
+        co.moving.push({ n: dep, arriveAt: state.tick + co.hops * T.cohortHopTicks });
+      }
+    }
+  }
+
   function corrupt(state, sys, isOrigin) {
     if (sys.scourge === 2) return;
     sys.scourge = 2;
     sys.discovered = true; // horror is always news
-
-    // exodus: a quarter of the population flees down the lanes ahead of the end
-    const refugees = Math.round(sys.pop * 0.25);
-    if (refugees > 0) {
-      // FIX: choose nearest haven by BFS lane hops, treating corrupted systems as impassable,
-      // so refugees cannot teleport across a corrupted gap. Fall back to Euclidean if no
-      // lane-reachable safe population center exists (refugees flee rather than vanish).
-      let haven = null;
-      let bestHops = Infinity;
-      for (const s of state.systems) {
-        if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
-        const lp = U.findPath(state.systems, sys.id, s.id, function (ns) { return ns.scourge !== 2; });
-        if (lp) {
-          const hops = lp.length - 1;
-          if (hops < bestHops) { bestHops = hops; haven = s; }
-        }
-      }
-      if (!haven) {
-        // fallback: Euclidean nearest (lane severed by total corruption)
-        let hd = Infinity;
-        for (const s of state.systems) {
-          if (s.id === sys.id || s.scourge !== 0 || s.type !== 'pop') continue;
-          const d = U.dist(s, sys);
-          if (d < hd) { hd = d; haven = s; }
-        }
-      }
-      if (haven) {
-        const ratio = (haven.pop + refugees) / Math.max(1, haven.pop);
-        haven.pop += refugees;
-        for (const c in haven.cons) haven.cons[c] *= ratio;
-        sys.pop -= refugees;
-        if (haven.discovered) {
-          SW.game.emit('toast', { kind: 'info', text: '⇢ Refugees from ' + sys.name + ' reach ' + haven.name + '. Its markets swell.' });
-          SW.game.news(state, '⇢ Refugee convoys from ' + sys.name + ' swell the markets at ' + haven.name, haven.id);
-        }
-      }
-    }
+    // whoever is still queued at the port dies with the world (they are in sys.pop)
     // rival networks pull half their standing out to safer holdings
     for (const f in sys.presence) {
       if (f === 'player' || sys.presence[f] <= 0.5) continue;

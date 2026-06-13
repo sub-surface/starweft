@@ -106,9 +106,41 @@ SW.ships = (function () {
     return ship;
   };
 
+  S.berths = function (ship) { return D.HULLS[ship.hull].berths || 0; };
+
+  // Land the souls aboard: evacuees disembark at any safe population center
+  // (their destination is a suggestion, not a cage); charter passengers only
+  // pay where the contract says. Population and fares are conserved here.
+  S.landPax = function (state, ship) {
+    const pax = ship.pax;
+    if (!pax) return { ok: false, msg: 'No passengers aboard.' };
+    if (ship.mode !== 'idle' || ship.at === null) return { ok: false, msg: ship.name + ' is in flight.' };
+    const sys = state.systems[ship.at];
+    if (sys.scourge === 2) return { ok: false, msg: 'No one disembarks into that.' };
+    if (pax.kind === 'charter' && sys.id !== pax.to) return { ok: false, msg: 'The charter pays at ' + state.systems[pax.to].name + '.' };
+    if (pax.kind === 'evac' && !(sys.pop > 0)) return { ok: false, msg: 'Evacuees need a population center.' };
+    const ratio = (sys.pop + pax.n) / Math.max(1, sys.pop);
+    sys.pop += pax.n;
+    for (const c in sys.cons) sys.cons[c] *= ratio;
+    const fare = pax.kind === 'charter' ? pax.fare : Math.round(pax.n * D.TUNE.evacFarePerPop);
+    state.credits += fare;
+    if (pax.kind === 'evac') {
+      state.stats.popSaved = Math.round(((state.stats.popSaved || 0) + pax.n) * 100) / 100;
+      rec(ship, 'rescues');
+    }
+    ship.pax = null;
+    SW.game.emit('toast', { kind: 'good', text: '⇣ ' + ship.name + ' lands ' + U.fmt1(pax.n) + 'M souls at ' + sys.name + ' (+' + U.fmt(fare) + '¤).' });
+    SW.game.emit('sfx', 'sell');
+    return { ok: true, fare: fare };
+  };
+
   S.destroy = function (state, ship, reason) {
     const i = state.ships.indexOf(ship);
     if (i >= 0) state.ships.splice(i, 1);
+    if (ship.pax) { // the manifest had names on it
+      state.stats.popLost = Math.round(((state.stats.popLost || 0) + ship.pax.n) * 100) / 100;
+      ship.pax = null;
+    }
     if (ship.routeId) {
       const r = state.routes.find(function (x) { return x.id === ship.routeId; });
       if (r) { const j = r.ships.indexOf(ship.id); if (j >= 0) r.ships.splice(j, 1); }
@@ -344,6 +376,7 @@ SW.ships = (function () {
         if (!ship.hop) { ship.mode = 'idle'; } // load from a save mid-cleanup
         else if (state.tick >= ship.hop.arrive) arriveHop(state, ship);
       } else if (ship.mode === 'idle') {
+        if (ship.pax && ship.at === ship.pax.to) S.landPax(state, ship); // souls walk off at the contracted port
         if ((D.HULLS[ship.hull].survey || 0) > 0) tickSurvey(state, ship);
         if (ship.routeId) tickRouteShip(state, ship);
         else if (ship.directiveId) tickDirectiveShip(state, ship);
@@ -561,6 +594,25 @@ SW.ships = (function () {
       ship.mission = null;
     }
   }
+
+  // ---- idle logistics pool: cargo hulls first, scouts never ----
+  // Headless twin of the old ui.js picker so planners and projects can draft ships.
+  S.freeForLogistics = function (sh) {
+    const hull = D.HULLS[sh.hull];
+    return sh.mode === 'idle' && !sh.routeId && !sh.directiveId && !sh.mission &&
+      !(sh.queue && sh.queue.length) && !sh.stranded && hull && !hull.survey && hull.cap > 0;
+  };
+  function logisticsRank(sh) {
+    const hull = D.HULLS[sh.hull];
+    if (!hull) return 9999;
+    const role = hull.line === 'trade' ? 0 : (hull.line === 'vanguard' ? 1 : 2);
+    return role * 10000 - hull.cap * 20 - (hull.power || 0);
+  }
+  S.idleLogistics = function (state) {
+    return state.ships.filter(S.freeForLogistics).sort(function (a, b) {
+      return logisticsRank(a) - logisticsRank(b);
+    });
+  };
 
   // Supply missions: buy materials at a cheap source, ferry them to a build site.
   // The cargo simply waits aboard the idle ship; building consumes from local holds.
