@@ -50,29 +50,48 @@
   ];
 
   // ---- the script. Each line: text, a class for color, and a delay (ms) before
-  //      the NEXT line appears. Starts as a dry POST, drifts diegetic at the end. ----
-  // kinds: dim (faint scaffolding), ok (green pass), info (ink), warn (accent),
+  //      the NEXT line appears. A dense 90s-BIOS POST that drifts diegetic at the
+  //      end. Tighter cadence than a teletype — lines land in quick bursts. ----
+  // kinds: dim (faint scaffolding), ok (green pass), info (ink), warn (red),
   //        weave (accent, the fiction breaking through), logo (drawn separately).
   const SCRIPT = [
-    { t: 'STARWEFT LOOM CONTROLLER  rev 3.11  (c) The Provisional Weft', k: 'dim', d: 240 },
-    { t: 'POST  ............................................', k: 'dim', d: 200 },
-    { t: '  core memory ......... 65536 weft-cells', k: 'info', d: 90, ok: true },
-    { t: '  thread bus .......... synchronous, 8 strands', k: 'info', d: 90, ok: true },
-    { t: '  rng entropy ......... seeded, deterministic', k: 'info', d: 90, ok: true },
-    { t: '  chronometer ........ tick pipeline armed', k: 'info', d: 120, ok: true },
-    { t: 'enumerating bodies ...', k: 'dim', d: 160 },
-    { t: '  planets ............ scanning lanes', k: 'info', d: 80, ok: true },
-    { t: '  sites .............. drift surveyed', k: 'info', d: 80, ok: true },
-    { t: '  rivals ............. trade-lines detected', k: 'info', d: 80, ok: true },
-    { t: '  Scourge ............ contained ...........', k: 'warn', d: 240, ok: true, slow: true },
-    { t: 'mounting market terminal ..................', k: 'dim', d: 150, ok: true },
-    { t: 'calibrating Living Weave ..................', k: 'dim', d: 320, ok: true },
-    { t: '', k: 'dim', d: 120 },
-    { t: '> loom spinning up', k: 'weave', d: 360 },
-    { t: '> thread integrity ......... 100%', k: 'weave', d: 300 },
-    { t: '> the worlds drifted apart.', k: 'weave', d: 520 },
-    { t: '> you are the thread.', k: 'weave', d: 640 },
-    { t: '', k: 'dim', d: 200 },
+    { t: '+----------------------------------------------------------+', k: 'dim', d: 14 },
+    { t: '|  STARWEFT LOOM CONTROLLER BIOS  rev 3.11                  |', k: 'dim', d: 14 },
+    { t: '|  WeftCore Logistics Engine  (c) The Provisional Weft      |', k: 'dim', d: 14 },
+    { t: '+----------------------------------------------------------+', k: 'dim', d: 110 },
+    { t: '', k: 'dim', d: 40 },
+    { t: 'Main Processor    : WeftCore LX-7   @ 1 tick / cycle', k: 'info', d: 30 },
+    { t: 'Co-Processor      : Mulberry32 PRNG  (seeded, deterministic)', k: 'info', d: 30 },
+    { t: 'Lane Bus          : Gabriel-graph, 8 strands, synchronous', k: 'info', d: 30 },
+    { t: 'Chronometer       : tick pipeline armed', k: 'info', d: 90 },
+    { t: '', k: 'dim', d: 30 },
+    { t: 'Memory Test : 65536 weft-cells', k: 'dim', d: 30, memtest: true },
+    { t: '', k: 'dim', d: 30 },
+    { t: 'POST  ....................................................', k: 'dim', d: 70 },
+    { t: '  [CORE] economy solver  (prices, prosperity) ........', k: 'info', d: 26, ok: true },
+    { t: '  [GEN ] galaxy seeder  (planets, lanes, sites) ......', k: 'info', d: 26, ok: true },
+    { t: '  [SIM ] ships, routes, directives ...................', k: 'info', d: 26, ok: true },
+    { t: '  [RIV ] rival trade networks ........................', k: 'info', d: 26, ok: true },
+    { t: '  [WIRE] market terminal  (Mercantile Wire) ..........', k: 'info', d: 26, ok: true },
+    { t: '  [WEAV] Living Weave  (lane-flow, presence) .........', k: 'info', d: 26, ok: true },
+    { t: '  [SCRG] the Scourge  ......... contained ............', k: 'warn', d: 120, ok: true, slow: true },
+    { t: '', k: 'dim', d: 30 },
+    { t: 'Lane Map:', k: 'dim', d: 18 },
+    { t: '  0x00  ################  [SOL / HOME]', k: 'dim', d: 12 },
+    { t: '  0x40  ########::::::::  [THE BUBBLE]', k: 'dim', d: 12 },
+    { t: '  0x80  ::::............  [THE VERGE]', k: 'dim', d: 12 },
+    { t: '  0xC0  ................  [DEEP WILDS]', k: 'dim', d: 70 },
+    { t: '', k: 'dim', d: 30 },
+    { t: 'Handshake : >>> SYN  the worlds  ... <<< no answer', k: 'dim', d: 60 },
+    { t: 'Handshake : >>> SYN  the worlds  ... <<< no answer', k: 'dim', d: 60 },
+    { t: 'Handshake : >>> SYN  the worlds  ... <<< ......', k: 'dim', d: 240 },
+    { t: '', k: 'dim', d: 30 },
+    { t: '> loom spinning up', k: 'weave', d: 260 },
+    { t: '> thread integrity ......... 100%', k: 'weave', d: 240 },
+    { t: '> a single answer returns from the dark', k: 'weave', d: 360 },
+    { t: '> the worlds drifted apart.', k: 'weave', d: 460 },
+    { t: '> you are the thread.', k: 'weave', d: 560 },
+    { t: '', k: 'dim', d: 160 },
     { t: 'the worlds are listening. press any key to begin _', k: 'info', d: 0, prompt: true },
   ];
 
@@ -176,8 +195,29 @@
         line.textContent = spec.t;
       }
       term.appendChild(line);
-      term.appendChild(document.createTextNode('\n'));
       term.scrollTop = term.scrollHeight;
+      return line;
+    }
+
+    // Animate a counting memory test on its line, then call `after`.
+    function runMemtest(line, after) {
+      const target = 65536, stepK = 8192;
+      let v = 0;
+      function tickMem() {
+        if (finished) { line.textContent = 'Memory Test : ' + target + ' weft-cells  OK'; after(); return; }
+        v += stepK;
+        if (v >= target) {
+          line.textContent = 'Memory Test : ' + target + ' weft-cells';
+          const tag = document.createElement('span'); tag.className = 'bl-ok'; tag.textContent = '  [ OK ]';
+          line.appendChild(tag);
+          timers.push(setTimeout(after, 90));
+          return;
+        }
+        line.textContent = 'Memory Test : ' + ('     ' + v).slice(-5) + ' weft-cells';
+        term.scrollTop = term.scrollHeight;
+        timers.push(setTimeout(tickMem, 24));
+      }
+      tickMem();
     }
 
     function drawLogo(after) {
@@ -189,7 +229,7 @@
         if (li < LOGO.length) {
           const ln = document.createElement('span');
           ln.className = 'bootLogoLine';
-          ln.textContent = LOGO[li] + '\n';
+          ln.textContent = LOGO[li];
           wrap.appendChild(ln);
           term.scrollTop = term.scrollHeight;
           li++;
@@ -211,7 +251,8 @@
         return;
       }
       const spec = SCRIPT[i++];
-      appendLine(spec);
+      const line = appendLine(spec);
+      if (spec.memtest && !finished) { runMemtest(line, step); return; }
       timers.push(setTimeout(step, spec.d));
     }
 

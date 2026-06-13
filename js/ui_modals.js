@@ -172,9 +172,36 @@ SW.uiModals = (function () {
     html += '<button class="frontBtn" data-act="settings"><span class="fbLabel">▸ Settings</span></button>';
     html += '<button class="frontBtn" data-act="codexFromTitle"><span class="fbLabel">▸ Codex &amp; lore</span></button>';
     html += '</div>';
-    html += '<div class="titleFoot"><span>v' + (D.SAVE_VERSION || 1) + '.0</span><span class="dot">·</span><a href="https://star.subsurfaces.net" target="_blank" rel="noopener">star.subsurfaces.net</a><span class="dot">·</span><span>autosaves as you play</span></div>';
+    html += '<div class="titleFoot"><span>v' + (D.SAVE_VERSION || 1) + '.0</span><span class="dot">·</span>' +
+      '<a id="buildLink" href="https://github.com/sub-surface/starweft" target="_blank" rel="noopener" title="The exact commit this build is running">build …</a>' +
+      '<span class="dot">·</span><a href="https://star.subsurfaces.net" target="_blank" rel="noopener">star.subsurfaces.net</a></div>';
     modal.innerHTML = html;
     SW.ui.showModal('titleModal');
+    fillBuildHash();
+  }
+
+  // Resolve the running build's commit and show its short SHA in the footer.
+  // No build step exists, so we fetch the latest main commit at runtime (cached
+  // for the session) and link it. Fails quietly to a static label offline.
+  let _buildHash = null;
+  function fillBuildHash() {
+    const link = $('#buildLink');
+    if (!link) return;
+    if (_buildHash) { setBuild(link, _buildHash); return; }
+    if (typeof fetch !== 'function') { link.textContent = 'github'; return; }
+    fetch('https://api.github.com/repos/sub-surface/starweft/commits/main', { headers: { 'Accept': 'application/vnd.github.sha' } })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (sha) {
+        if (!sha) { link.textContent = 'github'; return; }
+        _buildHash = sha.trim().slice(0, 7);
+        // Re-grab the link in case the title re-rendered while the fetch was in flight.
+        const l2 = $('#buildLink'); if (l2) setBuild(l2, _buildHash);
+      })
+      .catch(function () { const l = $('#buildLink'); if (l) l.textContent = 'github'; });
+  }
+  function setBuild(link, sha) {
+    link.textContent = 'build ' + sha;
+    link.href = 'https://github.com/sub-surface/starweft/commit/' + sha;
   }
 
   // ============ daily weave — a deterministic shared galaxy per day ============

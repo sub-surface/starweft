@@ -585,3 +585,25 @@ directions:
 
 As with §15: each step green on both suites, additive state, no `SAVE_VERSION`
 bump, everything communicated in-fiction.
+
+## 17. Procedural soundtrack (design note — future)
+
+Status: **note only.** Audio today (`js/audio.js`) is a small Web Audio synth —
+SFX plus an ambient bed that reacts to mood (`SW.audio.updateMood`). The ambition
+is a **richer procedural soundtrack** that breathes with the run: layered ambient
+beds that shift with region (the quiet vs the verge vs the reach), the Scourge's
+pressure, prosperity, and combat — generative, not looped, and still zero-asset
+(synthesized in-browser, no audio files, to keep the zero-dependency rule).
+
+Constraints to honour: all synthesis stays in `audio.js` (the only audio-touching
+module), must degrade gracefully where there's no `AudioContext` (the boot test
+asserts this), and must never block the sim. Determinism does *not* apply to audio
+(it's presentation, like `Math.random` in UI code) — but mood transitions should
+key off real sim state so the music *means* something.
+
+**Collaboration hook:** the maintainer produces ambient-jungle music in Ableton.
+A future working session could capture the building blocks a generative engine
+needs — pad/texture/percussion stems, chord voicings, a tempo/feel reference —
+and translate those into Web Audio synthesis recipes (oscillator stacks, filter
+envelopes, granular textures) so the in-browser soundtrack carries that signature
+without shipping any audio files. See the memory `boot-and-audio-refs`.

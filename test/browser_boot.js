@@ -364,6 +364,25 @@ step('tech overlay supports pan, zoom, and node details', function () {
   const px = SW.ui.techView.x, py = SW.ui.techView.y;
   canvas.onpointermove({ clientX: 300, clientY: 300, preventDefault: function () {} });
   if (SW.ui.techView.x !== px || SW.ui.techView.y !== py) throw new Error('canvas still panning after click released the drag (drag-stuck bug)');
+  // Double-click a researchable node researches it directly (the real hit-test path).
+  if (typeof canvas.ondblclick !== 'function') throw new Error('tech canvas missing ondblclick (double-click research)');
+  {
+    G.state.research = 99999;
+    SW.uiTech.open('research');
+    pumpFrames(2);
+    const hits = SW.uiTech._hits ? SW.uiTech._hits() : [];
+    // pick a hit whose tech is available, not owned, affordable
+    let picked = null;
+    for (const h of hits) {
+      if (SW.tech.available(G.state, h.id) && !SW.tech.has(G.state, h.id)) { picked = h; break; }
+    }
+    if (picked) {
+      const cv2 = elCache['#techCanvasFull'];
+      // getBoundingClientRect is {left:0, top:0} in the stub, so client == canvas coords
+      cv2.ondblclick({ clientX: picked.x, clientY: picked.y, preventDefault: function () {} });
+      if (!SW.tech.has(G.state, picked.id)) throw new Error('double-click did not research the node under the cursor');
+    }
+  }
   // reset view
   SW.ui.techView.selected = 'analytics';
   fireClick('techResetView');

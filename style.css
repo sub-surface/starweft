@@ -507,18 +507,17 @@ input:focus-visible {
 
 .bootTerm {
   position: relative;
-  width: min(86ch, 92vw);
-  max-height: 84vh;
+  width: min(72ch, 94vw);
+  max-height: 88vh;
   overflow: hidden;
-  font-size: clamp(10px, 1.5vw, 14px);
-  line-height: 1.5;
-  letter-spacing: 0.02em;
+  font-size: clamp(10px, 1.35vw, 13px);
+  line-height: 1.18;            /* tight, like a real BIOS POST */
+  letter-spacing: 0.01em;
   color: var(--ink-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-  text-shadow: 0 0 8px rgba(155, 214, 234, 0.06);
+  white-space: pre;
+  text-shadow: 0 0 6px rgba(155, 214, 234, 0.05);
 }
-.bootTerm .bl { display: block; }
+.bootTerm .bl { display: block; min-height: 1.18em; }
 .bl-dim   { color: var(--ink-faint); }
 .bl-info  { color: var(--ink-dim); }
 .bl-ok .bl-ok { color: var(--accent); font-weight: 600; }
@@ -532,6 +531,7 @@ input:focus-visible {
 .bl-logo { display: block; margin: 0 0 4px; }
 .bootLogoLine {
   display: block;
+  line-height: 1.05;
   color: var(--accent);
   text-shadow: 0 0 12px rgba(155, 214, 234, 0.4);
   animation: bootThread .11s ease-out;

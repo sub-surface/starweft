@@ -503,7 +503,34 @@ SW.uiTech = (function () {
       hideTip();
       canvas.style.cursor = 'grab';
     };
+    // Double-click a node to research it directly (if available + affordable),
+    // otherwise just select it. Saves the trip to the detail-pane button.
+    canvas.ondblclick = function (e) {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      for (const h of techHits) {
+        if (Math.abs(h.x - mx) <= h.rw && Math.abs(h.y - my) <= h.rh) {
+          SW.ui.techView.selected = h.id;
+          tryResearch(h.id, canvas, s, tree);
+          return;
+        }
+      }
+    };
     canvas.onclick = null;
+  }
+
+  // Attempt to research a node; refresh tree + detail on success or toast why not.
+  function tryResearch(id, canvas, s, tree) {
+    const owned = SW.tech.has(s, id);
+    if (owned) { SW.ui.techView.selected = id; _refreshDetail(); if (canvas) drawTechTree(canvas, s, tree); return; }
+    const r = SW.ui.A().research(s, id);
+    if (!r.ok) { SW.ui.toast({ kind: 'bad', text: r.msg || 'Cannot research that yet.' }); }
+    else { SW.audio.sfx('click'); }
+    // rebuild against fresh state so owned/affordable update everywhere
+    const s2 = st(), tree2 = SW.tech.tree(s2);
+    _refreshDetail();
+    if (canvas) drawTechTree(canvas, s2, tree2);
   }
 
   // Set the hovered node and redraw so its connections light up.
@@ -622,5 +649,6 @@ SW.uiTech = (function () {
   m.showTechTreeRich = showTechTreeRich;
   m.techDetailHtml  = techDetailHtml;
   m.zoomTechView    = zoomTechView;
+  m._hits = function () { return techHits; };   // test hook: node hit rects
   return m;
 })();
