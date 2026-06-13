@@ -15,6 +15,8 @@ SW.ui = (function () {
   let directiveDraft = null;
   ui.directiveForm = { c: 'FOOD', target: 60 }; // shared with ui_routes.js
   let lastRenderTick = -1;
+  let _lastMetaTick = -1;        // last tick we refreshed the autosave slot metadata
+  let _settingsFrom = null;      // 'title' | 'pause' — where Settings was opened from
   ui.editorOpen = false;         // shared with ui_routes.js
   let pinnedInfo = null;         // infobox fallback topic
   ui.techView = { x: 0, y: 0, zoom: 1, selected: null }; // shared with ui_tech.js
@@ -261,21 +263,8 @@ SW.ui = (function () {
     $('#spd1').addEventListener('click', function () { A().setSpeed(st(), 1); syncSpeedButtons(); });
     $('#spd3').addEventListener('click', function () { A().setSpeed(st(), 3); syncSpeedButtons(); });
     $('#spd10').addEventListener('click', function () { A().setSpeed(st(), 10); syncSpeedButtons(); });
-    $('#btnMute').addEventListener('click', function () {
-      const m = SW.audio.toggleMute();
-      const el = $('#btnMute');
-      el.style.opacity = m ? 0.35 : 1;
-      // aria-pressed: true when muted (button is in its "pressed/active mute" state)
-      if (el && el.setAttribute) el.setAttribute('aria-pressed', m ? 'true' : 'false');
-    });
-    $('#btnMusic').addEventListener('click', function () {
-      SW.audio.ensure();
-      const m = SW.audio.toggleMusic();
-      const el = $('#btnMusic');
-      el.style.opacity = m ? 0.35 : 1;
-      // aria-pressed: true when music is muted
-      if (el && el.setAttribute) el.setAttribute('aria-pressed', m ? 'true' : 'false');
-    });
+    $('#btnMute').addEventListener('click', function () { SW.audio.toggleMute(); syncAudioButtons(); });
+    $('#btnMusic').addEventListener('click', function () { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); });
     $('#btnMenu').addEventListener('click', function () { SW.uiModals.showMenu(); });
     $('#btnCodex').addEventListener('click', function () { SW.uiModals.showCodex(); });
     $('#btnTech').addEventListener('click', function () {
@@ -283,8 +272,7 @@ SW.ui = (function () {
     });
     $('#btnExchange').addEventListener('click', function () { SW.uiMarket.toggleExchange(); });
     $('#btnBackGalaxy').addEventListener('click', function () { ui.exitSystem(); });
-    if (SW.audio.muted) { $('#btnMute').style.opacity = 0.35; var bm = $('#btnMute'); if (bm && bm.setAttribute) bm.setAttribute('aria-pressed', 'true'); }
-    if (SW.audio.musicMuted) { $('#btnMusic').style.opacity = 0.35; var bmm = $('#btnMusic'); if (bmm && bmm.setAttribute) bmm.setAttribute('aria-pressed', 'true'); }
+    syncAudioButtons();
 
     // search
     const sb = $('#searchBox');
@@ -312,6 +300,12 @@ SW.ui = (function () {
   function refreshTick() {
     const s = st();
     if (!s) return;
+    // Keep the "Continue" slot metadata in step with autosaves so the main menu
+    // shows the player's real progress. Cheap, and only when the autosave fires.
+    if (s.tick > 0 && s.tick % (D.TUNE.autosaveEvery || 40) === 0 && s.tick !== _lastMetaTick) {
+      _lastMetaTick = s.tick;
+      ui.writeSaveMeta('auto');
+    }
     if (++tickerBeat % 16 === 0) SW.uiMarket.rotateTicker(); // ~5s carousel
     if (uiPointerActive) {
       deferredUiRefresh = true;
@@ -400,6 +394,13 @@ SW.ui = (function () {
     $('#spd1').classList.toggle('active', !s.paused && s.speed === 1);
     $('#spd3').classList.toggle('active', !s.paused && s.speed === 3);
     $('#spd10').classList.toggle('active', !s.paused && s.speed === 10);
+  }
+  // Reflect audio mute state on the topbar buttons. Called on click, on init,
+  // and whenever the Settings panel toggles audio, so all three stay in sync.
+  function syncAudioButtons() {
+    const mute = $('#btnMute'), music = $('#btnMusic');
+    if (mute) { mute.style.opacity = SW.audio.muted ? 0.35 : 1; if (mute.setAttribute) mute.setAttribute('aria-pressed', SW.audio.muted ? 'true' : 'false'); }
+    if (music) { music.style.opacity = SW.audio.musicMuted ? 0.35 : 1; if (music.setAttribute) music.setAttribute('aria-pressed', SW.audio.musicMuted ? 'true' : 'false'); }
   }
 
   // ============ search ============
@@ -544,6 +545,50 @@ SW.ui = (function () {
   ui.showGameOver = function (go) { SW.uiModals.showGameOver(go); };
   ui.showTitle = function () { SW.uiModals.showTitle(); };
   ui.openCombatSim = function (ship, sys) { SW.uiModals.openCombatSim(ship, sys); };
+
+  // ============ preferences (browser-local, not part of the save) ============
+  // Settings live in localStorage, separate from game saves. Audio prefs stay in
+  // SW.audio (their existing home); the rest live here under one key.
+  let _prefs = null;
+  function loadPrefs() {
+    try { return JSON.parse(localStorage.getItem('starweft_prefs') || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  ui.prefs = function () { if (!_prefs) _prefs = loadPrefs(); return _prefs; };
+  ui.setPref = function (k, v) {
+    const p = ui.prefs(); p[k] = v;
+    try { localStorage.setItem('starweft_prefs', JSON.stringify(p)); } catch (e) {}
+    return v;
+  };
+
+  // Dev tools (cheat/feature panel) are gated: only with ?dev in the URL or a
+  // sticky flag once enabled, so players never see it but it stays one chord away.
+  ui.devEnabled = function () {
+    try {
+      if (typeof location !== 'undefined' && /[?&]dev\b/.test(location.search || '')) { localStorage.setItem('starweft_dev', '1'); return true; }
+      return localStorage.getItem('starweft_dev') === '1';
+    } catch (e) { return false; }
+  };
+
+  // Save-slot metadata for the menus. Written on save (with a wall-clock stamp,
+  // which is fine in UI code — only sim code must stay Date-free for replay).
+  ui.writeSaveMeta = function (slot) {
+    const s = st(); if (!s) return;
+    let when = '';
+    try { when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) {}
+    const meta = { name: (s.identity && s.identity.name) || 'Unnamed weft', tick: s.tick || 0, credits: s.credits || 0, origin: s.origin, when: when };
+    try { localStorage.setItem('starweft_meta_' + (slot || 'auto'), JSON.stringify(meta)); } catch (e) {}
+  };
+  ui.saveMeta = function (slot) {
+    try { return JSON.parse(localStorage.getItem('starweft_meta_' + (slot || 'auto')) || 'null'); }
+    catch (e) { return null; }
+  };
+
+  ui.confirm = function (opts) { SW.uiModals.showConfirm(opts); };
+  // The #sigilPreview canvas on the new-run form is animated by the existing
+  // portrait loop (see top of this file); nothing to do here but keep the hook
+  // so callers don't need to know that.
+  ui.paintSigil = function () {};
 
   // ============ dispatch ============
   function dispatch(e) {
@@ -819,6 +864,32 @@ SW.ui = (function () {
       case 'closeExchange': $('#exchange').classList.add('hidden'); break;
       case 'postgame': A().continuePostgame(s); hideModals(); break;
       case 'newGameMenu': ui.showTitle(); return;
+      case 'newRun': SW.uiModals.showNewRun(); return;
+      case 'backToTitle': ui.showTitle(); return;
+      case 'settings': _settingsFrom = ui.modalOpen() && !$('#titleModal').classList.contains('hidden') ? 'title' : (s && s.tick > 0 ? 'pause' : 'title'); SW.uiModals.showSettings(); return;
+      case 'closeSettings': {
+        // Return to where Settings was opened from: the front door or the pause menu.
+        if (_settingsFrom === 'title') ui.showTitle();
+        else if (_settingsFrom === 'pause') SW.uiModals.showMenu();
+        else hideModals();
+        return;
+      }
+      case 'codexFromTitle': SW.uiModals.showCodex(); return;
+      case 'setSfx': { SW.audio.toggleMute(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
+      case 'setMusic': { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
+      case 'setReduceMotion': { ui.setPref('reduceMotion', !ui.prefs().reduceMotion); SW.uiModals.showSettings(); return; }
+      case 'setBootSkip': { ui.setPref('skipBoot', !ui.prefs().skipBoot); SW.uiModals.showSettings(); return; }
+      case 'setDefaultSpeed': { ui.setPref('defaultSpeed', parseInt(btn.dataset.spd, 10) || 1); SW.uiModals.showSettings(); return; }
+      case 'quitToMenu': {
+        ui.confirm({
+          title: 'Quit to main menu?',
+          text: 'Your run is autosaved and will be waiting under "Continue". Return to the main menu now?',
+          yes: 'Quit to menu', danger: true,
+          onYes: function () { SW.game.save('auto'); ui.writeSaveMeta('auto'); ui.showTitle(); },
+        });
+        return;
+      }
+      case 'confirmYes': SW.uiModals.runConfirm(); return;
       case 'rerollSigil': ui._sigilSeed = Math.floor(Math.random() * 100000); return;
       case 'continueGame': { const r = SW.game.load('auto'); if (r.ok) { hideModals(); afterLoad(); } else toast({ kind: 'bad', text: r.msg }); return; }
       case 'begin': {
@@ -842,6 +913,7 @@ SW.ui = (function () {
         });
         hideModals();
         afterLoad();
+        ui.writeSaveMeta('auto');
         // The cold open begins at home, in the system view, map locked,
         // with Stitch already on the stick — the first verb is one click away
         if (SW.tutorial.isActive(SW.game.state)) {
@@ -850,21 +922,32 @@ SW.ui = (function () {
           ui.enterSystem(SW.game.state.homeId);
           ui.refresh();
         }
-        A().setSpeed(SW.game.state, 1);
+        // Honor the player's saved default speed (tutorial always eases in at 1).
+        A().setSpeed(SW.game.state, SW.tutorial.isActive(SW.game.state) ? 1 : (ui.prefs().defaultSpeed || 1));
         return;
       }
       case 'help': SW.uiModals.showHelp(); return;
-      case 'cheats': SW.uiModals.showCheats(); return;
-      case 'saveManual': { const r = SW.game.save('manual'); toast(r.ok ? { kind: 'good', text: 'Saved.' } : { kind: 'bad', text: r.msg || 'Save failed.' }); hideModals(); break; }
+      case 'cheats': if (ui.devEnabled()) SW.uiModals.showCheats(); else toast({ kind: 'bad', text: 'Dev tools are off. Add ?dev to the URL to enable.' }); return;
+      case 'saveManual': { const r = SW.game.save('manual'); if (r.ok) ui.writeSaveMeta('manual'); toast(r.ok ? { kind: 'good', text: 'Run saved.' } : { kind: 'bad', text: r.msg || 'Save failed.' }); hideModals(); break; }
       case 'loadManual': { const r = SW.game.load('manual'); if (r.ok) { hideModals(); afterLoad(); toast({ kind: 'good', text: 'Loaded.' }); } else toast({ kind: 'bad', text: r.msg }); return; }
       case 'exportSave': {
         const data = SW.game.exportSave();
-        if (data && navigator.clipboard) navigator.clipboard.writeText(data).then(function () { toast({ kind: 'good', text: 'Save copied to clipboard.' }); });
+        if (data && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(data).then(
+            function () { toast({ kind: 'good', text: 'Save copied to clipboard.' }); },
+            function () { toast({ kind: 'bad', text: 'Could not copy — try Import/Export from a secure (https) context.' }); }
+          );
+        } else toast({ kind: 'bad', text: 'Clipboard unavailable here.' });
         break;
       }
-      case 'importSave': {
-        const data = prompt('Paste your exported save:');
-        if (data) { const r = SW.game.loadFromString(data); if (r.ok) { hideModals(); afterLoad(); toast({ kind: 'good', text: 'Imported.' }); } else toast({ kind: 'bad', text: r.msg }); }
+      case 'importSave': SW.uiModals.showImport(); return;
+      case 'confirmImport': {
+        const box = $('#importBox');
+        const data = box && box.value ? box.value.trim() : '';
+        if (!data) { toast({ kind: 'bad', text: 'Nothing to import — paste a save first.' }); return; }
+        const r = SW.game.loadFromString(data);
+        if (r.ok) { hideModals(); afterLoad(); toast({ kind: 'good', text: 'Save imported.' }); }
+        else toast({ kind: 'bad', text: r.msg || 'That save could not be read.' });
         return;
       }
       case 'centerSys': {
@@ -923,7 +1006,9 @@ SW.ui = (function () {
 
   function onKey(e) {
     if (SW.uiModals.simKeys(e, true)) { e.preventDefault(); return; }
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    // Let Escape through even from a focused field so it always backs out;
+    // every other shortcut yields to typing.
+    if ((e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') && e.key !== 'Escape') return;
     const s = st();
     if (!s) return;
     if (e.code === 'Space') { e.preventDefault(); if (!ui.modalOpen()) { A().togglePause(s); syncSpeedButtons(); } }
@@ -937,10 +1022,20 @@ SW.ui = (function () {
     else if (e.key === 'Escape') {
       if (SW.uiTech && SW.uiTech.isOpen && SW.uiTech.isOpen()) { SW.uiTech.close(); return; }
       if (!$('#exchange').classList.contains('hidden')) { $('#exchange').classList.add('hidden'); return; }
+      // A modal is open: close it (but never the blocking title/event/gameover).
+      if (ui.modalOpen()) {
+        if (!st().story.pending && !st().gameOver && $('#titleModal').classList.contains('hidden')) hideModals();
+        return;
+      }
       if (SW.render.mode === 'system') { ui.exitSystem(); return; }
-      if (mapMode) { setMapMode(null); if (ui.editorOpen) { ui.editorOpen = false; ui.routeDraft = null; renderDock(true); } }
-      else if (ui.modalOpen() && !st().story.pending && !st().gameOver) hideModals();
-      else { SW.render.selectedShip = null; SW.render.selectedSys = null; pinnedInfo = null; ui.refresh(); }
+      if (mapMode) { setMapMode(null); if (ui.editorOpen) { ui.editorOpen = false; ui.routeDraft = null; renderDock(true); } return; }
+      // Nothing pinned/selected left to clear, and we're in-game: open the pause
+      // menu — the muscle-memory behavior players expect from Esc.
+      if (SW.render.selectedShip === null && SW.render.selectedSys === null && !pinnedInfo) {
+        if (st() && st().tick > 0 && !st().gameOver) { SW.uiModals.showMenu(); return; }
+      }
+      // Otherwise Esc clears the current selection/pin first.
+      SW.render.selectedShip = null; SW.render.selectedSys = null; pinnedInfo = null; ui.refresh();
     }
     syncSpeedButtons();
   }

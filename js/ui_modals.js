@@ -145,14 +145,42 @@ SW.uiModals = (function () {
   }
   function gr(k, v) { return '<div>' + k + '</div><div class="v">' + v + '</div>'; }
 
-  // ============ title / identity / origins ============
+  // ============ title — the front door ============
+  // Two-stage: this landing is the "main menu" (logo + the four verbs); the
+  // new-run setup form lives in showNewRun(). A returning player sees Continue
+  // first and never has to scroll past config they don't want.
   function showTitle() {
     const modal = $('#titleModal');
+    modal.classList.add('titleFront');
     const hasAuto = SW.game.hasSave('auto');
-    SW.ui._sigilSeed = Math.floor(Math.random() * 1000);
+    const meta = SW.ui.saveMeta('auto');
     let html = '<div class="titleArt"><i>✦</i> STARWEFT</div>' +
-      '<div class="tagline">The worlds drifted apart. You are the thread.</div>';
-    if (hasAuto) html += '<div class="choices"><button class="primary" data-act="continueGame">continue last weave</button></div><hr class="thin">';
+      '<div class="tagline">The worlds drifted apart. You are the thread.</div>' +
+      '<div class="titleBlurb">A cozy space-logistics strategy game — weave isolated star systems back into one living trade network, before the Scourge eats the galaxy from the rim.</div>';
+    html += '<div class="frontMenu">';
+    if (hasAuto) {
+      html += '<button class="frontBtn primary" data-act="continueGame">' +
+        '<span class="fbLabel">▸ Continue last weave</span>' +
+        (meta ? '<span class="fbSub">' + esc(meta.name) + ' · cycle ' + meta.tick + ' · ' + U.fmt(meta.credits) + '¤</span>' : '') +
+        '</button>';
+    }
+    html += '<button class="frontBtn' + (hasAuto ? '' : ' primary') + '" data-act="newRun"><span class="fbLabel">▸ New weave</span><span class="fbSub">choose your origin, doctrine, and galaxy</span></button>';
+    html += '<button class="frontBtn" data-act="help"><span class="fbLabel">▸ How to play</span></button>';
+    html += '<button class="frontBtn" data-act="settings"><span class="fbLabel">▸ Settings</span></button>';
+    html += '<button class="frontBtn" data-act="codexFromTitle"><span class="fbLabel">▸ Codex &amp; lore</span></button>';
+    html += '</div>';
+    html += '<div class="titleFoot"><span>v' + (D.SAVE_VERSION || 1) + '.0</span><span class="dot">·</span><a href="https://star.subsurfaces.net" target="_blank" rel="noopener">star.subsurfaces.net</a><span class="dot">·</span><span>autosaves as you play</span></div>';
+    modal.innerHTML = html;
+    SW.ui.showModal('titleModal');
+  }
+
+  // ============ new-run setup — identity / origins / galaxy ============
+  function showNewRun() {
+    const modal = $('#titleModal');
+    modal.classList.remove('titleFront');
+    SW.ui._sigilSeed = Math.floor(Math.random() * 1000);
+    let html = '<div class="setupHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
+      '<div class="titleArt" style="font-size:22px;letter-spacing:6px">NEW WEAVE</div></div>';
     html += '<h4>Identity</h4>';
     html += '<div class="row"><canvas id="sigilPreview" width="64" height="64" style="border:1px solid var(--line)"></canvas>' +
       '<div style="flex:1"><div class="row"><input id="idName" placeholder="network name" value="The Provisional Weft" style="flex:1"></div>' +
@@ -187,8 +215,9 @@ SW.uiModals = (function () {
     html += '<div class="row"><label class="sub"><input type="checkbox" id="ngTut"' +
       (SW.game.legacy().prologue ? '' : ' checked') + '> Sol prologue — wake at home, learn the verb' +
       (SW.game.legacy().prologue ? ' (completed)' : '') + '</label></div>';
-    html += '<div class="choices" style="margin-top:12px"><button class="primary" data-act="begin">begin weaving</button>' +
-      '<button data-act="help">how to play</button></div>';
+    html += '<div class="choices" style="margin-top:14px;flex-direction:row;gap:8px">' +
+      '<button class="primary grow" data-act="begin">begin weaving ▸</button>' +
+      '<button data-act="backToTitle">back</button></div>';
     modal.innerHTML = html;
     modal.querySelectorAll('[data-origin]').forEach(function (el) {
       el.addEventListener('click', function () {
@@ -198,21 +227,103 @@ SW.uiModals = (function () {
       });
     });
     SW.ui.showModal('titleModal');
+    if (SW.ui.paintSigil) SW.ui.paintSigil();
   }
 
-  // ============ menus ============
+  // ============ pause menu — grouped, prod-ready ============
+  // Resume sits first (the common case). Destructive actions are visually set
+  // apart and confirm before acting. The dev/feature panel is NOT here — it is
+  // gated behind ?dev (see SW.ui.devEnabled).
   function showMenu() {
     const modal = $('#menuModal');
-    modal.innerHTML = '<h2>MENU</h2><div class="choices">' +
-      '<button data-act="saveManual">save</button>' +
-      '<button data-act="loadManual" ' + (SW.game.hasSave('manual') ? '' : 'disabled') + '>load</button>' +
-      '<button data-act="exportSave">export save → clipboard</button>' +
-      '<button data-act="importSave">import save</button>' +
-      '<button data-act="cheats">feature check</button>' +
-      '<button data-act="help">how to play</button>' +
-      '<button data-act="newGameMenu">new run</button>' +
-      '<button data-act="closeModal">resume</button></div>';
+    const hasManual = SW.game.hasSave('manual');
+    let html = '<h2>PAUSED</h2>';
+    html += '<div class="menuGroup">' +
+      '<button class="frontBtn primary" data-act="closeModal"><span class="fbLabel">▸ Resume</span><span class="fbSub"><span class="kbd">Esc</span> or <span class="kbd">Space</span></span></button>' +
+      '</div>';
+    html += '<div class="menuGroup">' +
+      '<button class="frontBtn" data-act="saveManual"><span class="fbLabel">Save run</span></button>' +
+      '<button class="frontBtn" data-act="loadManual"' + (hasManual ? '' : ' disabled') + '><span class="fbLabel">Load run</span>' + (hasManual ? '<span class="fbSub">' + savedLabel('manual') + '</span>' : '<span class="fbSub">no manual save yet</span>') + '</button>' +
+      '<button class="frontBtn" data-act="exportSave"><span class="fbLabel">Export save</span><span class="fbSub">copy to clipboard</span></button>' +
+      '<button class="frontBtn" data-act="importSave"><span class="fbLabel">Import save</span></button>' +
+      '</div>';
+    html += '<div class="menuGroup">' +
+      '<button class="frontBtn" data-act="settings"><span class="fbLabel">Settings</span></button>' +
+      '<button class="frontBtn" data-act="help"><span class="fbLabel">How to play</span></button>' +
+      (SW.ui.devEnabled && SW.ui.devEnabled() ? '<button class="frontBtn" data-act="cheats"><span class="fbLabel">Dev / feature check</span><span class="fbSub">developer tools</span></button>' : '') +
+      '</div>';
+    html += '<div class="menuGroup">' +
+      '<button class="frontBtn danger" data-act="quitToMenu"><span class="fbLabel">Quit to main menu</span><span class="fbSub">your run is autosaved</span></button>' +
+      '</div>';
+    modal.innerHTML = html;
     SW.ui.showModal('menuModal');
+  }
+
+  function savedLabel(slot) {
+    const meta = SW.ui.saveMeta(slot);
+    if (!meta) return '';
+    return esc(meta.name) + ' · cycle ' + meta.tick + (meta.when ? ' · ' + meta.when : '');
+  }
+
+  // ============ settings ============
+  function showSettings() {
+    const modal = $('#settingsModal');
+    const p = SW.ui.prefs();
+    function row(act, on, label, sub) {
+      return '<button class="frontBtn toggleBtn" data-act="' + act + '"><span class="fbLabel">' + label +
+        '<span class="toggleState">' + (on ? '◉ on' : '○ off') + '</span></span>' +
+        (sub ? '<span class="fbSub">' + sub + '</span>' : '') + '</button>';
+    }
+    let html = '<h2><i>⚙</i> SETTINGS</h2><div class="menuGroup">';
+    html += row('setSfx', !SW.audio.muted, 'Sound effects', 'market chimes, ship clicks, raids');
+    html += row('setMusic', !SW.audio.musicMuted, 'Ambient music', 'the slow drift between the stars');
+    html += row('setReduceMotion', !!p.reduceMotion, 'Reduce motion', 'calmer camera, skip the boot crawl');
+    html += row('setBootSkip', !!p.skipBoot, 'Skip boot sequence', 'jump straight to the menu next visit');
+    html += '</div><div class="menuGroup">';
+    html += '<div class="setRow"><span class="fbLabel grow">Default speed</span><span class="segGroup">' +
+      [['1', '▶', 1], ['2', '▶▶', 3], ['3', '▶▶▶', 10]].map(function (sp) {
+        return '<button class="seg' + (p.defaultSpeed === sp[2] ? ' on' : '') + '" data-act="setDefaultSpeed" data-spd="' + sp[2] + '" title="speed ' + sp[0] + '">' + sp[1] + '</button>';
+      }).join('') + '</span></div>';
+    html += '</div>';
+    html += '<div class="menuGroup"><div class="sub" style="line-height:1.5">Settings save to this browser. Game progress autosaves separately and survives a refresh.</div></div>';
+    html += '<div class="choices" style="margin-top:10px"><button class="primary" data-act="closeSettings">done</button></div>';
+    modal.innerHTML = html;
+    SW.ui.showModal('settingsModal');
+  }
+
+  // ============ import save (textarea modal, not a raw prompt) ============
+  function showImport() {
+    const modal = $('#importModal');
+    modal.innerHTML = '<h2>IMPORT SAVE</h2>' +
+      '<div class="sub" style="margin-bottom:8px">Paste a save you exported earlier. This replaces your current run.</div>' +
+      '<textarea id="importBox" class="importBox" placeholder="paste exported save here…" spellcheck="false"></textarea>' +
+      '<div class="choices" style="margin-top:10px;flex-direction:row;gap:8px">' +
+      '<button class="primary grow" data-act="confirmImport">load this save</button>' +
+      '<button data-act="closeModal">cancel</button></div>';
+    SW.ui.showModal('importModal');
+    const box = document.getElementById('importBox');
+    if (box && box.focus) box.focus();
+  }
+
+  // ============ generic confirm ============
+  // SW.ui.confirm(text, onYes, opts) routes here. Keeps destructive actions one
+  // deliberate click away from a benign one.
+  let _confirmYes = null;
+  function showConfirm(opts) {
+    _confirmYes = opts.onYes || null;
+    const modal = $('#confirmModal');
+    modal.innerHTML = '<h2>' + esc(opts.title || 'Are you sure?') + '</h2>' +
+      '<div class="body">' + esc(opts.text || '') + '</div>' +
+      '<div class="choices" style="flex-direction:row;gap:8px">' +
+      '<button class="' + (opts.danger ? 'danger' : 'primary') + ' grow" data-act="confirmYes">' + esc(opts.yes || 'Yes') + '</button>' +
+      '<button data-act="closeModal">' + esc(opts.no || 'Cancel') + '</button></div>';
+    SW.ui.showModal('confirmModal');
+  }
+  function runConfirm() {
+    const fn = _confirmYes;
+    _confirmYes = null;
+    SW.ui.hideModals();
+    if (fn) fn();
   }
   function showCheats() {
     const s = st();
@@ -246,7 +357,7 @@ SW.uiModals = (function () {
       '<b>Defend.</b> Pirates raid laden ships in rough regions. Corvettes escort routes; Lancers hit harder; retainers patrol regions. Or raid them back — infamy opens black markets and closes doors.\n\n' +
       '<b>Decide.</b> Origins shape your start; one Doctrine per run shapes everything after. Contracts and blockades arrive whether you like it or not.\n\n' +
       '<b>Survive.</b> The Scourge spreads coreward-out. Quarantine, inoculate, then deliver ' + D.TUNE.panaceaToWin + ' PANACEA to the origin.\n\n' +
-      '<span class="kbd">Space</span> pause · <span class="kbd">1/2/3</span> speed · <span class="kbd">Esc</span> back/close · the infobox (bottom-left) explains whatever you hover.</div>' +
+      '<span class="kbd">Space</span> pause · <span class="kbd">1/2/3</span> speed · <span class="kbd">Esc</span> back, then the pause menu · <span class="kbd">F</span> center · the infobox (bottom-left) explains whatever you hover.</div>' +
       '<div class="choices"><button class="primary" data-act="closeModal">got it</button></div>';
     SW.ui.showModal('helpModal');
   }
@@ -414,7 +525,12 @@ SW.uiModals = (function () {
   m.chooseEvent = chooseEvent;
   m.showGameOver = showGameOver;
   m.showTitle = showTitle;
+  m.showNewRun = showNewRun;
   m.showMenu = showMenu;
+  m.showSettings = showSettings;
+  m.showImport = showImport;
+  m.showConfirm = showConfirm;
+  m.runConfirm = runConfirm;
   m.showCheats = showCheats;
   m.showHelp = showHelp;
   m.openRaidChoice = openRaidChoice;

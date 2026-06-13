@@ -328,8 +328,14 @@ pressures before the interface can explain them.
    selected ship (queue visible, tabs), YOU tab (aptitudes home), infobox
    layout slot, ticker carousel. Remaining: data-info coverage test.
 8. ✅ **Main menu + intro + Sol tutorial** (§3.1–3.3) — Sol cold open
-   prologue (`js/tutorial.js`), Sol Net contract beats, menu/help/save
-   modals; covered by browser_boot steps.
+   prologue (`js/tutorial.js`), Sol Net contract beats; covered by
+   browser_boot steps. **Prod-ready menu pass (live):** two-stage front
+   door (landing → new-run setup), grouped pause menu, `Esc` opens it,
+   Settings panel (audio / reduce-motion / boot-skip / default speed,
+   persisted to `starweft_prefs`), textarea import + generic confirm,
+   save-slot metadata on Continue/Load, dev/cheat panel gated behind `?dev`.
+   Boot sequence (`js/boot.js`) honors reduce-motion/skip. Deployed to
+   `star.subsurfaces.net` — see `docs/DEPLOY.md`.
 9. **World genesis v3 + run parameters** (§3.5, §4) — density presets,
    voids/clusters, ¤/tick metrics, full seed validator.
 10. **Market terminal** (§8) ✅ — WEFT MERCANTILE WIRE re-skin, The Wire

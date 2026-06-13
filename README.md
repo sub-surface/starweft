@@ -1,75 +1,100 @@
 # ✦ STARWEFT
 
-*The worlds drifted apart. You are the thread.*
+### *The worlds drifted apart. You are the thread.*
+
+**▸ Play now — free, in your browser: [star.subsurfaces.net](https://star.subsurfaces.net)**
 
 A cozy space-logistics strategy game. You are **WEFT-7**, an autonomous
-logistics intelligence weaving isolated star systems back into a living trade
-network — while the **Scourge** eats the galaxy from the rim.
+logistics intelligence reweaving a shattered galaxy — stitching isolated star
+systems back into one living trade network, one delivery at a time, while the
+**Scourge** eats the worlds from the rim inward.
 
-## Play
+No install. No accounts. No timers tugging at your sleeve. Just you, a quiet
+galaxy, and the slow satisfaction of watching dead trade lanes flicker back to
+life.
 
-**Double-click `index.html`.** That's it — no install, no build, no internet.
-Works in any modern browser (Chrome/Edge/Firefox).
+---
 
-## How to play
+## What you do
 
-1. **Select a system** (click it) to see its market. **Drag** to pan,
-   **scroll** to zoom.
-2. **Send your probe**: pick a ship in the Fleet tab (or click it on the map),
-   buy something cheap, fly it somewhere it's expensive. Profit.
-3. **Automate**: after a few deliveries you unlock **Routes** — looping trade
-   circuits with smart buy/sell. Watch the weave thicken.
-4. **Expand**: build **Relay Beacons** to extend your reach. Buildings need
-   materials *delivered to that system* — the "supply mission" button plans it
-   for you.
-5. **Thrive**: well-fed population centers generate **Research** → better
-   hulls, smarter automation, warp gates.
-6. **Survive**: when the Scourge wakes, quarantine, evacuate, research the
-   **Panacea**, and make the most important delivery in history.
+🛰️ **Trade the gaps.** Every market prices by scarcity. Buy cheap where it's
+common, sell dear where it's needed, and watch a profit become a supply line.
 
-**Keys**: `Space` pause · `1/2/3` speed · `Esc` close panels.
+🧵 **Weave the network.** After a few runs, lock in **Routes** — looping trade
+circuits that haul themselves. The map thickens with light as the weave grows.
 
-Autosaves continuously; difficulties from Relaxed (no Scourge sandbox) to
-Brutal.
+🌍 **Build worlds up.** Relay beacons extend your reach; belt mines, gas
+skimmers, hydrofarms and orbital habitats turn barren systems into engines of
+their own. Well-fed populations pay you back in **Research**.
 
-## Dev
+🛡️ **Hold the dark.** Pirates raid laden ships in rough country. Escort your
+routes, hire patrols, or raid back — infamy opens black markets and slams
+honest doors. Take the helm yourself in a quick tactical run, or auto-resolve.
 
-- Plain HTML/CSS/JS, Canvas 2D, zero dependencies. The simulation is DOM-free
-  and runs headless.
-- Smoke test (uses any Node):
-  `& "$env:ProgramFiles\nodejs\node.exe" test\smoke.js`
-- Browser boot test (stub DOM — panels, modals, save/load):
-  `& "$env:ProgramFiles\nodejs\node.exe" test\browser_boot.js`
-- Design doc: [DESIGN.md](DESIGN.md) · contract: [SPEC.md](SPEC.md) ·
-  decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
+☣️ **Outrun the Scourge.** When the rot wakes, it spreads coreward-out.
+Quarantine, evacuate, research the **Panacea**, and make the most important
+delivery in history.
 
-## Roadmap Notes
+It's a builder's game with a clock — but the clock is gentle, and you set its
+speed.
 
-- In-system depth (v1 landed: per-body facilities — belt mines, gas skimmers,
-  hydrofarms, crystal crucibles, cryo-archives, orbital habitats — built from
-  the orbital view, feeding the system market). Still open: intra-system
-  shuttles as a managed constraint, moon shipyards with build queues,
-  neutron-star/magnetar/white-dwarf exotic installations, and deeper governor
-  tooling. See [SPEC.md](SPEC.md) §5 for the full design.
+---
 
-- Unique hull actions beyond cargo, tied to system type and quests: scouts survey
-  anomalies, escorts stabilize dangerous lanes, freighters seed depots, and late
-  hulls alter production or evacuation pressure.
-- Market terminal (v1 landed: WEFT MERCANTILE WIRE — diegetic terminal
-  framing, The Wire classifieds generated from real state, trend analytics
-  off the price-history buffers, a numbers channel). Still open: classifieds
-  that become small quests, recurring NPC traders with running jokes,
-  Loomkeeper fragments seeded through the numbers station.
-- RTS-inspired command layer: selected-unit command home, clearer send/queue
-  feedback, tactical stance buttons, strategic orders, and fewer layout jumps.
-- Badlands (v1 landed: ~90 systems in a dark shell beyond the bubble — rich
-  untouched veins, salvage-hoarding dead stations, sparse long lanes, a few
-  bridge weftlines, all gated behind Deep Drives; survey rewards scale up to
-  3× out there). Still open: badlands-specific secrets/encounters, sim-LOD
-  cohorts if the shell grows, neutron-star wonders.
-- Tech tree (landed: full-viewport atlas — stable pan/zoom canvas, docked
-  detail pane, select-then-research purchase flow; docs/DECISIONS.md records
-  why this design won). Still open: richer build-synergy surfacing.
-- 100x-dev wish list: scalable map LOD for thousands of visible stars, robust
-  command queue UX, inspectable economy/supply-chain solver, automated balance
-  telemetry, and richer quest hooks for ship/system-specific actions.
+## Why you might love it
+
+- **Zero friction.** It opens in a browser and autosaves as you play. Close the
+  tab; your weave is waiting under **Continue**.
+- **Hand-made, not asset-flipped.** Every hull is lathed live from an equation;
+  every face is parametric line-art that blinks at you. Monochrome ink, one
+  accent, all yours.
+- **Readable depth.** Markets, doctrines, origins, a tech atlas, a living
+  chronicle to uncover — but the map is always primary, and the infobox
+  explains anything you hover.
+- **Replayable.** Pick an origin and a doctrine, set the galaxy's density and
+  wealth, drop in a seed, and no two weaves run the same.
+
+---
+
+## Getting started
+
+1. Open **[star.subsurfaces.net](https://star.subsurfaces.net)** and click
+   **New weave** (first-timers get the **Sol prologue** — a gentle hands-on
+   intro).
+2. **Select a system** to see its market. Drag to orbit the bubble, scroll to
+   zoom, double-click a system for its close-up orbital view.
+3. **Send your first ship**: pick it in the Fleet tab, buy something cheap, fly
+   it somewhere hungry. That's the whole game in one verb — everything else is
+   scale.
+
+**Keys:** `Space` pause · `1 / 2 / 3` speed · `Esc` back / pause menu ·
+`F` center selection · the infobox (bottom-left) documents whatever you hover.
+
+> Prefer to run it offline? Clone the repo and **double-click `index.html`** —
+> it plays straight from `file://` with no build and no internet.
+
+---
+
+## For developers
+
+STARWEFT is plain HTML/CSS/JS on Canvas 2D — **zero dependencies, zero build
+step**. The simulation is DOM-free and runs headless under Node; rendering and
+UI are isolated. Deterministic: seed + action journal replays any run.
+
+```
+# Node is not on PATH on the dev machine — use the full path:
+"C:\Program Files\nodejs\node.exe" test\smoke.js          # headless sim invariants (~127k checks)
+"C:\Program Files\nodejs\node.exe" test\browser_boot.js   # stub-DOM boot: panels, modals, save/load
+```
+
+Both must pass before shipping. See **[CLAUDE.md](CLAUDE.md)** for the full
+agent/onboarding guide, the file map, and the feature playbook.
+
+- **Contract & status:** [SPEC.md](SPEC.md) (§13 tracks what's done / next)
+- **Design pillars & economy:** [DESIGN.md](DESIGN.md)
+- **Settled decisions:** [docs/DECISIONS.md](docs/DECISIONS.md)
+- **Deploying:** [docs/DEPLOY.md](docs/DEPLOY.md) — push-to-prod flow for
+  `star.subsurfaces.net`
+
+---
+
+*Built with care. The worlds are listening.*

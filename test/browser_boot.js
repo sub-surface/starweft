@@ -730,11 +730,43 @@ step('boot screen short-circuits headlessly and invokes the title handoff', func
   if (SW.boot.isActive && SW.boot.isActive()) throw new Error('boot left itself active after headless skip');
 });
 
-step('title screen omits shallow badlands and no-rivals selectors', function () {
+step('front-door title shows the menu verbs, new-run setup omits dead selectors', function () {
   SW.ui.showTitle();
-  const html = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
-  if (html.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
-  if (html.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
+  const front = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
+  if (front.indexOf('data-act="newRun"') < 0) throw new Error('front door missing New weave');
+  if (front.indexOf('data-act="settings"') < 0) throw new Error('front door missing Settings');
+  // Identity/origin config must NOT be on the landing — it lives one step in.
+  if (front.indexOf('id="ngDiff"') >= 0) throw new Error('setup form leaked onto the front door');
+  // Step into setup and check the form is there, minus the removed selectors.
+  SW.uiModals.showNewRun();
+  const setup = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
+  if (setup.indexOf('id="ngDiff"') < 0) throw new Error('new-run setup missing difficulty');
+  if (setup.indexOf('data-act="begin"') < 0) throw new Error('new-run setup missing begin');
+  if (setup.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
+  if (setup.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
+});
+
+step('settings panel renders toggles and persists prefs', function () {
+  SW.uiModals.showSettings();
+  let html = (elCache['#settingsModal'] && elCache['#settingsModal'].innerHTML) || '';
+  if (html.indexOf('data-act="setReduceMotion"') < 0) throw new Error('settings missing reduce-motion toggle');
+  if (html.indexOf('data-act="setDefaultSpeed"') < 0) throw new Error('settings missing default speed');
+  fireClick('setReduceMotion');
+  if (!storageMap.starweft_prefs || JSON.parse(storageMap.starweft_prefs).reduceMotion !== true) throw new Error('reduce-motion pref not persisted');
+  fireClick('setDefaultSpeed', { spd: '3' });
+  if (JSON.parse(storageMap.starweft_prefs).defaultSpeed !== 3) throw new Error('default speed pref not persisted');
+});
+
+step('import modal and generic confirm wire up', function () {
+  SW.uiModals.showImport();
+  const imp = (elCache['#importModal'] && elCache['#importModal'].innerHTML) || '';
+  if (imp.indexOf('id="importBox"') < 0 || imp.indexOf('data-act="confirmImport"') < 0) throw new Error('import modal missing textarea/confirm');
+  let ran = false;
+  SW.ui.confirm({ title: 'Test', text: 'ok?', onYes: function () { ran = true; } });
+  const cm = (elCache['#confirmModal'] && elCache['#confirmModal'].innerHTML) || '';
+  if (cm.indexOf('data-act="confirmYes"') < 0) throw new Error('confirm modal missing yes action');
+  fireClick('confirmYes');
+  if (!ran) throw new Error('confirm onYes did not run');
 });
 
 step('tech research through dispatcher', function () {
@@ -747,8 +779,16 @@ step('tech research through dispatcher', function () {
 step('menu, help, save, load via dispatcher', function () {
   fireClick('saveManual');
   if (!storageMap.starweft_manual) throw new Error('manual save not written');
+  if (!storageMap.starweft_meta_manual) throw new Error('manual save metadata not written');
   fireClick('help');
   fireClick('closeModal');
+  // Dev/cheat panel is gated: with dev off, clicking 'cheats' must NOT open it.
+  delete storageMap.starweft_dev;
+  fireClick('cheats');
+  const gated = (elCache['#cheatModal'] && elCache['#cheatModal'].innerHTML) || '';
+  if (gated.indexOf('FEATURE CHECK') >= 0) throw new Error('cheat panel opened while dev disabled');
+  // Enable dev (as ?dev would) and confirm it now opens.
+  storageMap.starweft_dev = '1';
   fireClick('cheats');
   const cheatHtml = (elCache['#cheatModal'] && elCache['#cheatModal'].innerHTML) || '';
   if (cheatHtml.indexOf('FEATURE CHECK') < 0 || cheatHtml.indexOf('cheatResources') < 0) throw new Error('cheat panel missing actions');

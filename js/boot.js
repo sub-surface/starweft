@@ -22,6 +22,11 @@
   }
 
   function prefersReducedMotion() {
+    try {
+      // Player setting wins, then the OS-level media query.
+      const prefs = JSON.parse(localStorage.getItem('starweft_prefs') || '{}');
+      if (prefs && (prefs.reduceMotion || prefs.skipBoot)) return true;
+    } catch (e) {}
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
     catch (e) { return false; }
   }
