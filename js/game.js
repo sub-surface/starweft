@@ -47,15 +47,29 @@ SW.game = (function () {
     const difficulty = D.DIFFICULTY[opts.difficulty] ? opts.difficulty : 'standard';
     const originId = (D.ORIGINS[opts.origin] && G.originUnlocked(opts.origin)) ? opts.origin : 'courier';
     const origin = D.ORIGINS[originId];
+    // Threat (scourge clock, decoupled from difficulty) and weave conditions
+    // (stackable modifiers). Both default to harmless/empty for old callers.
+    const threat = D.THREAT[opts.threat] ? opts.threat : 'inherit';
+    const conditions = Array.isArray(opts.conditions)
+      ? opts.conditions.filter(function (c) { return !!D.CONDITIONS[c]; })
+      : [];
+    const doctrineLean = (D.DOCTRINE_DISCOUNT && D.DOCTRINE_DISCOUNT[opts.doctrineLean]) ? opts.doctrineLean : null;
+    const startCreditsBonus = conditions.reduce(function (sum, c) {
+      const fx = D.CONDITIONS[c] && D.CONDITIONS[c].fx; return sum + ((fx && fx.startCreditsBonus) || 0);
+    }, 0);
     const state = {
       version: D.SAVE_VERSION,
       seed: seed,
       rngState: U.seedFrom(seed),
       difficulty: difficulty,
+      threat: threat,
+      conditions: conditions,
+      doctrineLean: doctrineLean,
+      daily: (typeof opts.daily === 'string') ? opts.daily : null,
       origin: originId,
       identity: Object.assign({ name: 'The Provisional Weft', hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.' }, opts.identity || {}),
       tick: 0, paused: true, speed: 1,
-      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0)),
+      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + startCreditsBonus),
       research: 0,
       nextId: 1,
       systems: [], ships: [], routes: [], directives: [], rivals: [],
@@ -79,6 +93,20 @@ SW.game = (function () {
     for (const f in (origin.rep || {})) state.rep[f] = origin.rep[f];
     if (origin.infamy) state.infamy = origin.infamy;
     if (origin.surveyBonus) state.originBonusSurvey = true;
+
+    // weave conditions — one-time setup effects (recurring effects read fx live)
+    if (D.condHas(state, 'scarcityStart')) {
+      // Pick one widely-consumed commodity (seeded) and drain it galaxy-wide.
+      const consumed = D.COMM_IDS.filter(function (c) { return !D.COMMODITIES[c].locked; });
+      if (consumed.length) {
+        state.scarceCommodity = consumed[Math.floor(U.rnd(state) * consumed.length)];
+        for (const sys of state.systems) {
+          if (sys.stocks && sys.stocks[state.scarceCommodity] !== undefined) {
+            sys.stocks[state.scarceCommodity] = Math.round(sys.stocks[state.scarceCommodity] * 0.2);
+          }
+        }
+      }
+    }
     // character builder: one free tier-1 aptitude shapes the opening hours
     if (opts.aptitude && D.PERKS[opts.aptitude] && !D.PERKS[opts.aptitude].req) state.perks.push(opts.aptitude);
     if (origin.scourgeEarlier && state.scourge.startAt > 0) state.scourge.startAt = Math.max(120, state.scourge.startAt - origin.scourgeEarlier);

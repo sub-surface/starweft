@@ -7,11 +7,20 @@ SW.scourge = (function () {
 
   SC.init = function (state) {
     const diff = D.DIFFICULTY[state.difficulty];
+    // The threat preset (if any) overrides the scourge clock while leaving the
+    // economic difficulty (credits/research) alone. 'inherit' falls back to the
+    // difficulty's own numbers. Conditions may further stretch the start.
+    const thr = (D.THREAT && D.THREAT[state.threat]) || {};
+    let startAt = thr.scourgeStart !== undefined ? thr.scourgeStart : diff.scourgeStart;
+    let interval = thr.spreadEvery !== undefined ? thr.spreadEvery : diff.spreadEvery;
+    let accel = thr.spreadAccel !== undefined ? thr.spreadAccel : diff.spreadAccel;
+    // The Long Quiet (and friends) push the waking further out.
+    if (startAt > 0) startAt = Math.round(startAt * (D.condFx ? D.condFx(state, 'scourgeStartMult', 1) : 1));
     state.scourge = {
-      phase: diff.scourgeStart < 0 ? 'never' : 'dormant',
-      startAt: diff.scourgeStart,
-      interval: diff.spreadEvery,
-      accel: diff.spreadAccel,
+      phase: startAt < 0 ? 'never' : 'dormant',
+      startAt: startAt,
+      interval: interval,
+      accel: accel,
       nextAt: 0,
       delivered: 0,
       originId: state.scourgeOriginId,

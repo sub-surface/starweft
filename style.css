@@ -567,3 +567,49 @@ input:focus-visible {
 
 .grow { flex: 1; }
 .modal h2 i { color: var(--accent); font-style: normal; }
+
+/* ===== rich new-weave menu (showNewRun) ===== */
+.setupModal { max-height: 86vh; overflow-y: auto; }
+.h4sub { font-weight: 400; color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0; text-transform: none; }
+.originCard.rich { flex-direction: column; align-items: stretch; gap: 3px; }
+.originCard.rich .oKit { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); margin-top: 3px; }
+.originCard.rich .oHooks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.oHook { font-size: 9.5px; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 2px; padding: 1px 5px; }
+.originCard.rich.lock { opacity: 0.5; }
+.lockTag { font-size: 9.5px; color: var(--ink-faint); font-weight: 400; letter-spacing: 0.06em; }
+.originCard.rich.lock .sub { color: var(--accent); opacity: 0.8; }
+
+.forecast {
+  margin: 8px 0 2px; padding: 7px 10px;
+  border-left: 2px solid var(--accent); background: var(--accent-dim);
+  font-size: 11.5px; color: var(--ink); font-style: italic;
+}
+
+/* weave-condition cards */
+.condGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.condCard {
+  border: 1px solid var(--line-bright); padding: 7px 9px; cursor: pointer;
+  background: rgba(201,209,217,0.012); transition: border-color .12s, background .12s;
+}
+.condCard:hover { border-color: var(--ink-dim); }
+.condCard.on { border-color: var(--accent); background: var(--accent-dim); }
+.condTop { display: flex; align-items: center; gap: 6px; }
+.condGlyph { font-size: 13px; color: var(--ink-dim); width: 16px; text-align: center; }
+.condCard.on .condGlyph { color: var(--accent); }
+.condName { font-size: 12px; font-weight: 500; color: var(--ink); flex: 1; }
+.condMark { font-size: 12px; color: var(--ink-faint); }
+.condCard.on .condMark { color: var(--accent); }
+.condDesc { font-size: 10px; color: var(--ink-dim); line-height: 1.45; margin-top: 4px; }
+/* a faint tint by kind, only the left edge so it stays monochrome */
+.condCard.k-kinder { border-left-width: 2px; border-left-color: rgba(155,214,234,0.4); }
+.condCard.k-harder { border-left-width: 2px; border-left-color: rgba(255,77,87,0.35); }
+.condCard.k-wild   { border-left-width: 2px; border-left-color: rgba(201,209,217,0.3); }
+.condCard.on.k-harder { border-color: var(--accent); }
+
+/* daily-weave brief */
+.dailySpec { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line-bright); }
+.dailySpec b { color: var(--ink-dim); font-weight: 500; margin-right: 6px; }
+
+@media (max-width: 520px) {
+  .condGrid { grid-template-columns: 1fr; }
+}

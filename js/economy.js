@@ -11,7 +11,11 @@ SW.economy = (function () {
     const T = D.TUNE;
     const cap = sys.capacity[c] || T.capDefault;
     const fill = U.clamp((sys.stocks[c] || 0) / cap, 0, 1);
-    const mult = U.clamp(T.priceMid - T.priceK * fill, T.priceLo, T.priceHi);
+    // Boom & Bust steepens the curve around the midpoint: scarcity costs more,
+    // gluts pay less — wider swings, same average. volMult defaults to 1.
+    const volMult = D.condFx ? D.condFx(state, 'volatility', 1) : 1;
+    const k = T.priceK * volMult;
+    const mult = U.clamp(T.priceMid - k * fill, T.priceLo * (volMult > 1 ? 0.8 : 1), T.priceHi * (volMult > 1 ? 1.15 : 1));
     const ideo = D.IDEOLOGIES[sys.ideology || 'free'];
     const bias = (ideo && ideo.bias[c]) || 1;
     return D.COMMODITIES[c].base * mult * bias;
@@ -65,7 +69,8 @@ SW.economy = (function () {
     // black market: the Reach pays over the odds, if the Reach knows you
     if (faction === 'player' && sys.region === 'reach' && (state.infamy || 0) >= D.TUNE.infamyBlackMarket) {
       // synergy: a Severed origin running Mercantile doctrine fences at premium
-      const fence = (state.origin === 'severed' && SW.tech.has(state, 'doc_mercantile')) ? 1.25 : D.TUNE.blackMarketBonus;
+      let fence = (state.origin === 'severed' && SW.tech.has(state, 'doc_mercantile')) ? 1.25 : D.TUNE.blackMarketBonus;
+      fence *= D.condFx ? D.condFx(state, 'blackMarket', 1) : 1; // Pirate Tithe fattens the fence
       p *= fence;
     }
     return p;
@@ -177,9 +182,10 @@ SW.economy = (function () {
       sys.satNeed = needN ? needSat : 1;
       sys.satWant = wantN ? wantSat : 0;
 
-      // Prosperity drifts toward supply quality
+      // Prosperity drifts toward supply quality (Golden Age lifts the ceiling)
       if (sys.pop > 0) {
-        const target = 25 + 50 * sys.satNeed + 25 * sys.satWant;
+        const prosMult = D.condFx ? D.condFx(state, 'prosperity', 1) : 1;
+        const target = U.clamp((25 + 50 * sys.satNeed + 25 * sys.satWant) * prosMult, 0, 100);
         sys.prosperity = U.clamp(sys.prosperity + (target - sys.prosperity) * T.prosperityDrift, 0, 100);
         sys.pop = Math.max(1, sys.pop + sys.pop * T.popGrow * (sys.prosperity - 50) / 50);
         // research from thriving worlds
@@ -199,8 +205,9 @@ SW.economy = (function () {
     }
 
     const stanceMult = state.scourgeStance === 'cure' ? 1.1 : 1; // every loom turned to the question
-    state.research = U.num(state.research) + research * diff.research * stanceMult;
-    state.stats.researchEarned = U.num(state.stats.researchEarned) + research * diff.research * stanceMult;
+    const condMult = D.condFx ? D.condFx(state, 'research', 1) : 1; // Golden Age etc.
+    state.research = U.num(state.research) + research * diff.research * stanceMult * condMult;
+    state.stats.researchEarned = U.num(state.stats.researchEarned) + research * diff.research * stanceMult * condMult;
   };
 
   function runSlot(state, sys, slot) {

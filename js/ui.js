@@ -16,7 +16,6 @@ SW.ui = (function () {
   ui.directiveForm = { c: 'FOOD', target: 60 }; // shared with ui_routes.js
   let lastRenderTick = -1;
   let _lastMetaTick = -1;        // last tick we refreshed the autosave slot metadata
-  let _settingsFrom = null;      // 'title' | 'pause' — where Settings was opened from
   ui.editorOpen = false;         // shared with ui_routes.js
   let pinnedInfo = null;         // infobox fallback topic
   ui.techView = { x: 0, y: 0, zoom: 1, selected: null }; // shared with ui_tech.js
@@ -266,7 +265,7 @@ SW.ui = (function () {
     $('#btnMute').addEventListener('click', function () { SW.audio.toggleMute(); syncAudioButtons(); });
     $('#btnMusic').addEventListener('click', function () { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); });
     $('#btnMenu').addEventListener('click', function () { SW.uiModals.showMenu(); });
-    $('#btnCodex').addEventListener('click', function () { SW.uiModals.showCodex(); });
+    $('#btnCodex').addEventListener('click', function () { ui.openLeaf(SW.uiModals.showCodex); });
     $('#btnTech').addEventListener('click', function () {
       if (SW.uiTech.isOpen()) SW.uiTech.close(); else SW.uiTech.open();
     });
@@ -584,7 +583,39 @@ SW.ui = (function () {
     catch (e) { return null; }
   };
 
+  // Daily-weave best scores, keyed by date (browser-local leaderboard-of-one).
+  ui.dailyBest = function (dateKey) {
+    try { const m = JSON.parse(localStorage.getItem('starweft_daily') || '{}'); return m[dateKey] || null; }
+    catch (e) { return null; }
+  };
+  ui.recordDaily = function (dateKey, score) {
+    try {
+      const m = JSON.parse(localStorage.getItem('starweft_daily') || '{}');
+      if (!m[dateKey] || score > m[dateKey]) { m[dateKey] = score; localStorage.setItem('starweft_daily', JSON.stringify(m)); }
+    } catch (e) {}
+  };
+
   ui.confirm = function (opts) { SW.uiModals.showConfirm(opts); };
+
+  // Leaf modals (Help, Settings, Codex, Import) can be opened from the title
+  // front door, the pause menu, or in-game. They must return to their opener,
+  // not blow away the whole stack. captureReturn() snapshots "home" before a
+  // leaf opens; closeLeaf() re-opens it. In-game home is "nothing" (just close).
+  let _menuReturn = null;
+  function captureReturn() {
+    const titleOpen = ui.modalOpen() && !$('#titleModal').classList.contains('hidden');
+    const menuOpen = ui.modalOpen() && !$('#menuModal').classList.contains('hidden');
+    if (titleOpen) _menuReturn = 'title';
+    else if (menuOpen) _menuReturn = 'pause';
+    else _menuReturn = null; // opened from the live game — just close on done
+  }
+  ui.closeLeaf = function () {
+    const r = _menuReturn; _menuReturn = null;
+    if (r === 'title') ui.showTitle();
+    else if (r === 'pause') SW.uiModals.showMenu();
+    else hideModals();
+  };
+  ui.openLeaf = function (showFn) { captureReturn(); showFn(); };
   // The #sigilPreview canvas on the new-run form is animated by the existing
   // portrait loop (see top of this file); nothing to do here but keep the hook
   // so callers don't need to know that.
@@ -865,16 +896,22 @@ SW.ui = (function () {
       case 'postgame': A().continuePostgame(s); hideModals(); break;
       case 'newGameMenu': ui.showTitle(); return;
       case 'newRun': SW.uiModals.showNewRun(); return;
-      case 'backToTitle': ui.showTitle(); return;
-      case 'settings': _settingsFrom = ui.modalOpen() && !$('#titleModal').classList.contains('hidden') ? 'title' : (s && s.tick > 0 ? 'pause' : 'title'); SW.uiModals.showSettings(); return;
-      case 'closeSettings': {
-        // Return to where Settings was opened from: the front door or the pause menu.
-        if (_settingsFrom === 'title') ui.showTitle();
-        else if (_settingsFrom === 'pause') SW.uiModals.showMenu();
-        else hideModals();
+      case 'dailyWeave': SW.uiModals.showDailyBrief(); return;
+      case 'beginDaily': {
+        const cfg = SW.uiModals.dailyConfig();
+        SW.game.newGame(cfg);
+        hideModals();
+        afterLoad();
+        ui.writeSaveMeta('auto');
+        A().setSpeed(SW.game.state, ui.prefs().defaultSpeed || 1);
+        toast({ kind: 'info', text: '✦ Daily Weave ' + cfg.daily + ' — good luck, weaver.' });
         return;
       }
-      case 'codexFromTitle': SW.uiModals.showCodex(); return;
+      case 'backToTitle': ui.showTitle(); return;
+      case 'settings': ui.openLeaf(SW.uiModals.showSettings); return;
+      case 'closeSettings': ui.closeLeaf(); return;
+      case 'closeLeaf': ui.closeLeaf(); return;
+      case 'codexFromTitle': ui.openLeaf(SW.uiModals.showCodex); return;
       case 'setSfx': { SW.audio.toggleMute(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
       case 'setMusic': { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
       case 'setReduceMotion': { ui.setPref('reduceMotion', !ui.prefs().reduceMotion); SW.uiModals.showSettings(); return; }
@@ -897,6 +934,9 @@ SW.ui = (function () {
         SW.game.newGame({
           seed: seedV || undefined,
           difficulty: $('#ngDiff').value,
+          threat: ($('#ngThreat') && $('#ngThreat').value) || undefined,
+          conditions: SW.uiModals.selectedConditions ? SW.uiModals.selectedConditions() : [],
+          doctrineLean: ($('#ngLean') && $('#ngLean').value) || undefined,
           origin: chosenOriginFromModal(),
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
           tutorial: !!($('#ngTut') && $('#ngTut').checked),
@@ -926,7 +966,7 @@ SW.ui = (function () {
         A().setSpeed(SW.game.state, SW.tutorial.isActive(SW.game.state) ? 1 : (ui.prefs().defaultSpeed || 1));
         return;
       }
-      case 'help': SW.uiModals.showHelp(); return;
+      case 'help': ui.openLeaf(SW.uiModals.showHelp); return;
       case 'cheats': if (ui.devEnabled()) SW.uiModals.showCheats(); else toast({ kind: 'bad', text: 'Dev tools are off. Add ?dev to the URL to enable.' }); return;
       case 'saveManual': { const r = SW.game.save('manual'); if (r.ok) ui.writeSaveMeta('manual'); toast(r.ok ? { kind: 'good', text: 'Run saved.' } : { kind: 'bad', text: r.msg || 'Save failed.' }); hideModals(); break; }
       case 'loadManual': { const r = SW.game.load('manual'); if (r.ok) { hideModals(); afterLoad(); toast({ kind: 'good', text: 'Loaded.' }); } else toast({ kind: 'bad', text: r.msg }); return; }
@@ -940,7 +980,7 @@ SW.ui = (function () {
         } else toast({ kind: 'bad', text: 'Clipboard unavailable here.' });
         break;
       }
-      case 'importSave': SW.uiModals.showImport(); return;
+      case 'importSave': ui.openLeaf(SW.uiModals.showImport); return;
       case 'confirmImport': {
         const box = $('#importBox');
         const data = box && box.value ? box.value.trim() : '';

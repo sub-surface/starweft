@@ -1670,6 +1670,60 @@ section('Story flag registry');
   assert(Object.keys(found).length >= 15, 'flag scan found the corpus (' + Object.keys(found).length + ')');
 }
 
+section('Weave conditions & decoupled threat');
+{
+  // Defaults: no conditions, inherit threat — behaves exactly as before.
+  const base = G.newGame({ seed: 'cond-base', difficulty: 'standard' });
+  assert(Array.isArray(base.conditions) && base.conditions.length === 0, 'no conditions by default');
+  assert(base.threat === 'inherit', 'threat inherits by default');
+  assert(base.scourge.startAt === D.DIFFICULTY.standard.scourgeStart, 'inherit threat uses difficulty clock');
+
+  // Threat decoupled from difficulty: dormant threat on standard => never wakes.
+  const dorm = G.newGame({ seed: 'cond-dorm', difficulty: 'standard', threat: 'dormant' });
+  assert(dorm.scourge.phase === 'never', 'dormant threat keeps the Scourge asleep on standard difficulty');
+  assert(dorm.credits === base.credits, 'threat does not change starting economy');
+
+  // Relentless threat wakes far earlier than standard.
+  const rel = G.newGame({ seed: 'cond-rel', difficulty: 'standard', threat: 'relentless' });
+  assert(rel.scourge.startAt > 0 && rel.scourge.startAt < base.scourge.startAt, 'relentless threat wakes earlier');
+
+  // Fat Purse: starting credits bonus applied.
+  const fat = G.newGame({ seed: 'cond-fat', difficulty: 'standard', conditions: ['fatPurse'] });
+  assert(fat.credits === base.credits + 600, 'Fat Purse adds 600 starting credits');
+  assert(fat.conditions.indexOf('fatPurse') >= 0, 'condition stored on state');
+
+  // Long Quiet stretches the scourge clock.
+  const quiet = G.newGame({ seed: 'cond-quiet', difficulty: 'standard', conditions: ['longQuiet'] });
+  assert(quiet.scourge.startAt > base.scourge.startAt, 'Long Quiet pushes the waking later');
+
+  // Scarcity Start drains one commodity galaxy-wide.
+  const scarce = G.newGame({ seed: 'cond-scarce', difficulty: 'standard', conditions: ['scarcity'] });
+  assert(typeof scarce.scarceCommodity === 'string', 'Scarcity Start names a scarce commodity');
+
+  // Bad condition ids are filtered out, not stored.
+  const bad = G.newGame({ seed: 'cond-bad', difficulty: 'standard', conditions: ['fatPurse', 'notAThing'] });
+  assert(bad.conditions.length === 1 && bad.conditions[0] === 'fatPurse', 'unknown conditions filtered');
+
+  // condFx accumulates multiplicatively; condHas reads booleans.
+  assert(D.condFx(fat, 'research', 1) === 1, 'condFx defaults to 1 when key absent');
+  assert(D.condFx(G.newGame({ seed: 'cf', conditions: ['goldenAge'] }), 'research', 1) === 1.4, 'Golden Age research mult reads through condFx');
+  assert(D.condHas(scarce, 'scarcityStart') === true, 'condHas detects scarcity');
+
+  // Doctrine lean discounts the branch before a doctrine is chosen.
+  const lean = G.newGame({ seed: 'cond-lean', difficulty: 'standard', doctrineLean: 'doc_vanguard' });
+  const corvFull = D.TECHS.corvettes.cost;
+  assert(SW.tech.costOf(lean, 'corvettes') < corvFull, 'doctrine lean discounts its branch early');
+  assert(SW.tech.costOf(base, 'corvettes') === corvFull, 'no lean: full price');
+
+  // Determinism survives conditions: same seed + conditions => identical world.
+  function run(seed) {
+    const s = G.newGame({ seed: seed, difficulty: 'standard', conditions: ['boomBust', 'pirateTithe'], threat: 'early' });
+    for (let i = 0; i < 60; i++) G.tick(s);
+    return JSON.stringify(s.systems.map(function (x) { return [x.id, Math.round(x.prosperity), x.scourge]; }));
+  }
+  assert(run('cond-det') === run('cond-det'), 'same seed + conditions => identical run');
+}
+
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');
 if (failures > 0) process.exit(1);
 console.log('SMOKE TEST v2 PASSED ✓');

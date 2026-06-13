@@ -68,7 +68,7 @@ SW.uiModals = (function () {
         html += '</div>';
       }
     }
-    html += '<div class="choices" style="margin-top:10px"><button data-act="closeModal">close</button></div>';
+    html += '<div class="choices" style="margin-top:10px"><button data-act="closeLeaf">close</button></div>';
     modal.innerHTML = html;
     modal.querySelectorAll('[data-codextab]').forEach(function (el) {
       el.addEventListener('click', function () { codexTab = el.dataset.codextab; renderCodex(); });
@@ -120,6 +120,8 @@ SW.uiModals = (function () {
     const s = st();
     const modal = $('#gameoverModal');
     const stats = s.stats;
+    // Daily weave: bank the run's Weave Rating against today's best.
+    if (s.daily && SW.ui.recordDaily) SW.ui.recordDaily(s.daily, go.score || 0);
     let html = '<h2>' + (go.win ? '<i>✦</i> THE WEAVE HOLDS' : '✕ THE WEAVE UNRAVELS') + '</h2>';
     html += '<div class="body">' + esc(go.reason) + '</div>';
     html += '<div class="statGrid">' +
@@ -165,6 +167,7 @@ SW.uiModals = (function () {
         '</button>';
     }
     html += '<button class="frontBtn' + (hasAuto ? '' : ' primary') + '" data-act="newRun"><span class="fbLabel">▸ New weave</span><span class="fbSub">choose your origin, doctrine, and galaxy</span></button>';
+    html += '<button class="frontBtn" data-act="dailyWeave"><span class="fbLabel">▸ Daily weave</span><span class="fbSub">' + esc(dailySub()) + '</span></button>';
     html += '<button class="frontBtn" data-act="help"><span class="fbLabel">▸ How to play</span></button>';
     html += '<button class="frontBtn" data-act="settings"><span class="fbLabel">▸ Settings</span></button>';
     html += '<button class="frontBtn" data-act="codexFromTitle"><span class="fbLabel">▸ Codex &amp; lore</span></button>';
@@ -174,51 +177,191 @@ SW.uiModals = (function () {
     SW.ui.showModal('titleModal');
   }
 
+  // ============ daily weave — a deterministic shared galaxy per day ============
+  // The date string is the seed (date comes from the UI clock, never sim code).
+  // Same day → same galaxy + same conditions for everyone. Score = Weave Rating.
+  function todayKey() {
+    try { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+    catch (e) { return '2026-01-01'; }
+  }
+  function dailyConfig(dateKey) {
+    const key = dateKey || todayKey();
+    const h = U.seedFrom('daily-' + key);
+    // Derive everything from the date hash so it's identical for all players.
+    const diffs = ['standard', 'standard', 'brutal'];
+    const dens = Object.keys(D.WORLD.density);
+    const weas = Object.keys(D.WORLD.wealth);
+    const pool = D.CONDITION_ORDER.slice();
+    // pick two distinct conditions deterministically. Use unsigned shifts —
+    // the hash exceeds 2^31, so signed >> would go negative and break indexing.
+    const i1 = h % pool.length;
+    const i2 = (h >>> 5) % pool.length;
+    const conds = i1 === i2 ? [pool[i1]] : [pool[i1], pool[i2]];
+    return {
+      seed: 'daily-' + key,
+      difficulty: diffs[(h >>> 3) % diffs.length],
+      world: { density: dens[(h >>> 7) % dens.length], wealth: weas[(h >>> 9) % weas.length] },
+      conditions: conds,
+      tutorial: false,
+      daily: key,
+      identity: { name: 'Daily Weft ' + key, motto: 'One galaxy, one day.', hue: 195, sigil: h % 1000 },
+    };
+  }
+  function dailySub() {
+    const cfg = dailyConfig();
+    const names = cfg.conditions.map(function (c) { return D.CONDITIONS[c] ? D.CONDITIONS[c].glyph : ''; }).join(' ');
+    return 'today: ' + cfg.daily + ' · ' + names + ' · everyone, same galaxy';
+  }
+  function showDailyBrief() {
+    const cfg = dailyConfig();
+    const best = SW.ui.dailyBest ? SW.ui.dailyBest(cfg.daily) : null;
+    const modal = $('#confirmModal');
+    let html = '<h2><i>✦</i> DAILY WEAVE</h2>';
+    html += '<div class="sub" style="margin-bottom:6px">' + esc(cfg.daily) + ' — the same galaxy and conditions for every weaver today. Your best Weave Rating is your score.</div>';
+    html += '<div class="dailySpec">' +
+      '<div><b>Difficulty</b> ' + esc(D.DIFFICULTY[cfg.difficulty].name) + '</div>' +
+      '<div><b>World</b> ' + esc(D.WORLD.density[cfg.world.density].name.split(' —')[0]) + ' · ' + esc(D.WORLD.wealth[cfg.world.wealth].name.split(' —')[0]) + '</div>' +
+      '<div><b>Conditions</b> ' + cfg.conditions.map(function (c) { return D.CONDITIONS[c].glyph + ' ' + esc(D.CONDITIONS[c].name); }).join(' · ') + '</div>' +
+      (best ? '<div><b>Your best today</b> ' + U.fmt(best) + '</div>' : '') +
+      '</div>';
+    html += '<div class="choices" style="flex-direction:row;gap:8px;margin-top:12px">' +
+      '<button class="primary grow" data-act="beginDaily">weave it ▸</button>' +
+      '<button data-act="backToTitle">back</button></div>';
+    modal.innerHTML = html;
+    SW.ui.showModal('confirmModal');
+  }
+
   // ============ new-run setup — identity / origins / galaxy ============
+  // new-run selections that aren't plain form fields
+  let chosenThreat = 'inherit';
+  let chosenLean = '';
+  let chosenConditions = {};   // id -> true
+
+  // Build the inline kit summary for an origin (ships, credits, tech, hooks).
+  function originKit(def) {
+    const bits = [];
+    const ships = (def.ships || ['sparrow']).map(function (h) {
+      const hu = D.HULLS[h]; return (hu ? hu.glyph + ' ' + hu.name : h);
+    });
+    bits.push(ships.join(' + '));
+    const c = def.credits || 0;
+    if (c) bits.push((c > 0 ? '+' : '') + c + '¤');
+    if (def.techs && def.techs.length) bits.push(def.techs.map(function (t) { return D.TECHS[t] ? D.TECHS[t].name.replace('Doctrine: ', '') : t; }).join(', '));
+    const hooks = [];
+    if (def.scourgeEarlier) hooks.push('Scourge stirs early');
+    if (def.startReach) hooks.push('starts in the Reach · black markets');
+    if (def.surveyBonus) hooks.push('+surveys');
+    if (def.infamy) hooks.push('infamy ' + def.infamy);
+    return { kit: bits.join(' · '), hooks: hooks };
+  }
+
+  // A plain-language forecast of the current galaxy dials.
+  function forecastLine() {
+    const diff = D.DIFFICULTY[$('#ngDiff') ? $('#ngDiff').value : 'standard'] || D.DIFFICULTY.standard;
+    const den = D.WORLD.density[$('#ngDen') ? $('#ngDen').value : 'standard'] || D.WORLD.density.standard;
+    const wea = D.WORLD.wealth[$('#ngWea') ? $('#ngWea').value : 'standard'] || D.WORLD.wealth.standard;
+    const thr = D.THREAT[chosenThreat] || {};
+    let startAt = thr.scourgeStart !== undefined ? thr.scourgeStart : diff.scourgeStart;
+    const wake = startAt < 0 ? 'the Scourge never wakes' : 'the Scourge wakes ~cycle ' + startAt;
+    const wealthWord = wea.mult >= 1.4 ? 'fat markets' : wea.mult <= 0.6 ? 'lean markets' : 'balanced markets';
+    const skyWord = den.sysCount >= 320 ? 'close skies' : den.sysCount <= 200 ? 'a long dark' : 'open skies';
+    return den.sysCount + ' systems · ' + wealthWord + ' · ' + skyWord + ' · ' + wake + '.';
+  }
+
   function showNewRun() {
     const modal = $('#titleModal');
     modal.classList.remove('titleFront');
+    modal.classList.add('setupModal');
     SW.ui._sigilSeed = Math.floor(Math.random() * 1000);
     let html = '<div class="setupHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
-      '<div class="titleArt" style="font-size:22px;letter-spacing:6px">NEW WEAVE</div></div>';
+      '<div class="titleArt" style="font-size:20px;letter-spacing:5px">NEW WEAVE</div></div>';
+
+    // Identity
     html += '<h4>Identity</h4>';
     html += '<div class="row"><canvas id="sigilPreview" width="64" height="64" style="border:1px solid var(--line)"></canvas>' +
       '<div style="flex:1"><div class="row"><input id="idName" placeholder="network name" value="The Provisional Weft" style="flex:1"></div>' +
       '<div class="row"><input id="idMotto" placeholder="motto" value="Finish the round." style="flex:1"></div>' +
       '<div class="row"><span class="sub">hue</span><input id="idHue" type="range" min="0" max="359" value="195" style="flex:1">' +
       '<button data-act="rerollSigil" title="New sigil">↻</button></div></div></div>';
+
+    // Origin — rich cards
     html += '<h4>Origin</h4>';
     for (const o in D.ORIGINS) {
       const def = D.ORIGINS[o];
       const unlocked = SW.game.originUnlocked(o);
-      html += '<div class="originCard' + (chosenOrigin === o ? ' sel' : '') + (unlocked ? '' : ' lock') + '" data-origin="' + (unlocked ? o : '') + '">' +
-        '<div style="flex:1"><div class="oname">' + esc(def.name) + (unlocked ? '' : ' ⊘') + '</div>' +
-        '<div class="sub">' + (unlocked ? esc(def.desc) : 'Locked — ' + esc(D.LEGACY_HINTS[def.locked])) + '</div></div></div>';
+      if (unlocked) {
+        const k = originKit(def);
+        html += '<div class="originCard rich' + (chosenOrigin === o ? ' sel' : '') + '" data-origin="' + o + '">' +
+          '<div style="flex:1"><div class="oname">' + esc(def.name) + '</div>' +
+          '<div class="sub">' + esc(def.desc) + '</div>' +
+          '<div class="oKit">' + esc(k.kit) + '</div>' +
+          (k.hooks.length ? '<div class="oHooks">' + k.hooks.map(function (h) { return '<span class="oHook">' + esc(h) + '</span>'; }).join('') + '</div>' : '') +
+          '</div></div>';
+      } else {
+        html += '<div class="originCard rich lock" data-origin="">' +
+          '<div style="flex:1"><div class="oname">' + esc(def.name) + ' <span class="lockTag">⊘ locked</span></div>' +
+          '<div class="sub">' + esc(unlockGoal(def)) + '</div></div></div>';
+      }
     }
+
+    // Galaxy dials
     html += '<h4>Galaxy</h4>';
-    html += '<div class="row"><span class="sub" style="width:64px">difficulty</span><select id="ngDiff">' +
+    html += '<div class="row"><span class="sub" style="width:70px">difficulty</span><select id="ngDiff" data-forecast>' +
       Object.keys(D.DIFFICULTY).map(function (d) {
         return '<option value="' + d + '"' + (d === 'standard' ? ' selected' : '') + '>' + D.DIFFICULTY[d].name + ' — ' + D.DIFFICULTY[d].desc + '</option>';
       }).join('') + '</select></div>';
-    html += '<div class="row"><span class="sub" style="width:64px">world</span>' +
-      '<select id="ngDen">' + Object.keys(D.WORLD.density).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.density[k].name + '</option>'; }).join('') + '</select>' +
-      '<select id="ngWea">' + Object.keys(D.WORLD.wealth).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.wealth[k].name + '</option>'; }).join('') + '</select>' +
-      '<span class="sub">deep wilds and rival networks always active</span></div>';
-    html += '<div class="row"><span class="sub" style="width:64px">aptitude</span><select id="ngApt" style="flex:1">' +
+    html += '<div class="row"><span class="sub" style="width:70px">world</span>' +
+      '<select id="ngDen" data-forecast>' + Object.keys(D.WORLD.density).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.density[k].name + '</option>'; }).join('') + '</select>' +
+      '<select id="ngWea" data-forecast>' + Object.keys(D.WORLD.wealth).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.wealth[k].name + '</option>'; }).join('') + '</select></div>';
+
+    // Threat — decoupled scourge clock
+    html += '<div class="row"><span class="sub" style="width:70px">threat</span><select id="ngThreat" data-forecast>' +
+      Object.keys(D.THREAT).map(function (t) {
+        return '<option value="' + t + '"' + (t === chosenThreat ? ' selected' : '') + '>' + D.THREAT[t].name + ' — ' + D.THREAT[t].desc + '</option>';
+      }).join('') + '</select></div>';
+
+    // Live forecast
+    html += '<div class="forecast" id="ngForecast">' + esc(forecastLine()) + '</div>';
+
+    // Doctrine lean + aptitude
+    html += '<h4>Inclination <span class="h4sub">— optional leanings, decided fully out there</span></h4>';
+    html += '<div class="row"><span class="sub" style="width:70px">doctrine</span><select id="ngLean">' +
+      '<option value="">— decide out there —</option>' +
+      Object.keys(D.DOCTRINE_DISCOUNT).map(function (id) {
+        return '<option value="' + id + '"' + (id === chosenLean ? ' selected' : '') + '>' + D.TECHS[id].name.replace('Doctrine: ', '') + ' — ' + D.TECHS[id].desc + '</option>';
+      }).join('') + '</select></div>';
+    html += '<div class="row"><span class="sub" style="width:70px">aptitude</span><select id="ngApt" style="flex:1">' +
       '<option value="">— undecided (find yourself out there) —</option>' +
       Object.keys(D.PERKS).filter(function (id) { return !D.PERKS[id].req; }).map(function (id) {
         const p = D.PERKS[id];
         return '<option value="' + id + '">' + p.icon + ' ' + p.name + ' — ' + p.desc + '</option>';
       }).join('') + '</select></div>';
-    html += '<div class="row"><span class="sub" style="width:64px">seed</span><input id="ngSeed" placeholder="random" style="flex:1"></div>';
-    // Sol prologue: default on for first-time weavers, optional once completed
+
+    // Weave conditions — stackable modifiers
+    html += '<h4>Weave conditions <span class="h4sub">— optional spice, stack freely</span></h4>';
+    html += '<div class="condGrid">';
+    for (const cid of D.CONDITION_ORDER) {
+      const c = D.CONDITIONS[cid];
+      const on = !!chosenConditions[cid];
+      html += '<div class="condCard k-' + c.kind + (on ? ' on' : '') + '" data-cond="' + cid + '">' +
+        '<div class="condTop"><span class="condGlyph">' + c.glyph + '</span><span class="condName">' + esc(c.name) + '</span>' +
+        '<span class="condMark">' + (on ? '◉' : '○') + '</span></div>' +
+        '<div class="condDesc">' + esc(c.desc) + '</div></div>';
+    }
+    html += '</div>';
+
+    // Seed + prologue
+    html += '<div class="row" style="margin-top:8px"><span class="sub" style="width:70px">seed</span><input id="ngSeed" placeholder="random" style="flex:1"></div>';
     html += '<div class="row"><label class="sub"><input type="checkbox" id="ngTut"' +
       (SW.game.legacy().prologue ? '' : ' checked') + '> Sol prologue — wake at home, learn the verb' +
       (SW.game.legacy().prologue ? ' (completed)' : '') + '</label></div>';
+
     html += '<div class="choices" style="margin-top:14px;flex-direction:row;gap:8px">' +
       '<button class="primary grow" data-act="begin">begin weaving ▸</button>' +
       '<button data-act="backToTitle">back</button></div>';
     modal.innerHTML = html;
+
+    // wire origin selection
     modal.querySelectorAll('[data-origin]').forEach(function (el) {
       el.addEventListener('click', function () {
         if (!el.dataset.origin) return;
@@ -226,8 +369,37 @@ SW.uiModals = (function () {
         modal.querySelectorAll('.originCard').forEach(function (x) { x.classList.toggle('sel', x === el); });
       });
     });
+    // wire condition toggles
+    modal.querySelectorAll('[data-cond]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        const id = el.dataset.cond;
+        chosenConditions[id] = !chosenConditions[id];
+        el.classList.toggle('on', !!chosenConditions[id]);
+        const mark = el.querySelector('.condMark'); if (mark) mark.textContent = chosenConditions[id] ? '◉' : '○';
+      });
+    });
+    // live forecast on any galaxy/threat change
+    modal.querySelectorAll('[data-forecast]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        if (el.id === 'ngThreat') chosenThreat = el.value;
+        const f = $('#ngForecast'); if (f) f.textContent = forecastLine();
+      });
+    });
     SW.ui.showModal('titleModal');
     if (SW.ui.paintSigil) SW.ui.paintSigil();
+  }
+
+  // Read the selected weave conditions (called by the 'begin' dispatch).
+  m.selectedConditions = function () {
+    return Object.keys(chosenConditions).filter(function (k) { return chosenConditions[k]; });
+  };
+  m.selectedThreat = function () { return chosenThreat; };
+  m.selectedLean = function () { const el = $('#ngLean'); return (el && el.value) || ''; };
+
+  // Turn a locked origin's unlock condition into an aspirational goal line.
+  function unlockGoal(def) {
+    const map = { won: 'Win a run to unlock.', wonder: 'Discover a stellar wonder to unlock.', infamy: 'Reach infamy 5 (go pirate) to unlock.' };
+    return map[def.locked] || ('Locked — ' + (D.LEGACY_HINTS[def.locked] || 'keep weaving'));
   }
 
   // ============ pause menu — grouped, prod-ready ============
@@ -299,7 +471,7 @@ SW.uiModals = (function () {
       '<textarea id="importBox" class="importBox" placeholder="paste exported save here…" spellcheck="false"></textarea>' +
       '<div class="choices" style="margin-top:10px;flex-direction:row;gap:8px">' +
       '<button class="primary grow" data-act="confirmImport">load this save</button>' +
-      '<button data-act="closeModal">cancel</button></div>';
+      '<button data-act="closeLeaf">cancel</button></div>';
     SW.ui.showModal('importModal');
     const box = document.getElementById('importBox');
     if (box && box.focus) box.focus();
@@ -358,7 +530,7 @@ SW.uiModals = (function () {
       '<b>Decide.</b> Origins shape your start; one Doctrine per run shapes everything after. Contracts and blockades arrive whether you like it or not.\n\n' +
       '<b>Survive.</b> The Scourge spreads coreward-out. Quarantine, inoculate, then deliver ' + D.TUNE.panaceaToWin + ' PANACEA to the origin.\n\n' +
       '<span class="kbd">Space</span> pause · <span class="kbd">1/2/3</span> speed · <span class="kbd">Esc</span> back, then the pause menu · <span class="kbd">F</span> center · the infobox (bottom-left) explains whatever you hover.</div>' +
-      '<div class="choices"><button class="primary" data-act="closeModal">got it</button></div>';
+      '<div class="choices"><button class="primary" data-act="closeLeaf">got it</button></div>';
     SW.ui.showModal('helpModal');
   }
 
@@ -526,6 +698,8 @@ SW.uiModals = (function () {
   m.showGameOver = showGameOver;
   m.showTitle = showTitle;
   m.showNewRun = showNewRun;
+  m.showDailyBrief = showDailyBrief;
+  m.dailyConfig = dailyConfig;
   m.showMenu = showMenu;
   m.showSettings = showSettings;
   m.showImport = showImport;

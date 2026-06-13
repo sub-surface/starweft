@@ -19,6 +19,10 @@ SW.tech = (function () {
     let cost = t.cost;
     const doc = T.doctrine(state);
     if (doc && D.DOCTRINE_DISCOUNT[doc] === t.branch) cost = Math.round(cost * 0.75);
+    // Doctrine lean (chosen at run start): a gentle -12% to that branch BEFORE a
+    // doctrine is formally chosen, so the pre-commitment pays off early without
+    // replacing the real mid-run choice. Stops once an actual doctrine is taken.
+    else if (!doc && state.doctrineLean && D.DOCTRINE_DISCOUNT[state.doctrineLean] === t.branch) cost = Math.round(cost * 0.88);
     if (id === 'deepdrives' && state.scourgeStance === 'exodus') cost = Math.round(cost * 0.75);
     return cost;
   };

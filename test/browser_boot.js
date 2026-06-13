@@ -737,13 +737,34 @@ step('front-door title shows the menu verbs, new-run setup omits dead selectors'
   if (front.indexOf('data-act="settings"') < 0) throw new Error('front door missing Settings');
   // Identity/origin config must NOT be on the landing — it lives one step in.
   if (front.indexOf('id="ngDiff"') >= 0) throw new Error('setup form leaked onto the front door');
+  if (front.indexOf('data-act="dailyWeave"') < 0) throw new Error('front door missing Daily weave');
   // Step into setup and check the form is there, minus the removed selectors.
   SW.uiModals.showNewRun();
   const setup = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
   if (setup.indexOf('id="ngDiff"') < 0) throw new Error('new-run setup missing difficulty');
+  if (setup.indexOf('id="ngThreat"') < 0) throw new Error('new-run setup missing threat selector');
+  if (setup.indexOf('id="ngLean"') < 0) throw new Error('new-run setup missing doctrine lean');
+  if (setup.indexOf('data-cond=') < 0) throw new Error('new-run setup missing weave conditions');
+  if (setup.indexOf('id="ngForecast"') < 0) throw new Error('new-run setup missing forecast');
   if (setup.indexOf('data-act="begin"') < 0) throw new Error('new-run setup missing begin');
   if (setup.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
   if (setup.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
+});
+
+step('daily weave config is deterministic and well-formed', function () {
+  const a = SW.uiModals.dailyConfig('2026-06-13');
+  const b = SW.uiModals.dailyConfig('2026-06-13');
+  if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error('daily config not deterministic for a date');
+  if (a.seed !== 'daily-2026-06-13') throw new Error('daily seed not date-derived');
+  if (!Array.isArray(a.conditions) || a.conditions.length < 1) throw new Error('daily has no conditions');
+  if (a.daily !== '2026-06-13') throw new Error('daily key not stamped');
+  // A different day should (almost always) differ in seed.
+  const c = SW.uiModals.dailyConfig('2026-06-14');
+  if (c.seed === a.seed) throw new Error('different day produced same seed');
+  // The daily brief renders.
+  SW.uiModals.showDailyBrief();
+  const brief = (elCache['#confirmModal'] && elCache['#confirmModal'].innerHTML) || '';
+  if (brief.indexOf('data-act="beginDaily"') < 0) throw new Error('daily brief missing begin button');
 });
 
 step('settings panel renders toggles and persists prefs', function () {

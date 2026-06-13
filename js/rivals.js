@@ -134,8 +134,10 @@ SW.rivals = (function () {
         rival.ships.push({ from: L.a, to: L.b, depart: state.tick, arrive: state.tick + ticks, c: L.c, qty: buy.qty });
       }
 
-      // expansion creep toward population, respecting pacts
-      if (state.tick - rival.lastExpand > 30 && U.chance(state, 0.5)) {
+      // expansion creep toward population, respecting pacts.
+      // The Long Quiet (rivalAggression > 1) makes rivals push harder/faster.
+      const aggr = D.condFx ? D.condFx(state, 'rivalAggression', 1) : 1;
+      if (state.tick - rival.lastExpand > Math.round(30 / aggr) && U.chance(state, U.clamp(0.5 * aggr, 0, 0.95))) {
         rival.lastExpand = state.tick;
         let bestNb = null, bestScore = 0;
         for (const z of zone) {

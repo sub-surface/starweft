@@ -401,6 +401,7 @@ SW.ships = (function () {
     if (hasTech(state, 'doc_wayfarer')) rate *= 2;
     if (state.originBonusSurvey) rate *= 1.5;
     if (SW.perks && SW.perks.has(state, 'keeneyes')) rate *= 1.25;
+    if (D.condFx) rate *= D.condFx(state, 'surveyMult', 1); // Wanderlust
     sys.surveyProg = (sys.surveyProg || 0) + rate;
     if (sys.surveyProg < D.TUNE.surveyTicks) return;
     sys.surveyed = true;

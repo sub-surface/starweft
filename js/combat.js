@@ -76,7 +76,10 @@ SW.combat = (function () {
   C.tick = function (state) {
     const T = D.TUNE;
     if (state.tick >= state.combat.nextRaidAt) {
-      state.combat.nextRaidAt = state.tick + Math.max(40, T.raidBaseEvery - Math.floor(state.tick / 400) * 6) + U.ri(state, -15, 25);
+      // Pirate Tithe (raidRate > 1) shortens the gap between raids.
+      const rate = D.condFx ? D.condFx(state, 'raidRate', 1) : 1;
+      const gap = (Math.max(40, T.raidBaseEvery - Math.floor(state.tick / 400) * 6) + U.ri(state, -15, 25)) / rate;
+      state.combat.nextRaidAt = state.tick + Math.max(24, Math.round(gap));
       attemptPirateRaid(state);
     }
     if (state.infamy >= 5 && state.tick >= state.combat.nextHunterAt) {
@@ -102,7 +105,8 @@ SW.combat = (function () {
     if (!cands.length) return;
     const victim = U.weightedPick(state, cands, function (sh) { return sh._risk; });
     if (!victim) return;
-    const raidPower = T.raidBasePower + (state.tick / 1000) * T.raidPowerPer1k + U.rf(state, 0, 4);
+    const bite = D.condFx ? D.condFx(state, 'raidBite', 1) : 1; // Pirate Tithe
+    const raidPower = (T.raidBasePower + (state.tick / 1000) * T.raidPowerPer1k + U.rf(state, 0, 4)) * bite;
     const reg = shipRegion(state, victim);
     let defense = C.power(state, victim) + C.routeDefense(state, victim.routeId) + C.patrolPower(state, reg);
     defense += Math.max(0, state.rep.vigil) * 0.5;
@@ -117,7 +121,9 @@ SW.combat = (function () {
       SW.game.emit('sfx', 'shield');
     } else {
       state.stats.raidsSuffered = (state.stats.raidsSuffered || 0) + 1;
-      if (defense < raidPower / 2 && U.chance(state, 0.2)) {
+      // Iron Thread makes a losing fight likelier to cost the hull, not just cargo.
+      const lethal = D.condHas(state, 'noGiftHulls') ? 0.32 : 0.2;
+      if (defense < raidPower / 2 && U.chance(state, lethal)) {
         SW.ships.destroy(state, victim, 'taken by Severed corsairs near ' + sysName);
       } else {
         let lost = 0;

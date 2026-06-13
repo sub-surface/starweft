@@ -319,6 +319,71 @@ SW.data = (function () {
     brutal:   { name: 'Brutal',   desc: 'It is already hungry.',                        startCredits: 500, scourgeStart: 280, spreadEvery: 50, spreadAccel: 0.8,  research: 0.9 },
   };
 
+  // ---- Threat: the Scourge clock, decoupled from economic difficulty ----
+  // 'inherit' (default) just follows the chosen difficulty. The rest override
+  // the scourge timing only, so a relaxed economy can still face a scary clock
+  // (or a brutal economy can have a slow burn). Applied in scourge.init.
+  D.THREAT = {
+    inherit:  { name: 'As difficulty', desc: 'The Scourge follows your difficulty.' },
+    dormant:  { name: 'Dormant',       desc: 'The Scourge never wakes. Pure builder.',          scourgeStart: -1 },
+    slow:     { name: 'Slow burn',     desc: 'Wakes late, creeps. Time to prepare.',            scourgeStart: 560, spreadEvery: 90, spreadAccel: 0.3 },
+    looming:  { name: 'Looming',       desc: 'The standard reckoning.',                          scourgeStart: 420, spreadEvery: 72, spreadAccel: 0.45 },
+    early:    { name: 'Early stir',    desc: 'It wakes soon. Build under pressure.',             scourgeStart: 240, spreadEvery: 60, spreadAccel: 0.55 },
+    relentless:{ name: 'Relentless',   desc: 'Already hungry, and fast.',                        scourgeStart: 180, spreadEvery: 44, spreadAccel: 0.9 },
+  };
+
+  // ---- Weave conditions: optional, stackable run modifiers (roguelite spice) ----
+  // Each is a pure data descriptor; effects are read by the owning subsystem at
+  // the marked hook. `tag` is the short glyph+name shown on cards and run badges.
+  // Keep effects small and legible — one or two levers each.
+  D.CONDITIONS = {
+    pirateTithe:  { name: 'Pirate Tithe',   glyph: '☠', kind: 'harder',
+      desc: 'Raids come oftener and bite harder — but black markets run rich, and the bold get paid.',
+      fx: { raidRate: 1.6, raidBite: 1.25, blackMarket: 1.4 } },
+    boomBust:     { name: 'Boom & Bust',    glyph: '↯', kind: 'wild',
+      desc: 'Prices swing wide and fast. Fortunes are made and unmade on a single run.',
+      fx: { volatility: 2.0 } },
+    longQuiet:    { name: 'The Long Quiet',  glyph: '◐', kind: 'wild',
+      desc: 'The Scourge sleeps deep — but rival networks grow bold and crowd your lanes.',
+      fx: { scourgeStartMult: 1.6, rivalAggression: 1.5 } },
+    scarcity:     { name: 'Scarcity Start',  glyph: '▽', kind: 'harder',
+      desc: 'One key commodity is rare galaxy-wide at the outset. Find it, corner it, profit.',
+      fx: { scarcityStart: true } },
+    fatPurse:     { name: 'Fat Purse',       glyph: '◈', kind: 'kinder',
+      desc: 'You begin with a swollen treasury. Buy your way to a flying start.',
+      fx: { startCreditsBonus: 600 } },
+    ironThread:   { name: 'Iron Thread',     glyph: '⛓', kind: 'harder',
+      desc: 'No safety net. A losing fight is far likelier to cost the whole hull, not just the cargo. Every ship is precious.',
+      fx: { noGiftHulls: true } },
+    goldenAge:    { name: 'Golden Age',      glyph: '✸', kind: 'kinder',
+      desc: 'Populations thrive and pay you back. Research flows faster everywhere.',
+      fx: { research: 1.4, prosperity: 1.25 } },
+    wanderlust:   { name: 'Wanderlust',      glyph: '✧', kind: 'wild',
+      desc: 'Surveys pay double. The dark is full of secrets and the urge to chart them — explorers, this one is for you.',
+      fx: { surveyMult: 2.0 } },
+  };
+  D.CONDITION_ORDER = ['fatPurse', 'goldenAge', 'wanderlust', 'boomBust', 'longQuiet', 'scarcity', 'pirateTithe', 'ironThread'];
+
+  // Multiply together every active condition's fx[key]; default 1 (or `def`).
+  // For boolean fx (e.g. scarcityStart) use D.condHas instead.
+  D.condFx = function (state, key, def) {
+    let v = (def === undefined ? 1 : def);
+    const list = (state && state.conditions) || [];
+    for (let i = 0; i < list.length; i++) {
+      const c = D.CONDITIONS[list[i]];
+      if (c && c.fx && typeof c.fx[key] === 'number') v *= c.fx[key];
+    }
+    return v;
+  };
+  D.condHas = function (state, key) {
+    const list = (state && state.conditions) || [];
+    for (let i = 0; i < list.length; i++) {
+      const c = D.CONDITIONS[list[i]];
+      if (c && c.fx && c.fx[key]) return true;
+    }
+    return false;
+  };
+
   // ---- Tuning ----
   D.TUNE = {
     bubbleR: 58,               // playable bubble radius, ly
