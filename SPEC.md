@@ -362,3 +362,146 @@ pressures before the interface can explain them.
 No frameworks, no bundlers, no npm. No multiplayer. No 3D engine. No second
 language without a profile. No tutorial longer than one sitting. No feature
 that can't explain itself in the infobox.
+
+## 15. The Living Galaxy update (design addendum — future)
+
+Status: **design only, not yet built.** This section specs a coherent content
+update: richer worlds, rarer and bigger events, named encounters, and deeper
+in-system construction — all seeded into normal runs and *amplified* in the
+Daily Weave. It builds directly on the systems that already landed: weave
+conditions (`D.CONDITIONS`) and decoupled threat (`D.THREAT`) in §13.8, the
+sites/anchorage layer (`js/sites.js`), and the seeded deterministic core.
+
+**Design rule for everything here:** every new dynamic must (a) flow through the
+seeded RNG so runs stay replayable, (b) be communicable — the player learns what
+happened and why through the ticker, infobox, a toast, or a dedicated brief, and
+(c) default to off/rare so the baseline game and old saves are untouched.
+
+### 15.1 Anchorage autobuild + supply (the cheapest win)
+
+**Goal:** the autobuild/keep-stocked logic that systems have should extend to
+**anchorage sites** (per-body facilities in `js/sites.js`), so a player can set
+a site to auto-construct and auto-resupply the way directives already keep a
+*system* stocked.
+
+**Feasibility (verified against the code):** sites already share most of the
+machinery — `S.buildSite` enforces the same credits + on-site-materials rules as
+system buildings, `slotCap(body)` is the "anchorage left" capacity, and
+`supplyMission` already routes haulers to deliver materials to a body. What's
+missing is the *policy* layer: a per-site directive equivalent. The work:
+
+- Extend the directive model (`state.directives`) with a `site` target kind:
+  `{ kind:'site', sys, body, fac }` meaning "keep enough materials here to build
+  `fac`, then build it; once built, keep its inputs stocked."
+- Reuse `A.supplyMission`/`pickLogisticsShip` for the haul; reuse the
+  auto-yard/keep-stocked tick that systems use (game.js pipeline) to fire builds
+  when materials are present.
+- UI: a "▣ auto-build here" toggle on the site card in the system panel, mirroring
+  the existing supply button. Communicated via the same toast + ticker line.
+- Tests: smoke drives `A.*` to set a site directive, ticks, and asserts the site
+  builds and restocks; browser_boot checks the toggle renders + dispatches.
+
+This is the lowest-risk item — it's wiring existing verbs to a new target, no
+new sim concepts. Recommended first build when this update starts.
+
+### 15.2 Diverse systems — stellar variety with mechanics
+
+Today system identity is `type` (frontier/pop/gas/derelict/wonder) + region +
+spectral class (`spec`). Add **stellar-class variants that change how the galaxy
+plays**, not just labels:
+
+- **White dwarf — slingshot lanes.** A dense remnant whose gravity grants a
+  one-hop **travel speedup** to ships routing *through* it (a "gravity assist"):
+  reduces effective lane time on its links. Surfaces as a fast-travel hub once
+  charted. Hook: lane-time calc in `ships.js` checks endpoint star class.
+- **Neutron star / magnetar — research wonder + hazard.** Drains the existing
+  Penrose-tap idea (already a vanguard tech) but as a *site*: a magnetar
+  installation yields a steady research/power trickle, at the cost of periodic
+  flares that damage idle ships in-system (ties to the existing `flarezone`
+  region behavior).
+- **White-dwarf/neutron placement** is seeded in `galaxy.js` like the existing
+  black hole / Dyson husk wonders (1–2 per bubble, off the busy lanes, gated
+  behind survey). Daily turns the dial up (see §15.6).
+- **Communication:** classification label on the system card (the procedural
+  detail strip already labels bodies); infobox explains the mechanic; first
+  charting fires a ticker headline ("A white dwarf — the lanes bend fast here").
+
+### 15.3 Bigger, rarer events — the supernova class
+
+Current events are per-system story beats. Add a tier of **galaxy-scale rare
+events** with visible build-up and aftermath, run from `worldevents.js`:
+
+- **Supernova.** A flagged massive star (seeded at generation, rare) enters a
+  multi-stage countdown: a survey/ticker **warning** ("stellar instability at
+  X"), a window to evacuate population and pull ships, then the detonation —
+  destroys the system, scatters a one-time **debris/salvage bloom** in
+  neighbors, and briefly disrupts adjacent lanes. A grief-and-opportunity beat.
+- **Other rare-event slots** (same framework): a **rogue-world passage** that
+  temporarily links two distant lanes; a **gamma burst** that forces a
+  region-wide shipping pause; a **gold rush** when a derelict's cache cracks
+  open. Each is a data descriptor + a staged timer + clear comms.
+- **Telegraphing is mandatory.** Big events always announce before they fire
+  (ticker + a dedicated alert chip in the topbar, reusing the hail-chip
+  pattern), so loss is a *decision the player could have prevented*, never a
+  surprise tax. Aftermath gets its own headline + a codex/chronicle fragment.
+
+### 15.4 Encounters — unlikely allies (AI, aliens)
+
+Today's "cast" are human factions. Add **rare named encounters** that are not
+guaranteed in a run — seeded, gated behind exploration/conditions, surfaced
+through the existing hail/event machinery:
+
+- **The Quiet Intelligence (AI).** A dormant machine mind in a derelict or husk
+  system. Hailing it opens a small arc: it can become a one-off **ally** (a
+  unique tech, a fleet of autonomous haulers, a survey windfall) or a hazard if
+  mishandled. One per run at most, seeded.
+- **Drift-kin (alien contact).** A non-human trade culture met at the bubble's
+  edge. Opens an alternate market with goods you can't make, a reputation track
+  of its own, and lore fragments. Pure upside-with-strings, not a combat faction.
+- **Framework:** these are `events_data.js` arcs with `when` predicates keyed off
+  survey/region/condition state, plus a few new portrait kinds (the procedural
+  portrait system already generates strangers parametrically — extend it with an
+  AI/alien visual register). Encounters bank Chronicle fragments so they're
+  collectible across runs.
+- **Communication:** a distinct hail-chip style (these are *events*, flagged as
+  rare/special), an event modal with the new portrait, and a chronicle entry.
+
+### 15.5 More world modifiers (extend `D.CONDITIONS`)
+
+The conditions table is the home for new run-spice. Candidates that pair with the
+above:
+
+- **Stellar Nursery** — more white dwarfs / exotic stars; the galaxy is younger
+  and stranger (turns §15.2 up at run start).
+- **Cataclysm** — rare events fire more often and hit harder (the §15.3 dial).
+- **First Contact** — guarantees at least one §15.4 encounter this run.
+- **Hermit** — no encounters, no rivals expansion; a pure solo build.
+- Each is a small `fx` descriptor read by the owning subsystem, exactly like the
+  conditions that landed in §13.8 — no new plumbing, just new levers.
+
+### 15.6 Seeding + the Daily Weave amplifier
+
+- **Normal runs:** the new content is seeded at low rates so a baseline run feels
+  enriched-but-familiar — one exotic star, a rare-event *chance*, an encounter
+  *maybe*. All through `U.rand`/`U.pick` so it's replayable.
+- **Daily Weave:** `dailyConfig()` (already deterministic per date) gets a
+  **turn-it-up** profile — it may *force* an exotic star, guarantee a rare event
+  window, or seat a specific encounter, and lean harder on conditions. Because
+  everyone shares the date-seed, everyone faces the same set-piece that day, which
+  is what makes a daily worth comparing scores on.
+- **Communication of a daily's twist:** the daily brief (already built) names the
+  conditions; extend it to also preview the day's headline set-piece in-fiction
+  ("Today: a star is dying in the Verge") without spoiling specifics.
+
+### 15.7 Build order (when this update is greenlit)
+
+1. **15.1 anchorage autobuild/supply** — lowest risk, reuses existing verbs.
+2. **15.2 white-dwarf slingshot** — one new mechanic, high feel-per-effort.
+3. **15.5 modifiers** for the above — cheap, makes them tunable + daily-ready.
+4. **15.3 supernova** — the marquee rare event; sets the telegraph/aftermath
+   pattern the others reuse.
+5. **15.4 encounters** — richest, most content-heavy; lands last.
+6. **15.6 daily amplifier** — woven in as each piece lands, finalized at the end.
+
+Each step lands green on both suites and ships behind the existing default-off
+discipline. None of it bumps `SAVE_VERSION` (all additive state).

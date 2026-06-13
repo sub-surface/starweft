@@ -4,6 +4,28 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-06-13 — Tech tree: polish the atlas, don't redesign it
+
+The 2026-06-12 "atlas wins" decision stands. A complaint that the tree
+"needs reworking" was diagnosed as an *execution* problem, not an approach
+problem: (1) a real bug — clicking a node left the pointer captured, stuck
+in pan mode; (2) generic boxes/tiny fonts/hardcoded colors that didn't match
+the menus. Fix, not rewrite: released pointer capture on every up/leave/cancel
+(+ regression test); reskinned nodes to read the live CSS palette, added a
+status pip, hover edge-lighting, and a light-up at-cursor tooltip showing each
+node's effect + prereqs + unlocks. Explicitly NOT done (ruled bloat by the
+owner): the planet/star visual metaphor. If the tree is reconsidered again,
+it's the canvas-atlas execution to refine — the metaphor question is closed.
+
+## 2026-06-13 — Living Galaxy update specced as SPEC §15, not built
+
+Anchorage autobuild, diverse stellar systems (white-dwarf slingshot etc.),
+supernova-class rare events, AI/alien encounters, more conditions, and a daily
+amplifier were captured as a design addendum (SPEC §15) rather than implemented,
+at the owner's request ("worth speccing as a larger update for the future").
+Build order and per-item feasibility live there. Anchorage autobuild is the
+recommended first build (reuses existing supply/build verbs).
+
 ## 2026-06-12 — One tech tree: the full-viewport atlas
 
 `js/ui_tech.js` (canvas tree + docked detail pane, landed in `bdd16bd`) is
