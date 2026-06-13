@@ -486,12 +486,16 @@ SW.ui = (function () {
   ui.enterSystem = function (sysId) {
     SW.render.enterSystem(sysId);
     $('#btnBackGalaxy').classList.remove('hidden');
+    // Tell the layout we're in system view so the system panel can drop below
+    // the back button instead of colliding with it (CSS: #main.inSystem #sysPanel).
+    var mn = $('#main'); if (mn && mn.classList) mn.classList.add('inSystem');
   };
   ui.exitSystem = function () {
     const s = st();
     if (s && SW.tutorial && SW.tutorial.mapLocked(s)) { toast({ kind: 'info', text: 'The weave begins at home.' }); return; }
     SW.render.exitSystem();
     $('#btnBackGalaxy').classList.add('hidden');
+    var mn = $('#main'); if (mn && mn.classList) mn.classList.remove('inSystem');
   };
 
   function defaultBuy(sys) {
@@ -758,7 +762,7 @@ SW.ui = (function () {
       }
       case 'devTab': SW.uiTech.open(btn.dataset.tab); return;
       case 'sellData': if (ship) { const r = A().sellData(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
-      case 'exComm': SW.uiMarket.setComm(btn.dataset.c); SW.uiMarket.renderExchange(); break;
+      case 'exComm': SW.uiMarket.setComm(btn.dataset.c); SW.uiMarket.renderExchange(true); break;
       case 'marketKeep': {
         const targetSys = parseInt(btn.dataset.sys, 10);
         const targetQty = parseInt(btn.dataset.target, 10) || 60;

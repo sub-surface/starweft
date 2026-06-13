@@ -340,15 +340,35 @@ SW.uiTech = (function () {
   // ---- Milestones pane: where the points come from ----
   function milestonesHtml(s) {
     const done = D.PERK_MILESTONES.filter(function (mi) { return !!(s.milestones && s.milestones[mi.id]); });
-    let html = '<div class="devBody"><div class="sub">Each milestone grants one aptitude point, once. ' +
-      '<span class="num">' + done.length + '/' + D.PERK_MILESTONES.length + '</span> reached.</div><div class="perkGrid">';
-    for (const mi of D.PERK_MILESTONES) {
-      const hit = !!(s.milestones && s.milestones[mi.id]);
-      html += '<div class="perkCard' + (hit ? ' owned' : '') + '"><div class="row">' +
-        '<span class="title grow">' + (hit ? '◆' : '◇') + ' ' + esc(mi.label) + '</span>' +
-        (hit ? '<span class="tag acc">+1 ✦ at ⧗' + s.milestones[mi.id] + '</span>' : '') + '</div></div>';
+    const groups = D.MILESTONE_GROUPS || { other: 'Milestones' };
+    let html = '<div class="devBody msBody">';
+    html += '<div class="msIntro"><div class="sub">Milestones are the spine of your aptitudes — each grants <b>one ✦ point</b>, once, the moment you reach it. They double as a checklist of the whole game.</div>' +
+      '<div class="msTally"><span class="num">' + done.length + '</span> / ' + D.PERK_MILESTONES.length + ' reached · <span class="num">' + (s.perkPoints || 0) + '</span> ✦ unspent</div></div>';
+    html += '<div class="msGroups">';
+    for (const g in groups) {
+      const items = D.PERK_MILESTONES.filter(function (mi) { return (mi.group || 'other') === g; });
+      if (!items.length) continue;
+      html += '<div class="msGroup"><h4 class="msGroupHead">' + esc(groups[g]) + '</h4>';
+      for (const mi of items) {
+        const at = s.milestones && s.milestones[mi.id];
+        const hit = !!at;
+        const pr = !hit && mi.prog ? mi.prog(s) : null;
+        const pct = pr ? Math.max(0, Math.min(100, Math.round(100 * pr.cur / pr.goal))) : 0;
+        html += '<div class="msCard' + (hit ? ' done' : '') + '">' +
+          '<div class="msTop"><span class="msMark">' + (hit ? '◆' : '◇') + '</span>' +
+          '<span class="msLabel grow">' + esc(mi.label) + '</span>' +
+          (hit ? '<span class="msAt">+1 ✦ · ⧗' + at + '</span>'
+               : pr ? '<span class="msCount num">' + Math.min(pr.cur, pr.goal) + '/' + pr.goal + '</span>'
+               : '<span class="msCount sub">—</span>') +
+          '</div>' +
+          (hit ? '' : '<div class="msBar"><div class="msBarFill" style="width:' + pct + '%"></div></div>') +
+          (hit ? '' : '<div class="msHint">' + esc(mi.hint || '') + '</div>') +
+          '</div>';
+      }
+      html += '</div>';
     }
-    return html + '</div></div>';
+    html += '</div></div>';
+    return html;
   }
 
   m.close = function () {

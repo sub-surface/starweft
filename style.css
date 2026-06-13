@@ -106,6 +106,8 @@ input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
   position: absolute; top: 8px; left: 8px; width: 300px; max-height: calc(100% - 196px);
   overflow-y: auto; padding: 12px; z-index: 20;
 }
+/* In system view the back button occupies the top-left; drop the panel below it. */
+#main.inSystem #sysPanel { top: 46px; max-height: calc(100% - 234px); }
 #dock {
   position: absolute; top: 8px; right: 8px; width: 326px; max-height: calc(100% - 16px);
   display: flex; flex-direction: column; z-index: 20;
@@ -162,8 +164,12 @@ input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
   padding: 4px 16px; z-index: 25; font-size: 12px; letter-spacing: 0.06em;
 }
 #btnBackGalaxy {
-  position: absolute; top: 10px; left: 10px; z-index: 26;
+  position: absolute; top: 8px; left: 8px; z-index: 26;
+  background: var(--panel); border: 1px solid var(--line-bright);
+  padding: 5px 11px; font-size: 12px; letter-spacing: 0.04em;
+  border-radius: 2px;
 }
+#btnBackGalaxy:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- content bits ---- */
 h3 { font-size: 13.5px; font-weight: 600; letter-spacing: 0.04em; margin-bottom: 4px; }
@@ -355,6 +361,37 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 }
 .perkCard.owned { border-color: var(--accent); }
 .perkCard.locked { opacity: 0.45; }
+
+/* milestones pane — grouped, fills the surface, live progress bars */
+.msBody { padding: 16px 20px; }
+.msIntro { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.msIntro .sub { max-width: 60ch; }
+.msTally { font-size: 12px; color: var(--ink-dim); white-space: nowrap; padding: 6px 10px; border: 1px solid var(--line-bright); border-radius: 2px; }
+.msGroups {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px 22px; align-items: start;
+}
+.msGroupHead {
+  margin: 0 0 8px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim);
+}
+.msCard {
+  border: 1px solid var(--line); border-radius: 2px;
+  padding: 8px 10px; margin-bottom: 7px;
+  background: rgba(201,209,217,0.015);
+}
+.msCard.done { border-color: var(--accent); background: var(--accent-dim); }
+.msTop { display: flex; align-items: center; gap: 7px; }
+.msMark { color: var(--ink-faint); font-size: 12px; width: 14px; text-align: center; }
+.msCard.done .msMark { color: var(--accent); }
+.msLabel { font-size: 12.5px; color: var(--ink); }
+.msAt { font-size: 10px; color: var(--accent); white-space: nowrap; font-family: var(--mono); }
+.msCount { font-size: 11px; white-space: nowrap; }
+.msCard:not(.done) .msCount.num { color: var(--accent); }
+.msBar { height: 3px; background: var(--line); border-radius: 2px; margin: 7px 0 5px; overflow: hidden; }
+.msBarFill { height: 100%; background: var(--accent); opacity: 0.7; }
+.msHint { font-size: 10px; color: var(--ink-dim); line-height: 1.4; }
 
 .techDocHead { margin-top: 8px; }
 .techDetail {

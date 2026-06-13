@@ -137,18 +137,32 @@ SW.data = (function () {
     living:   { name: 'Living Worlds',    icon: '⌬', cat: 'Stewardship', req: 'planner',  desc: 'Facility production +20%.' },
   };
   // Milestones grant one aptitude point each, once.
+  // Each milestone grants one aptitude point, once. `prog(s)` returns
+  // {cur, goal} for countable ones (drives the progress bars in the panel) or
+  // null for binary story beats. `hint` is the in-fiction nudge / why it matters.
   D.PERK_MILESTONES = [
-    { id: 'm_surveys5',  label: 'Chart 5 systems',           test: function (s) { return (s.stats.surveys || 0) >= 5; } },
-    { id: 'm_surveys15', label: 'Chart 15 systems',          test: function (s) { return (s.stats.surveys || 0) >= 15; } },
-    { id: 'm_deliv25',   label: '25 deliveries',             test: function (s) { return (s.stats.deliveries || 0) >= 25; } },
-    { id: 'm_deliv150',  label: '150 deliveries',            test: function (s) { return (s.stats.deliveries || 0) >= 150; } },
-    { id: 'm_ships6',    label: 'Launch 6 hulls',            test: function (s) { return (s.stats.shipsBuilt || 0) >= 6; } },
-    { id: 'm_tech6',     label: '6 technologies',            test: function (s) { return s.tech.unlocked.length >= 6; } },
-    { id: 'm_site',      label: 'Anchor a facility',         test: function (s) { return (s.stats.sitesBuilt || 0) >= 1; } },
-    { id: 'm_frag4',     label: '4 chronicle fragments',     test: function (s) { return (s.fragments || []).length >= 4; } },
-    { id: 'm_wake',      label: 'Witness the Scourge wake',  test: function (s) { return !!s.story.flags.scourge_awake; } },
-    { id: 'm_disc30',    label: 'Discover 30 systems',       test: function (s) { return (s.stats.discovered || 0) >= 30; } },
+    { id: 'm_surveys5',  label: 'Chart 5 systems',          group: 'explore', hint: 'Send a scout to idle-survey unknown systems.',
+      test: function (s) { return (s.stats.surveys || 0) >= 5; }, prog: function (s) { return { cur: s.stats.surveys || 0, goal: 5 }; } },
+    { id: 'm_surveys15', label: 'Chart 15 systems',         group: 'explore', hint: 'Keep surveying — the dark pays research and lore.',
+      test: function (s) { return (s.stats.surveys || 0) >= 15; }, prog: function (s) { return { cur: s.stats.surveys || 0, goal: 15 }; } },
+    { id: 'm_disc30',    label: 'Discover 30 systems',      group: 'explore', hint: 'Push your reach outward; relays extend command range.',
+      test: function (s) { return (s.stats.discovered || 0) >= 30; }, prog: function (s) { return { cur: s.stats.discovered || 0, goal: 30 }; } },
+    { id: 'm_deliv25',   label: '25 deliveries',            group: 'trade', hint: 'Buy cheap, sell hungry. Routes automate it.',
+      test: function (s) { return (s.stats.deliveries || 0) >= 25; }, prog: function (s) { return { cur: s.stats.deliveries || 0, goal: 25 }; } },
+    { id: 'm_deliv150',  label: '150 deliveries',           group: 'trade', hint: 'Thicken the weave — let routes run the milk circuits.',
+      test: function (s) { return (s.stats.deliveries || 0) >= 150; }, prog: function (s) { return { cur: s.stats.deliveries || 0, goal: 150 }; } },
+    { id: 'm_ships6',    label: 'Launch 6 hulls',           group: 'trade', hint: 'A bigger fleet covers more lanes at once.',
+      test: function (s) { return (s.stats.shipsBuilt || 0) >= 6; }, prog: function (s) { return { cur: s.stats.shipsBuilt || 0, goal: 6 }; } },
+    { id: 'm_tech6',     label: 'Research 6 technologies',  group: 'build', hint: 'Well-fed populations pay you in research.',
+      test: function (s) { return s.tech.unlocked.length >= 6; }, prog: function (s) { return { cur: s.tech.unlocked.length, goal: 6 }; } },
+    { id: 'm_site',      label: 'Anchor a facility',        group: 'build', hint: 'Build a mine, skimmer, or habitat from the orbital view.',
+      test: function (s) { return (s.stats.sitesBuilt || 0) >= 1; }, prog: function (s) { return { cur: s.stats.sitesBuilt || 0, goal: 1 }; } },
+    { id: 'm_frag4',     label: 'Recover 4 chronicle fragments', group: 'lore', hint: 'Surveys, ruins, and strangers carry the Chronicle.',
+      test: function (s) { return (s.fragments || []).length >= 4; }, prog: function (s) { return { cur: (s.fragments || []).length, goal: 4 }; } },
+    { id: 'm_wake',      label: 'Witness the Scourge wake', group: 'lore', hint: 'It wakes coreward-out, in time. Be ready.',
+      test: function (s) { return !!s.story.flags.scourge_awake; }, prog: null },
   ];
+  D.MILESTONE_GROUPS = { explore: 'Explore', trade: 'Trade', build: 'Build', lore: 'Chronicle' };
 
   // ---- Tech tree (DAG with branches; pos = column/row for the tree view) ----
   // branch: core | logistics | frontier | vanguard | scourge | doctrine

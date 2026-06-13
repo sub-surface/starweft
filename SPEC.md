@@ -355,6 +355,15 @@ pressures before the interface can explain them.
     placing things in a place rather than rows in a list. Every facility's
     benefit visible before and after building (visual + economic feedback —
     started with `facilityFxText` and the orrery halos; finish the loop here).
+    **Search → card:** the topbar "search systems" should resolve into this same
+    system card — selecting a result opens the card (a rich preview: type/region/
+    market snapshot/your presence), not just a camera pan. The card is the single
+    canonical "what is this system" surface, reached from search, map-click, or
+    ticker. **UI/UX cleanup that rides along:** audit fixed-position overlays for
+    collisions (the "← THE BUBBLE" button vs the system panel was one — fixed
+    2026-06-13 via `#main.inSystem` insetting the panel; sweep for others:
+    infobox vs dock at small heights, command bar vs bottom bar), and make the
+    panel chrome consistent (bordered buttons, hover states) with the menu pass.
 13. SoA core only if profiling demands.
 
 ## 14. Non-Goals
@@ -505,3 +514,74 @@ above:
 
 Each step lands green on both suites and ships behind the existing default-off
 discipline. None of it bumps `SAVE_VERSION` (all additive state).
+
+## 16. The Living Market (design addendum — future)
+
+Status: **design only, not yet built.** Today's market terminal (the WEFT
+MERCANTILE WIRE, `js/ui_market.js` + `js/market_analytics.js`) is framed almost
+entirely around *commodities* — a tape of prices, per-commodity system rows,
+classifieds. The vision here is to make the market read as a **living economy
+with culture and politics**, not a price list: a place where systems, companies,
+and world-events are first-class, and where flavour and mechanics reinforce each
+other. Same discipline as §15 — seeded, communicated, additive, default-quiet.
+
+### 16.1 Reframe: systems & companies as market actors, not just goods
+
+- **System view of the market.** Alongside the per-commodity tape, a per-*system*
+  lens: pick a system and see its economic character — what it makes, what it
+  starves for, who trades there, your standing, recent price shocks. This is the
+  market half of the §12 system card; the two should converge.
+- **Companies / trade houses.** Promote the existing rivals (`js/rivals.js`) from
+  background trade-lines into **named market actors** with visible holdings,
+  price influence, and reputations. A "houses" tab: who controls which lanes,
+  who's expanding, who you could buy out, partner with, or undercut. The buyout
+  mechanic already exists (`A.buyoutRival`) — surface the standings that make it
+  a decision.
+- **A real index.** A galaxy-wide economic health read (the weave's "GDP"): total
+  throughput, prosperity trend, lane-flow health (`SW.market.weaveHealth` exists).
+  Gives the player a macro signal and a thing the news can comment on.
+
+### 16.2 Procedural advertising & classifieds (deeper)
+
+The Wire already generates classifieds from real state. Extend into **procedural
+advertising** — in-fiction copy that's *generated from the simulation*, so it's
+always true and always flavour:
+
+- Producer ads ("Belt Cooperative: FUEL, freshly cracked, 12% under index — while
+  the tanks last"), recruitment, propaganda from ideological systems, rival
+  house boasts. Each line is a template seeded by a real fact (a surplus, a
+  shortage, a presence shift), so reading the ads is reading the economy.
+- Tone varies by the system's ideology/faction (`sys.ideology`, `D.IDEOLOGIES`)
+  and by active conditions (§13.8) — Boom & Bust ads get frothy, Pirate Tithe ads
+  get shady. Keep it ASCII-safe, monochrome, one accent.
+
+### 16.3 Cultural & political news tied to market events
+
+The ticker (`G.news`) currently carries mostly logistics beats. Add a **news
+layer where culture/politics and the market are causally linked**, both
+directions:
+
+- **World → market:** an ideological election, a festival, a trade pact, a
+  blockade, an embargo (some of these exist as mechanics already) produces a news
+  headline *and* a real market move (demand spike, price floor, a lane closing).
+  The player sees the cause and the effect, and can trade ahead of it.
+- **Market → world:** a sustained shortage breeds unrest; a boom breeds a
+  cultural golden age that lifts prosperity/research; a house cornering a
+  commodity provokes a political backlash. Feedback loops, lightly tuned.
+- **Implementation:** a `D.NEWS_EVENTS` table of {headline template, trigger
+  predicate on world state, market effect, optional follow-on}, fired from
+  `worldevents.js`/`story.js`, deterministic via the seeded RNG. Big ones get the
+  topbar alert-chip; routine ones ride the ticker. Ties naturally to §15.3's rare
+  events and §15.4's encounters (alien contact *is* market news).
+
+### 16.4 Build order (when greenlit)
+
+1. **16.2 procedural ads** — pure presentation over existing state; lowest risk,
+   immediate flavour. (A tiny taste could even ship early — a few seeded ad lines
+   in The Wire — without the rest.)
+2. **16.3 news↔market links** — the causal layer; the highest gameplay payoff.
+3. **16.1 system/company framing** — the structural reframe; converges with the
+   §12 system card and the rivals sim.
+
+As with §15: each step green on both suites, additive state, no `SAVE_VERSION`
+bump, everything communicated in-fiction.

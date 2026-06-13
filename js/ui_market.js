@@ -84,11 +84,26 @@ SW.uiMarket = (function () {
   let exchangeComm = 'FOOD';
   m.setComm = function (c) { exchangeComm = c; };
 
+  // While the pointer is over the exchange (hovering, scrolling, reading), the
+  // per-tick auto-refresh is suppressed so it never stomps the scroll position.
+  // A pending refresh runs the moment the pointer leaves. This is the scroll-jump fix.
+  let _exHover = false, _exDirty = false;
+  function bindExchangeHover(ex) {
+    if (!ex || ex._hoverBound) return;
+    ex._hoverBound = true;
+    ex.addEventListener('pointerenter', function () { _exHover = true; });
+    ex.addEventListener('pointerleave', function () {
+      _exHover = false;
+      if (_exDirty) { _exDirty = false; renderExchangeV2(true); }
+    });
+  }
+  m.exchangeBusy = function () { return _exHover; };
+
   // ============ exchange (market dashboard) ============
   // marketTarget, inboundCargo, marketRole live in js/market_analytics.js (SW.market).
   function toggleExchange() {
     const ex = $('#exchange');
-    if (ex.classList.contains('hidden')) { ex.classList.remove('hidden'); m.renderExchange(); }
+    if (ex.classList.contains('hidden')) { ex.classList.remove('hidden'); bindExchangeHover(ex); m.renderExchange(); }
     else ex.classList.add('hidden');
   }
   function replaceExchangeHtml(ex, html) {
@@ -248,9 +263,13 @@ SW.uiMarket = (function () {
     return worst;
   }
 
-  function renderExchangeV2() {
+  function renderExchangeV2(force) {
     const s = st();
     const ex = $('#exchange');
+    // Defer an auto-refresh while the pointer is over the panel so it never
+    // interrupts scrolling/reading; it re-renders on pointerleave. A forced call
+    // (open, commodity switch, explicit user action) always renders.
+    if (_exHover && !force) { _exDirty = true; return; }
     let html = '<header><h2><i style="color:var(--accent)">▦</i> WEFT MERCANTILE WIRE</h2>' +
       '<span class="sub mastheadEst">all prices final · all futures uncertain</span>' +
       '<div style="flex:1"></div><button data-act="closeExchange">✕</button></header>';
@@ -385,7 +404,7 @@ SW.uiMarket = (function () {
     html += '</div></div>';
     replaceExchangeHtml(ex, html);
     ex.querySelectorAll('[data-exc]').forEach(function (el) {
-      el.addEventListener('click', function () { exchangeComm = el.dataset.exc; renderExchangeV2(); });
+      el.addEventListener('click', function () { exchangeComm = el.dataset.exc; renderExchangeV2(true); });
     });
     ex.querySelectorAll('canvas.spark').forEach(drawSparkV2);
   }

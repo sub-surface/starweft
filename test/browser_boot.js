@@ -599,7 +599,9 @@ step('development surface tabs render aptitudes and milestones', function () {
   if (ovl.indexOf('DEVELOPMENT') < 0) throw new Error('development header missing');
   SW.uiTech.open('milestones');
   ovl = (elCache['#techOverlay'] && elCache['#techOverlay'].innerHTML) || '';
-  if (ovl.indexOf('MILESTONES') < 0 || ovl.indexOf('perkCard') < 0) throw new Error('milestones pane missing');
+  if (ovl.indexOf('MILESTONES') < 0 || ovl.indexOf('msCard') < 0) throw new Error('milestones pane missing');
+  if (ovl.indexOf('msGroupHead') < 0) throw new Error('milestones not grouped');
+  if (ovl.indexOf('msBar') < 0) throw new Error('milestones missing progress bars for in-progress items');
   SW.uiTech.open('research');
   pumpFrames(2);
   ovl = (elCache['#techOverlay'] && elCache['#techOverlay'].innerHTML) || '';
