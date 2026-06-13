@@ -36,6 +36,8 @@ select, input {
   padding: 3px 6px; font-family: var(--font); font-size: 12.5px;
 }
 input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
+input[type=range] { accent-color: var(--accent); padding: 0; }
+input[type=checkbox] { accent-color: var(--accent); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--line-bright); border-radius: 0; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -599,6 +601,13 @@ input:focus-visible {
   padding: 2px 4px; cursor: pointer;
 }
 .backLink:hover { color: var(--accent); background: none; }
+/* "surprise me" — rolls all dials; pushed to the right edge of the header */
+.surpriseBtn {
+  margin-left: auto; padding: 4px 11px; font-size: 11px; letter-spacing: 0.04em;
+  border: 1px solid var(--line-bright); background: rgba(201,209,217,0.02); color: var(--ink-dim);
+  cursor: pointer; transition: border-color .12s, color .12s, background .12s;
+}
+.surpriseBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 
 /* settings toggles + segmented speed */
 .toggleBtn .toggleState { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); font-weight: 400; }
@@ -625,8 +634,85 @@ input:focus-visible {
 .modal h2 i { color: var(--accent); font-style: normal; }
 
 /* ===== rich new-weave menu (showNewRun) ===== */
-.setupModal { max-height: 86vh; overflow-y: auto; }
+/* Wider two-column shell: the body scrolls, the forecast+actions footer is
+   pinned so the payoff line and "begin" stay in view while you tune dials. */
+.setupModal {
+  width: min(940px, 95vw); max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-bottom: 0;
+}
+.setupModal .setupHead { flex: 0 0 auto; }
+.setupCols {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px;
+  padding-right: 4px;  /* room for the scrollbar so content doesn't jam it */
+}
+.setupCol { min-width: 0; }
+.setupCol > h4:first-child { margin-top: 0; }
+
+/* sticky footer — forecast above, actions below, sits flush at modal bottom */
+.setupFoot {
+  flex: 0 0 auto;
+  margin: 0 -28px; padding: 10px 28px 16px;
+  border-top: 1px solid var(--line);
+  background: #0a0c10;
+}
+.setupActions { display: flex; gap: 8px; margin-top: 9px; }
+
 .h4sub { font-weight: 400; color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0; text-transform: none; }
+
+/* aligned label|control grid for the galaxy / inclination / seed dials —
+   one tidy column instead of ragged wrapping rows */
+.dialGrid {
+  display: grid; grid-template-columns: 64px 1fr; align-items: center;
+  gap: 6px 8px; margin: 4px 0 6px;
+}
+.dialLabel { font-size: 11px; color: var(--ink-dim); text-align: right; }
+.dialCtrl { min-width: 0; }
+.dialCtrl select, .dialCtrl input { width: 100%; box-sizing: border-box; }
+/* the hoverable label gets a faint dotted underline to advertise the tooltip */
+.dialHelp { border-bottom: 1px dotted var(--line-bright); cursor: help; }
+.dialHelp:hover { color: var(--ink); border-bottom-color: var(--ink-dim); }
+
+/* collapsible section header (Inclination, Weave conditions) */
+.foldHead {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  user-select: none; margin-top: 12px;
+}
+.foldHead:hover { color: var(--ink); }
+.foldHead:hover .foldCaret { color: var(--accent); }
+.foldCaret { font-size: 10px; color: var(--ink-faint); width: 9px; flex: 0 0 auto; transition: color .12s; }
+.foldCount {
+  font-size: 9.5px; font-weight: 600; color: var(--accent);
+  border: 1px solid var(--accent-dim); border-radius: 8px; padding: 0 6px; line-height: 1.5;
+}
+.foldBody { margin-top: 2px; }
+
+/* prologue switch card — promoted to the top of the setup panel */
+.prologueToggle {
+  flex: 0 0 auto;
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 0 0 14px; padding: 10px 13px; cursor: pointer;
+  border: 1px solid var(--line-bright); background: rgba(201,209,217,0.015);
+  transition: border-color .12s, background .12s;
+}
+.prologueToggle:hover { border-color: var(--ink-dim); }
+.prologueToggle.on { border-color: var(--accent); background: var(--accent-dim); }
+.prologueToggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ptMark { font-size: 15px; color: var(--ink-faint); line-height: 1.4; flex: 0 0 auto; }
+.prologueToggle.on .ptMark { color: var(--accent); }
+.ptText { display: flex; flex-direction: column; gap: 2px; }
+.ptName { font-size: 12.5px; font-weight: 600; color: var(--ink); letter-spacing: 0.02em; }
+.prologueToggle.on .ptName { color: var(--accent); }
+.ptDone { font-size: 9.5px; font-weight: 400; color: var(--ink-faint); letter-spacing: 0.06em; margin-left: 4px; }
+.ptDesc { font-size: 10.5px; color: var(--ink-dim); line-height: 1.45; }
+
+/* founding-myth flavor line under its select */
+.mythLine {
+  min-height: 1em; margin: 2px 0 2px 78px; padding: 0;
+  font-size: 11px; font-style: italic; color: var(--accent); opacity: 0.85; line-height: 1.4;
+}
+.mythLine:empty { min-height: 0; margin: 0; }
 .originCard.rich { flex-direction: column; align-items: stretch; gap: 3px; }
 .originCard.rich .oKit { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); margin-top: 3px; }
 .originCard.rich .oHooks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -636,7 +722,7 @@ input:focus-visible {
 .originCard.rich.lock .sub { color: var(--accent); opacity: 0.8; }
 
 .forecast {
-  margin: 8px 0 2px; padding: 7px 10px;
+  margin: 0; padding: 7px 10px;
   border-left: 2px solid var(--accent); background: var(--accent-dim);
   font-size: 11.5px; color: var(--ink); font-style: italic;
 }
@@ -666,6 +752,10 @@ input:focus-visible {
 .dailySpec { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line-bright); }
 .dailySpec b { color: var(--ink-dim); font-weight: 500; margin-right: 6px; }
 
+/* below the two-column comfort width, stack the columns back into one flow */
+@media (max-width: 780px) {
+  .setupCols { grid-template-columns: 1fr; gap: 0; }
+}
 @media (max-width: 520px) {
   .condGrid { grid-template-columns: 1fr; }
 }

@@ -1776,6 +1776,76 @@ section('Weave conditions & decoupled threat');
   assert(run('cond-det') === run('cond-det'), 'same seed + conditions => identical run');
 }
 
+section('New Weave — authored worlds (age / topology / heart / myth / named adversary)');
+{
+  // resolveWorld validates and defaults every new dial; old callers untouched.
+  const w = D.resolveWorld({});
+  assert(w.age === 'settled' && w.topology === 'natural' && w.heart === 'home', 'resolveWorld defaults the new dials');
+  assert(D.resolveWorld({ age: 'nope', topology: 'nope', heart: 'nope' }).age === 'settled', 'bad dial values fall back to safe defaults');
+
+  // Galaxy Age controls how much of home is charted at the start.
+  const young = G.newGame({ seed: 'age-y', difficulty: 'standard', world: { age: 'young' } });
+  const ancient = G.newGame({ seed: 'age-y', difficulty: 'standard', world: { age: 'ancient' } });
+  const disc = function (s) { return s.systems.filter(function (x) { return x.discovered; }).length; };
+  assert(disc(young) > disc(ancient), 'a young galaxy starts better charted than an ancient one');
+  assert(disc(ancient) >= 1, 'even an ancient galaxy reveals home');
+
+  // The Heart relocates the start system; ships spawn there.
+  const rim = G.newGame({ seed: 'heart-r', difficulty: 'standard', world: { heart: 'rim' } });
+  const homeRun = G.newGame({ seed: 'heart-r', difficulty: 'standard', world: { heart: 'home' } });
+  assert(rim.ships[0].at !== homeRun.ships[0].at || rim.ships[0].at !== rim.homeId, 'rim heart can move the start off Sol');
+  const drift = G.newGame({ seed: 'heart-d', difficulty: 'standard', world: { heart: 'drift' } });
+  assert(drift.story.flags.heart_drift === true, 'drift heart sets its story flag');
+  assert(drift.credits > homeRun.credits, 'drift compensates with extra starting credits');
+
+  // Topology resolves and runs without breaking generation (lanes still connect).
+  ['filaments', 'cluster', 'halo', 'natural'].forEach(function (t) {
+    const s = G.newGame({ seed: 'topo-' + t, difficulty: 'standard', world: { topology: t } });
+    assert(s.systems.length > 50, 'topology ' + t + ' still generates a full galaxy');
+    assert(s.systems[s.homeId].links.length > 0, 'topology ' + t + ' keeps home connected');
+  });
+
+  // Founding Myth: stored on identity, drops a line on the opening ticker.
+  const myth = G.newGame({ seed: 'myth-1', difficulty: 'standard', identity: { myth: 'exile' } });
+  assert(myth.identity.myth === 'exile', 'myth stored on identity');
+  assert(myth.news.some(function (n) { return n.text === D.MYTHS.exile.line; }), 'founding myth opens the ticker');
+  const noMyth = G.newGame({ seed: 'myth-0', difficulty: 'standard', identity: { myth: 'none' } });
+  assert(noMyth.news.every(function (n) { return n.text !== D.MYTHS.exile.line; }), 'no-myth adds no myth line');
+
+  // Named Adversary: a waking Scourge is named with a temperament; dormant isn't.
+  const named = G.newGame({ seed: 'adv-1', difficulty: 'standard', threat: 'relentless' });
+  assert(typeof named.scourge.name === 'string' && named.scourge.name.length > 0, 'a waking Scourge gets a name');
+  assert(D.SCOURGE_TEMPERAMENTS[named.scourge.temperament], 'and a valid temperament');
+  assert(named.scourge.temperament === 'ravenous', 'relentless threat reads as ravenous');
+  const noName = G.newGame({ seed: 'adv-0', difficulty: 'standard', threat: 'dormant' });
+  assert(noName.scourge.name === null, 'a Scourge that never wakes stays nameless');
+
+  // New conditions: fx read through the helpers.
+  const tide = G.newGame({ seed: 'tide', conditions: ['pilgrimTide'] });
+  assert(D.condFx(tide, 'passengerMult', 1) === 1.8, 'Pilgrim Tide passenger multiplier reads through condFx');
+  const qy = G.newGame({ seed: 'qy', conditions: ['quietYear'] });
+  assert(D.condMax(qy, 'quietUntil') === 50, 'Quiet Year quietUntil reads through condMax');
+  assert(D.condMax(G.newGame({ seed: 'qy0' }), 'quietUntil') === 0, 'condMax defaults to 0 when absent');
+  const mem = G.newGame({ seed: 'mem', conditions: ['longMemory'] });
+  assert(D.condHas(mem, 'rivalGrudge') === true, 'Long Memory sets the rival-grudge flag');
+  assert(D.condFx(mem, 'rivalAggression', 1) === 1.25, 'Long Memory also raises rival aggression');
+
+  // Determinism survives the new dials end-to-end.
+  function authoredRun(seed) {
+    const s = G.newGame({ seed: seed, difficulty: 'standard', threat: 'looming',
+      world: { age: 'ancient', topology: 'cluster', heart: 'rim' },
+      conditions: ['pilgrimTide', 'longMemory'], identity: { myth: 'keeper' } });
+    for (let i = 0; i < 80; i++) G.tick(s);
+    return JSON.stringify(s.systems.map(function (x) { return [x.id, Math.round(x.prosperity), x.scourge]; })) + '|' + s.scourge.name;
+  }
+  assert(authoredRun('authored-det') === authoredRun('authored-det'), 'same seed + authored world => identical run (incl. adversary name)');
+
+  // Quiet Year actually stills ambient world events early on.
+  const quietWorld = G.newGame({ seed: 'qy-run', difficulty: 'standard', threat: 'dormant', conditions: ['quietYear'] });
+  for (let i = 0; i < 40; i++) G.tick(quietWorld);
+  assert((quietWorld.contracts || []).length === 0, 'Quiet Year spawns no world contracts in the opening 40 ticks');
+}
+
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');
 if (failures > 0) process.exit(1);
 console.log('SMOKE TEST v2 PASSED ✓');

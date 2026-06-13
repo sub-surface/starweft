@@ -111,13 +111,17 @@ SW.economy = (function () {
       const ch = state.charters[i];
       if (state.tick >= ch.expires || state.systems[ch.from].scourge === 2 || state.systems[ch.to].scourge === 2) state.charters.splice(i, 1);
     }
-    if (state.tick === 0 || state.tick % T.charterEvery !== 0 || state.charters.length >= T.charterMax) return;
+    // Pilgrim Tide: people are leaving. More charters open at once and each
+    // carries more souls (passengerMult). Default 1 leaves the board unchanged.
+    const paxMult = D.condFx ? D.condFx(state, 'passengerMult', 1) : 1;
+    const cap = paxMult > 1 ? Math.round(T.charterMax * paxMult) : T.charterMax;
+    if (state.tick === 0 || state.tick % T.charterEvery !== 0 || state.charters.length >= cap) return;
     const pops = state.systems.filter(function (s) { return s.discovered && s.type === 'pop' && s.scourge === 0 && s.pop > 1; });
     if (pops.length < 2) return;
     const from = U.pick(state, pops);
     const dests = pops.filter(function (s) { return s.id !== from.id; });
     const to = U.pick(state, dests);
-    const n = Math.round((0.05 + U.rnd(state) * 0.25) * 100) / 100;
+    const n = Math.round((0.05 + U.rnd(state) * 0.25) * paxMult * 100) / 100;
     const fare = Math.round(n * (T.charterBase + T.charterPerLy * U.dist(from, to)));
     state.charters.push({
       id: 'ch' + (state.nextCharterId = (state.nextCharterId || 0) + 1),

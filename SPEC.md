@@ -607,3 +607,118 @@ needs — pad/texture/percussion stems, chord voicings, a tempo/feel reference �
 and translate those into Web Audio synthesis recipes (oscillator stacks, filter
 envelopes, granular textures) so the in-browser soundtrack carries that signature
 without shipping any audio files. See the memory `boot-and-audio-refs`.
+
+## 18. New Weave — authored worlds (run-setup expansion)
+
+Status: **shipped (Tier 1+2).** The run-setup panel (`showNewRun`) graduated
+from "config dials" to "authoring a world." Everything here is additive and
+JSON-serializable — no `SAVE_VERSION` bump; old saves load (read every field
+defensively). The goal is texture: parameters that change a run's *story*, not
+just its difficulty multiplier.
+
+All new dials live in `D.WORLD` (galaxy shape/history) or as their own tables;
+all read through `D.resolveWorld(opts)` into `state.world` so generation and the
+forecast both see one resolved object. Identity gains a **Founding Myth**; the
+Scourge gains a **name and temperament**; three new conditions extend
+`D.CONDITIONS`.
+
+### 18.1 Galaxy Age — *The Sundering* (`D.WORLD.age`)
+
+How long ago the worlds drifted apart. Tints generation, not difficulty.
+
+- `young`   — "A Recent Sundering": some old lanes survive. More pre-discovered
+  systems around home (extra revealed ring), slightly denser lane graph.
+- `settled` — the standard galaxy (default).
+- `ancient` — "The Long Forgetting": fully dark. Fewer systems start discovered,
+  but ruin-rich Halo regions are more common and pay more research.
+
+Hook: `galaxy.generate` reads `W.age` after the home reveal (step 8) to widen or
+narrow the discovered ring; `assignTypes`/region weighting nudged by age.
+
+### 18.2 Topology — *Weave Pattern* (`D.WORLD.topology`)
+
+A hint that biases the procedural fill's clustering, not a hard graph rewrite
+(the Gabriel graph stays the lane source of truth).
+
+- `natural`   — the existing uniform-in-volume + coreward bias (default).
+- `filaments` — long sparse strings: raise `minSysDist`, lower count slightly →
+  every lane precious.
+- `cluster`   — tight knots with lonely bridges: fill seeds extra associations.
+- `halo`      — rich discovered core ringed by a dark frontier.
+
+Hook: `fillProcedural` reads `W.topology` to adjust jitter/clumping; pure
+generation-time, no sim cost.
+
+### 18.3 The Heart — *where you wake* (`D.HEART`, resolved to a start system)
+
+Decouples the start system from origin. Applied in `game.newGame` after galaxy
+gen, before ship creation (so origin's `startReach` still composes/overrides).
+
+- `core`  — safe, rich, slow. Start nearer Sol/coreward-rich; Scourge reaches
+  you last. (Default → home/Sol.)
+- `rim`   — poor, exposed, but bought time: start at a high-`hops` frontier
+  world; +starting reveal of neighbors.
+- `drift` — no settled home: start at an unsettled system, claim it. Slightly
+  more starting credits to compensate; story flag `heart_drift` for flavor.
+
+### 18.4 Founding Myth — *The First Thread* (`state.identity.myth`)
+
+One-line seed of lore chosen in Identity. Pure flavor: tints opening news and
+event text; never a mechanical lever. Stored on `identity.myth` (id into
+`D.MYTHS`); `D.MYTHS[id].line` is the screenshot-able sentence. A "—" option
+means none. Surfaced via `G.news` on tick 0 and available to events as
+`state.identity.myth`.
+
+### 18.5 Named Adversary — *the Scourge has a name* (`state.scourge.name/temperament`)
+
+The threat stops being a faceless clock. At `scourge.init`, seed a name (from
+`D.SCOURGE_NAMES`) and a **temperament** (`D.SCOURGE_TEMPERAMENTS`) that lightly
+modulates spread feel — patient (slower, steadier), ravenous (faster, greedier
+toward rich worlds), capricious (more variance). Temperament defaults so that
+'inherit' threat = the neutral profile (no balance change unless chosen). The
+name threads into the awakening news line and existing scourge events.
+
+Hook: `scourge.init` sets `sc.name`, `sc.temperament`; `scourge.tick` reads the
+temperament multipliers where it already computes interval/target. Determinism
+preserved (named via `U.pick(state, ...)`).
+
+### 18.6 Three new conditions (extend `D.CONDITIONS` + `D.CONDITION_ORDER`)
+
+- **The Long Memory** (`longMemory`, harder) — rivals hold grudges: undercut one
+  and it presses your lanes. `fx.rivalGrudge: true`, read in `rivals.tick`.
+- **Pilgrim Tide** (`pilgrimTide`, wild) — passenger demand surges; people are
+  *leaving*. `fx.passengerMult: 1.8`, read where passenger offers generate.
+- **The Quiet Year** (`quietYear`, kinder) — the first ~50 cycles are utterly
+  still: no story/world events. `fx.quietUntil: 50`, gated in story/worldevents
+  tick. A meditative opening.
+
+### 18.7 Menu, forecast & QOL
+
+`showNewRun` gains an **age / pattern / the heart** dial in the Galaxy column and
+a **Founding Myth** select in Identity. `forecastLine` extends to mention age and
+heart in plain language. `dailyConfig` derives the new dials from the date hash
+so the Daily Weave stays deterministic and shared. The begin handler threads the
+new fields into `newGame`.
+
+**Layout & QOL polish** (the panel earns the "love and care" bar):
+
+- **Aligned dial grid.** The right column is one `label | control` CSS grid
+  (`.dialGrid`) — every select flush and full-width, labels right-aligned —
+  instead of ragged wrapping `.row`s. `world` split into the clearer
+  `systems` / `markets` rows.
+- **Collapsible sections.** *Inclination* and *Weave conditions* are folded by
+  default (`foldHead()` + `[data-fold]` wiring), so the whole panel fits without
+  scrolling. Weave conditions shows a live **count badge** of how many stack.
+- **Per-dial hover tooltips.** Native `title=` on each Galaxy label (the in-game
+  infobox HUD doesn't exist behind a pre-game modal). Tip text is generated from
+  the data tables (`tableTip()`) so it can never drift out of sync.
+- **"✦ surprise me"** rolls every dial + a fresh myth/name/motto/sigil, then the
+  player tweaks to taste (`m.surpriseWeave`). **Name reroll** (`↻` by the network
+  name) draws from a small curated adjective/noun pool (`m.rerollName`). Both are
+  UI-only (`Math.random`, never the sim RNG).
+- **Themed form controls.** `accent-color` on range/checkbox so the hue slider
+  and toggles match the monochrome + one-accent palette.
+
+Tests: smoke (new tables resolve, determinism incl. adversary name, condition fx,
+quiet-year actually stills events) + browser_boot (all selectors render, folds &
+QOL controls present, randomizers run, begin still works).

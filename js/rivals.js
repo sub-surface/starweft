@@ -136,7 +136,14 @@ SW.rivals = (function () {
 
       // expansion creep toward population, respecting pacts.
       // The Long Quiet (rivalAggression > 1) makes rivals push harder/faster.
-      const aggr = D.condFx ? D.condFx(state, 'rivalAggression', 1) : 1;
+      let aggr = D.condFx ? D.condFx(state, 'rivalAggression', 1) : 1;
+      // The Long Memory: a met rival whose turf the player has crowded into
+      // holds a grudge and presses back harder, scaled by the encroachment.
+      if (D.condHas && D.condHas(state, 'rivalGrudge') && rival.met) {
+        let crowd = 0;
+        for (const z of zone) crowd += Math.min(1, z.presence.player || 0);
+        if (crowd > 0) aggr *= 1 + Math.min(0.6, crowd * 0.15);
+      }
       if (state.tick - rival.lastExpand > Math.round(30 / aggr) && U.chance(state, U.clamp(0.5 * aggr, 0, 0.95))) {
         rival.lastExpand = state.tick;
         let bestNb = null, bestScore = 0;

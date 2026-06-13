@@ -72,9 +72,24 @@ SW.galaxy = (function () {
     makeBadlands(state, W);
 
     // ---- 8. reveal & survey home neighborhood ----
+    // Galaxy Age sets how many lanes deep the start is charted: a Young galaxy
+    // still has old lanes lit (reveal 2), Ancient wakes nearly blind (reveal 0,
+    // home only). Default Settled = the immediate neighbors (reveal 1).
+    const age = (D.WORLD.age && D.WORLD.age[W.age]) || D.WORLD.age.settled;
     const home = state.systems[0];
     home.discovered = true; home.surveyed = true;
-    for (const nb of home.links) { state.systems[nb].discovered = true; state.systems[nb].surveyed = true; }
+    const depth = age.reveal !== undefined ? age.reveal : 1;
+    let frontier = [0];
+    for (let d = 0; d < depth; d++) {
+      const next = [];
+      for (const id of frontier) {
+        for (const nb of state.systems[id].links) {
+          const s = state.systems[nb];
+          if (!s.discovered) { s.discovered = true; s.surveyed = true; next.push(nb); }
+        }
+      }
+      frontier = next;
+    }
     return state;
   };
 
@@ -165,6 +180,12 @@ SW.galaxy = (function () {
   // ---------- placement ----------
   function fillProcedural(state, stars, W) {
     let tries = 0, id = 1000;
+    // Weave Pattern bends placement without touching the Gabriel lane graph:
+    // `spread` scales the minimum separation (filaments spread out, clusters
+    // pack in); `clump` (>0) biases acceptance toward points near an existing
+    // star, so knots form. Defaults (1.0 / 0) reproduce the natural drift.
+    const topo = (D.WORLD.topology && D.WORLD.topology[W.topology]) || D.WORLD.topology.natural;
+    const minDist = W.minSysDist * (topo.spread || 1);
     while (stars.length < W.sysCount && tries < 120000) {
       tries++;
       // uniform in sphere, then coreward (+x) acceptance bias
@@ -176,9 +197,18 @@ SW.galaxy = (function () {
       const z = r * Math.cos(th) * 0.62;      // thin-disk squash
       const coreBias = 0.25 + 0.75 * (x / W.bubbleR + 1) / 2; // metallicity gradient: coreward is richer
       if (U.rnd(state) > coreBias) continue;
-      let ok = true;
       const p = { x: x, y: y, z: z };
-      for (const s of stars) { if (U.dist(s, p) < W.minSysDist) { ok = false; break; } }
+      // clumping: find distance to nearest existing star; reject scattered
+      // points (clump>0) or near points (clump<0) probabilistically.
+      if (topo.clump) {
+        let near = 1e9;
+        for (const s of stars) { const d = U.dist(s, p); if (d < near) near = d; }
+        const norm = Math.min(1, near / (W.bubbleR * 0.18)); // 0 = on top of a star, 1 = far
+        const want = topo.clump > 0 ? (1 - norm) : norm;     // >0 prefers near, <0 prefers far
+        if (U.rnd(state) > (1 - Math.abs(topo.clump)) + Math.abs(topo.clump) * want) continue;
+      }
+      let ok = true;
+      for (const s of stars) { if (U.dist(s, p) < minDist) { ok = false; break; } }
       if (!ok) continue;
       const spec = rollSpectral(state);
       const companions = [];
@@ -202,12 +232,17 @@ SW.galaxy = (function () {
 
   function makeRegions(state, T) {
     state.regions = [];
+    // Galaxy Age tilts how much of the bubble is ruin-rich Halo Stream:
+    // an Ancient galaxy buried more old wealth (wider oldstream), a Young one
+    // less (the old worlds still live). Other regions are unaffected.
+    const age = (D.WORLD.age && D.WORLD.age[T.age]) || D.WORLD.age.settled;
+    const ruin = age.ruinMult !== undefined ? age.ruinMult : 1;
     const defs = [
       { type: 'verge', x: T.bubbleR * 0.8, y: 0, z: 0, r: T.bubbleR * 0.45 },                       // coreward
       { type: 'reach', x: -T.bubbleR * 0.35, y: T.bubbleR * 0.55, z: 0, r: T.bubbleR * 0.34 },
       { type: 'nebula', x: U.rf(state, -0.3, 0.3) * T.bubbleR, y: -T.bubbleR * 0.55, z: U.rf(state, -0.2, 0.2) * T.bubbleR, r: T.bubbleR * 0.30 },
       { type: 'flarezone', x: -T.bubbleR * 0.55, y: -T.bubbleR * 0.15, z: U.rf(state, -0.25, 0.25) * T.bubbleR, r: T.bubbleR * 0.26 },
-      { type: 'oldstream', x: U.rf(state, -0.2, 0.4) * T.bubbleR, y: U.rf(state, 0.2, 0.5) * T.bubbleR, z: T.bubbleR * 0.30, r: T.bubbleR * 0.28 },
+      { type: 'oldstream', x: U.rf(state, -0.2, 0.4) * T.bubbleR, y: U.rf(state, 0.2, 0.5) * T.bubbleR, z: T.bubbleR * 0.30, r: T.bubbleR * 0.28 * ruin },
       { type: 'quiet', x: U.rf(state, -0.5, 0.0) * T.bubbleR, y: U.rf(state, -0.2, 0.2) * T.bubbleR, z: -T.bubbleR * 0.30, r: T.bubbleR * 0.22 },
     ];
     defs.forEach(function (d, i) {

@@ -253,7 +253,7 @@ SW.data = (function () {
     'cats_aboard', 'crew_hired', 'doctrine_chosen', 'doctrine_prompted',
     'archivist_sys', 'archivist_quest', 'archivist_friend', 'archivist_dead',
     'met_helix', 'met_mariner', 'panic_done', 'stance_chosen',
-    'first_thread',
+    'first_thread', 'heart_drift',
   ];
   D.FLAG_PREFIXES = ['met_', 'rival_collapsed_', 'absorbed_', 'mourned_'];
 
@@ -310,7 +310,50 @@ SW.data = (function () {
       standard: { name: 'Standard',                      mult: 1.0 },
       gilded:   { name: 'Gilded — fat and slow',         mult: 1.6 },
     },
+    // Galaxy Age — the Sundering. Tints generation, not difficulty. `reveal`
+    // is how many lanes deep the home neighborhood starts charted; `ruinMult`
+    // nudges Halo/ruin-rich region weighting and their research payoff.
+    age: {
+      young:   { name: 'Young — a recent Sundering', reveal: 2, ruinMult: 0.85, desc: 'Old lanes linger; home is better charted.' },
+      settled: { name: 'Settled',                    reveal: 1, ruinMult: 1.0,  desc: 'The standard galaxy.' },
+      ancient: { name: 'Ancient — the Long Forgetting', reveal: 0, ruinMult: 1.35, desc: 'Fully dark, but old wealth lies buried.' },
+    },
+    // Weave Pattern — biases the procedural fill's clumping. The Gabriel graph
+    // stays the lane source of truth; this only shapes where stars land.
+    topology: {
+      natural:   { name: 'Natural drift',  clump: 0,    spread: 1.0, desc: 'Uniform, coreward-dense. The default.' },
+      filaments: { name: 'Filaments',      clump: -0.3, spread: 1.25, desc: 'Long sparse strings — every lane precious.' },
+      cluster:   { name: 'Clustered',      clump: 0.5,  spread: 0.9, desc: 'Tight knots, lonely bridges between.' },
+      halo:      { name: 'Bright Halo',    clump: 0.25, spread: 1.1, desc: 'A rich core ringed by a dark frontier.' },
+    },
     badlands: { name: 'Deep Wilds', count: 180, R: 170 },
+  };
+  // The Heart — where you wake. Decoupled from origin (origin.startReach still
+  // composes/overrides). Resolved to a concrete start system in game.newGame.
+  D.HEART = {
+    home:  { name: 'The Old Orchard', desc: 'Wake at Sol. Safe, central, slow — the Scourge reaches you last.' },
+    rim:   { name: 'The Far Rim',     desc: 'A poor, exposed frontier world — but the dark comes for you late.', credits: 0 },
+    drift: { name: 'The Drift',       desc: 'No home at all. Wake at an unsettled star and claim it yourself.', credits: 250 },
+  };
+  // Founding Myth — one line of lore. Pure flavor, never a mechanical lever.
+  D.MYTHS = {
+    none:     { name: '— no myth —',          line: '' },
+    courier:  { name: 'The Last Courier',     line: 'You were a courier who never lost a parcel. The worlds remember.' },
+    keeper:   { name: 'The Loom-Keeper',      line: 'You tended the old Loom until the lanes went quiet. Now you re-spin them.' },
+    exile:    { name: 'The Exile',            line: 'Cast out from a world that no longer answers. You owe the dark nothing.' },
+    heir:     { name: 'The Ferry-Heir',       line: 'Your family ran the ferries before the Sundering. The debt is yours now.' },
+    nobody:   { name: 'Nobody In Particular', line: 'No legend, no lineage. Just a hull, a stick, and a long way to go.' },
+  };
+  D.MYTH_ORDER = ['none', 'courier', 'keeper', 'exile', 'heir', 'nobody'];
+  // The Scourge, named. Seeded at scourge.init; threads into news and events.
+  D.SCOURGE_NAMES = ['the Hush', 'the Unweaving', 'the Grey Tide', 'the Last Silence', 'the Sundering Bloom', 'the Quiet Rot', 'the Pale Verge'];
+  // Temperament lightly modulates spread *feel*. The neutral profile leaves all
+  // multipliers at 1 so 'inherit' threat = no balance change unless chosen.
+  D.SCOURGE_TEMPERAMENTS = {
+    neutral:    { name: 'methodical',  intervalMult: 1.0,  richBias: 1.0, variance: 0.0 },
+    patient:    { name: 'patient',     intervalMult: 1.15, richBias: 0.9, variance: 0.0 },
+    ravenous:   { name: 'ravenous',    intervalMult: 0.85, richBias: 1.4, variance: 0.0 },
+    capricious: { name: 'capricious',  intervalMult: 1.0,  richBias: 1.0, variance: 0.4 },
   };
   D.resolveWorld = function (opts) {
     opts = opts || {};
@@ -319,6 +362,9 @@ SW.data = (function () {
     const bad = D.WORLD.badlands;
     return {
       density: opts.density || 'standard', wealth: opts.wealth || 'standard',
+      age: D.WORLD.age[opts.age] ? opts.age : 'settled',
+      topology: D.WORLD.topology[opts.topology] ? opts.topology : 'natural',
+      heart: D.HEART[opts.heart] ? opts.heart : 'home',
       badlandsPreset: 'deep',
       sysCount: den.sysCount, bubbleR: den.bubbleR, minSysDist: den.minSysDist,
       wealthMult: wea.mult,
@@ -375,8 +421,17 @@ SW.data = (function () {
     wanderlust:   { name: 'Wanderlust',      glyph: '✧', kind: 'wild',
       desc: 'Surveys pay double. The dark is full of secrets and the urge to chart them — explorers, this one is for you.',
       fx: { surveyMult: 2.0 } },
+    longMemory:   { name: 'The Long Memory',  glyph: '⟲', kind: 'harder',
+      desc: 'Rivals hold a grudge. Undercut one and it presses your lanes harder, longer — competition gets personal.',
+      fx: { rivalGrudge: true, rivalAggression: 1.25 } },
+    pilgrimTide:  { name: 'Pilgrim Tide',     glyph: '⚑', kind: 'wild',
+      desc: 'People are leaving. Passenger demand surges across the weave — ferry the fleeing and be paid for it.',
+      fx: { passengerMult: 1.8 } },
+    quietYear:    { name: 'The Quiet Year',   glyph: '❍', kind: 'kinder',
+      desc: 'The first stretch is utterly still — no events, no alarms. A meditative opening to find your feet.',
+      fx: { quietUntil: 50 } },
   };
-  D.CONDITION_ORDER = ['fatPurse', 'goldenAge', 'wanderlust', 'boomBust', 'longQuiet', 'scarcity', 'pirateTithe', 'ironThread'];
+  D.CONDITION_ORDER = ['fatPurse', 'goldenAge', 'wanderlust', 'quietYear', 'boomBust', 'longQuiet', 'pilgrimTide', 'scarcity', 'pirateTithe', 'longMemory', 'ironThread'];
 
   // Multiply together every active condition's fx[key]; default 1 (or `def`).
   // For boolean fx (e.g. scarcityStart) use D.condHas instead.
@@ -396,6 +451,17 @@ SW.data = (function () {
       if (c && c.fx && c.fx[key]) return true;
     }
     return false;
+  };
+  // Largest fx[key] across active conditions (for thresholds like quietUntil,
+  // where stacking should take the longest, not multiply). Default 0.
+  D.condMax = function (state, key) {
+    let v = 0;
+    const list = (state && state.conditions) || [];
+    for (let i = 0; i < list.length; i++) {
+      const c = D.CONDITIONS[list[i]];
+      if (c && c.fx && typeof c.fx[key] === 'number') v = Math.max(v, c.fx[key]);
+    }
+    return v;
   };
 
   // ---- Tuning ----
