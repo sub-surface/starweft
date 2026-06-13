@@ -501,6 +501,10 @@ SW.data = (function () {
     prologueStipendEvery: 60,       // ticks between advances (bankruptcy is never a wall)
     prologueOreBeat: 6,             // ore aboard to clear the first-cargo beat
     prologueProfitBeat: 70,         // creditsEarned to clear the first-sale beat
+    // Stranded guard (post-tutorial): if the player has zero ships and can't
+    // afford the cheapest hull at home, a salvage advance tops them up so a lost
+    // last ship is never a dead end. Throttled so it can't be farmed.
+    strandedAidEvery: 80,           // ticks between salvage advances
   };
 
   D.RIVAL_DEFS = [

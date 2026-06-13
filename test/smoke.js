@@ -1517,11 +1517,63 @@ section('Sol prologue (tutorial)');
   }
   assert(rescued, 'Guild stipend rescues a broke prologue run (credits=' + br.credits + ')');
 
+  // Lost-ship safety net: destroying the only ship in the prologue must not strand.
+  const ls = G.newGame({ seed: 'smoke-tut-lostship', difficulty: 'standard', tutorial: true });
+  ls.story.pending = null;
+  G.tick(ls);
+  while (ls.ships.length) SW.ships.destroy(ls, ls.ships[0], 'test');
+  ls.credits = 0;
+  let shipAided = false;
+  for (let i = 0; i < D.TUNE.prologueStipendEvery + 3 && !shipAided; i++) {
+    G.tick(ls);
+    if (ls.credits >= SW.ships.hullCost(ls, 'sparrow')) shipAided = true;
+  }
+  assert(shipAided, 'lost-ship in prologue is bailed out enough to rebuild a Sparrow (credits=' + ls.credits + ')');
+  assert(ls.story.objective.indexOf('BUILD') >= 0 || ls.story.objective.indexOf('build') >= 0, 'lost-ship objective tells the player to build a new ship');
+
+  // Objective re-asserts after a world event overwrites it mid-beat.
+  const oa = G.newGame({ seed: 'smoke-tut-objreassert', difficulty: 'standard', tutorial: true });
+  oa.story.pending = null;
+  G.tick(oa);
+  const beatPrompt = oa.tutorial.prompt;
+  assert(beatPrompt && oa.story.objective === beatPrompt, 'beat prompt is recorded on tu.prompt');
+  SW.story.setObjective(oa, 'AN EVENT HIJACKED THE OBJECTIVE');           // simulate an event obj() call
+  assert(oa.story.objective !== beatPrompt, 'objective was overwritten');
+  G.tick(oa);
+  assert(oa.story.objective === beatPrompt, 'tutorial restores its beat prompt after an event overwrite');
+
   // Skip path: no tutorial state, ev_wake fires as today
   const sk = G.newGame({ seed: 'smoke-tutorial-skip', difficulty: 'standard' });
   assert(!sk.tutorial, 'no tutorial state on skip path');
   G.tick(sk);
   assert(sk.story.pending === 'ev_wake', 'ev_wake fires normally without tutorial');
+}
+
+section('Stranded guard (post-tutorial last-ship)');
+{
+  // Outside the tutorial, losing the last ship with no credits must self-rescue.
+  const st = G.newGame({ seed: 'smoke-stranded', difficulty: 'standard' });
+  st.story.pending = null;
+  G.tick(st);
+  while (st.ships.length) SW.ships.destroy(st, st.ships[0], 'test');
+  st.credits = 0;
+  const sparrow = SW.ships.hullCost(st, 'sparrow');
+  let rescued = false;
+  for (let i = 0; i < (D.TUNE.strandedAidEvery || 80) + 5 && !rescued; i++) {
+    G.tick(st);
+    if (st.credits >= sparrow) rescued = true;
+  }
+  assert(rescued, 'lost last ship + broke is bailed out enough to rebuild (credits=' + st.credits + ')');
+  // Does not fire when the player can already rebuild (has credits).
+  const ok = G.newGame({ seed: 'smoke-stranded-ok', difficulty: 'standard' });
+  ok.story.pending = null;
+  G.tick(ok);
+  while (ok.ships.length) SW.ships.destroy(ok, ok.ships[0], 'test');
+  ok.credits = 100000;
+  ok.lastStrandedAid = -9999;
+  const before = ok.credits;
+  G.tick(ok);
+  assert(ok.credits === before, 'no salvage advance when the player can already afford a hull');
 }
 
 // ---------- 14b. civic works ----------

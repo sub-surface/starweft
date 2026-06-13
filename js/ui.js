@@ -540,8 +540,22 @@ SW.ui = (function () {
     SW.render.centerOn(SW.render.selectedSys !== null ? SW.render.selectedSys : s.homeId);
     pinnedInfo = null;
     ui.refresh();
+    maybeGuidanceHint(s);
   }
   ui.afterLoad = afterLoad;
+
+  // One-time gentle nudge (per browser, not per run) telling the player where to
+  // look when unsure: the objective bar and the Journal. Skipped during the
+  // tutorial — the prologue already hand-holds — and only once, ever. Stored in
+  // browser prefs, not the legacy system (which is for roguelite unlocks).
+  function maybeGuidanceHint(s) {
+    if (!s || (SW.tutorial && SW.tutorial.isActive(s))) return;
+    if (ui.prefs().guidanceSeen) return;
+    ui.setPref('guidanceSeen', true);
+    setTimeout(function () {
+      toast({ kind: 'info', text: '◈ Unsure what to do? The objective bar (bottom) names your next step; the Journal tab holds contracts and signals.' });
+    }, 1200);
+  }
 
   // ============ module shims (main.js and G.handlers use these names) ============
   ui.showEvent = function () { SW.uiModals.showEvent(); };

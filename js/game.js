@@ -157,6 +157,7 @@ SW.game = (function () {
     SW.worldevents.tick(state);
     SW.story.tick(state);
     if (SW.tutorial) SW.tutorial.tick(state);
+    tickStrandedGuard(state);
     SW.perks.tick(state);
     if (state.infamy >= 5) G.legacySet('infamy');
     checkEnd(state);
@@ -624,6 +625,27 @@ SW.game = (function () {
     ps.splice(i, 1); // supply ships finish their delivery; the goods stay usable
     return { ok: true };
   };
+
+  // Stranded guard: losing your LAST ship with no means to rebuild is a dead end.
+  // Outside the tutorial (which has its own, gentler handling), if the player has
+  // zero ships and can't afford the cheapest buildable hull at home, the rim's
+  // salvage networks front a minimal advance so a fresh hull is always reachable.
+  // Throttled, and only when truly stuck — it can't be farmed for profit.
+  function tickStrandedGuard(state) {
+    if (state.gameOver) return;
+    if (SW.tutorial && SW.tutorial.isActive(state)) return; // tutorial handles its own
+    if (state.ships.length > 0) return;
+    const aidEvery = D.TUNE.strandedAidEvery || 80;
+    if (state.tick - (state.lastStrandedAid || -9999) < aidEvery) return;
+    const home = state.systems[state.homeId];
+    const buildable = home && home.scourge !== 2; // can a Sparrow be built at home?
+    const sparrow = SW.ships.hullCost(state, 'sparrow');
+    if (state.credits >= sparrow && buildable) return; // they can already rebuild
+    state.lastStrandedAid = state.tick;
+    if (state.credits < sparrow) state.credits = sparrow + 20;
+    G.emit('toast', { kind: 'good', text: '◌ Salvage networks front a replacement hull. Build a new ship at your home system — you are never truly stranded.' });
+    G.news(state, 'A salvage advance clears: with no ships left, the networks front enough to rebuild. Construct a hull at home to recover.', state.homeId);
+  }
 
   // Projects tick: build when ready, re-dispatch when a gap reopens, explain when stuck.
   function tickProjects(state) {

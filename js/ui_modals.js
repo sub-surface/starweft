@@ -556,6 +556,7 @@ SW.uiModals = (function () {
       '<b>Defend.</b> Pirates raid laden ships in rough regions. Corvettes escort routes; Lancers hit harder; retainers patrol regions. Or raid them back — infamy opens black markets and closes doors.\n\n' +
       '<b>Decide.</b> Origins shape your start; one Doctrine per run shapes everything after. Contracts and blockades arrive whether you like it or not.\n\n' +
       '<b>Survive.</b> The Scourge spreads coreward-out. Quarantine, inoculate, then deliver ' + D.TUNE.panaceaToWin + ' PANACEA to the origin.\n\n' +
+      '<b>Lost?</b> The <b>◈ objective bar</b> along the bottom always names your next step. The <b>Journal</b> tab (in the dock) holds your contracts, signals, and run log — open it any time you\'re unsure what to do. You are never truly stranded: lose your last ship and a salvage advance will let you rebuild at home.\n\n' +
       '<span class="kbd">Space</span> pause · <span class="kbd">1/2/3</span> speed · <span class="kbd">Esc</span> back, then the pause menu · <span class="kbd">F</span> center · the infobox (bottom-left) explains whatever you hover.</div>' +
       '<div class="choices"><button class="primary" data-act="closeLeaf">got it</button></div>';
     SW.ui.showModal('helpModal');
