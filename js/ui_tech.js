@@ -25,15 +25,6 @@ SW.uiTech = (function () {
   const ZOOM_MAX    = 3.5;
   const ZOOM_STEP   = 1.15;  // per wheel tick or button press
 
-  // branch column tint fills
-  const BRANCH_COL = {
-    logistics: 'rgba(155,214,234,0.05)',
-    core:      'rgba(201,209,217,0.04)',
-    frontier:  'rgba(140,200,140,0.05)',
-    vanguard:  'rgba(220,170,120,0.05)',
-    scourge:   'rgba(220,100,100,0.06)',
-  };
-
   let techHits = [];   // [{x,y,rw,rh,id}] in canvas-client coords for hit-testing
 
   // ---- layout ----
@@ -102,9 +93,46 @@ SW.uiTech = (function () {
   }
 
   // ---- main canvas draw pass ----
+  // Read the live palette once per draw so the tree matches the menus exactly.
+  function palette() {
+    const cs = getComputedStyle(document.documentElement);
+    function v(name, fb) { const x = cs.getPropertyValue(name).trim(); return x || fb; }
+    return {
+      accent: v('--accent', '#9bd6ea'),
+      accentDim: v('--accent-dim', 'rgba(155,214,234,0.16)'),
+      ink: v('--ink', '#c9d1d9'),
+      inkDim: v('--ink-dim', '#6e7681'),
+      inkFaint: v('--ink-faint', '#3d434b'),
+      line: v('--line', '#23272e'),
+      lineBright: v('--line-bright', '#3a4048'),
+    };
+  }
+
+  let _hoverId = null;   // node currently under the cursor (for tooltip + edge lift)
+
+  // Apply alpha to a CSS color string (handles hsl(...) and #hex). Used to tint
+  // the one accent at varying strengths while keeping a single source of truth.
+  function hexA(col, a) {
+    col = (col || '').trim();
+    let m = col.match(/^hsl\(\s*([\d.]+)[, ]+([\d.]+)%[, ]+([\d.]+)%\s*\)$/i);
+    if (m) return 'hsla(' + m[1] + ',' + m[2] + '%,' + m[3] + '%,' + a + ')';
+    m = col.match(/^#([0-9a-f]{6})$/i);
+    if (m) {
+      const n = parseInt(m[1], 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+    }
+    m = col.match(/^#([0-9a-f]{3})$/i);
+    if (m) {
+      const r = parseInt(m[1][0] + m[1][0], 16), g = parseInt(m[1][1] + m[1][1], 16), b = parseInt(m[1][2] + m[1][2], 16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+    }
+    return col;
+  }
+
   function drawTechTree(canvas, s, tree) {
     if (!canvas) return;
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#9bd6ea';
+    const P = palette();
+    const accent = P.accent;
     const layout = computeLayout(tree);
     const { pos, colX, colW, totalW, totalH, rowH, branches } = layout;
     const viewW = canvas.clientWidth  || 800;
@@ -122,38 +150,42 @@ SW.uiTech = (function () {
 
     ctx.clearRect(0, 0, viewW, viewH);
 
-    // branch column backgrounds
+    // Which edges/nodes connect to the hovered or selected node — lift those.
+    const focusId = _hoverId || SW.ui.techView.selected;
+    const connected = {};
+    if (focusId) {
+      connected[focusId] = true;
+      for (const e of tree.edges) {
+        if (e[0] === focusId || e[1] === focusId) { connected[e[0]] = true; connected[e[1]] = true; }
+      }
+    }
+
+    // branch column backgrounds — subtle, single faint ink wash (monochrome)
     for (const b of branches) {
-      ctx.fillStyle = BRANCH_COL[b] || 'rgba(201,209,217,0.03)';
+      ctx.fillStyle = 'rgba(201,209,217,0.018)';
       ctx.fillRect(tx(colX[b]), ty(0), colW[b] * z, totalH * z);
     }
 
-    // tier row separators
-    ctx.strokeStyle = 'rgba(110,118,129,0.07)'; ctx.lineWidth = 1;
-    for (let t = 1; t <= MAX_TIER; t++) {
-      const sepY = ty(HEADER_H + t * rowH - ROW_GAP / 2);
-      ctx.beginPath(); ctx.moveTo(tx(0), sepY); ctx.lineTo(tx(totalW), sepY); ctx.stroke();
-    }
-
-    // branch headers
-    ctx.font = '8px "Segoe UI", monospace';
+    // branch headers — small caps in dim ink, matching panel section heads
+    ctx.font = '600 ' + Math.max(8, 9 * z) + 'px "Segoe UI", sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const b of branches) {
-      ctx.fillStyle = 'rgba(155,175,200,0.55)';
+      ctx.fillStyle = P.inkDim;
       ctx.fillText(b.toUpperCase(), tx(colX[b] + colW[b] / 2), ty(HEADER_H / 2));
     }
 
-    // prerequisite edges (L-shaped connectors)
+    // prerequisite edges. Owned chains glow accent; the next reachable step is a
+    // dashed accent hint; a focused node lifts all its connections.
     for (const e of tree.edges) {
       const a = pos[e[0]], b = pos[e[1]];
       if (!a || !b) continue;
-      const isLit  = a.n.owned && b.n.owned;
-      const isNext = a.n.owned && !b.n.owned && b.n.available;
-      ctx.strokeStyle = isLit  ? 'rgba(155,214,234,0.4)' :
-                        isNext ? 'rgba(155,214,234,0.18)' :
-                                 'rgba(110,118,129,0.12)';
-      ctx.lineWidth = isLit ? 1.5 * z : 1 * z;
-      ctx.setLineDash(isNext ? [3 * z, 4 * z] : []);
+      const isLit   = a.n.owned && b.n.owned;
+      const isNext  = a.n.owned && !b.n.owned && b.n.available;
+      const focused = focusId && (e[0] === focusId || e[1] === focusId);
+      if (focused) { ctx.strokeStyle = P.accent; ctx.lineWidth = 2 * z; ctx.setLineDash([]); }
+      else if (isLit)  { ctx.strokeStyle = hexA(P.accent, 0.5); ctx.lineWidth = 1.5 * z; ctx.setLineDash([]); }
+      else if (isNext) { ctx.strokeStyle = hexA(P.accent, 0.28); ctx.lineWidth = 1.2 * z; ctx.setLineDash([3 * z, 4 * z]); }
+      else { ctx.strokeStyle = P.line; ctx.lineWidth = 1 * z; ctx.setLineDash([]); }
       const ax  = tx(a.x),      ay  = ty(a.y + NODE_H / 2 + 1);
       const bx2 = tx(b.x),      by2 = ty(b.y - NODE_H / 2 - 1);
       const midY = (ay + by2) / 2;
@@ -163,52 +195,62 @@ SW.uiTech = (function () {
       ctx.setLineDash([]);
     }
 
-    // nodes
+    // nodes — clean cards, clear state language, readable labels
     const hits = [];
     const selId = SW.ui.techView.selected;
     for (const id in pos) {
       const p = pos[id], n = p.n;
       if (!n.visible) continue;
       const sel = id === selId;
+      const hov = id === _hoverId;
+      const dim = focusId && !connected[id];   // fade nodes unrelated to the focus
       const rx = tx(p.x - NODE_W / 2), ry = ty(p.y - NODE_H / 2);
-      const rw = NODE_W * z,            rh = NODE_H * z,   rr = 3 * z;
+      const rw = NODE_W * z,            rh = NODE_H * z,   rr = 4 * z;
+      ctx.globalAlpha = dim ? 0.4 : 1;
 
-      // fill
-      ctx.fillStyle = n.owned     ? 'rgba(155,214,234,0.15)'  :
-                      n.available ? (n.affordable ? 'rgba(155,214,234,0.06)' : 'rgba(201,209,217,0.03)') :
-                                    'rgba(28,33,38,0.3)';
+      // fill: owned = accent wash, available = panel, locked = void
+      ctx.fillStyle = n.owned     ? P.accentDim :
+                      n.available ? 'rgba(10,12,15,0.92)' :
+                                    'rgba(10,12,15,0.55)';
       roundRect(ctx, rx, ry, rw, rh, rr); ctx.fill();
 
-      // stroke
-      ctx.lineWidth = sel ? 2 : n.owned ? 1.5 : n.available ? 1 : 0.5;
-      ctx.strokeStyle = sel      ? accent :
-                        n.owned  ? 'rgba(155,214,234,0.55)' :
-                        n.available ? (n.affordable ? 'rgba(155,214,234,0.38)' : 'rgba(201,209,217,0.22)') :
-                                      'rgba(80,90,105,0.18)';
+      // stroke: matches our button/card borders
+      ctx.lineWidth = (sel || hov) ? 2 : n.owned ? 1.5 : 1;
+      ctx.strokeStyle = (sel || hov) ? P.accent :
+                        n.owned      ? hexA(P.accent, 0.5) :
+                        n.available  ? (n.affordable ? hexA(P.accent, 0.4) : P.lineBright) :
+                                       P.line;
       roundRect(ctx, rx, ry, rw, rh, rr); ctx.stroke();
 
-      // label
-      const fs = Math.max(6, 8.5 * z);
-      ctx.font = fs + 'px "Segoe UI", sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = n.owned     ? 'rgba(201,209,217,0.95)' :
-                      n.available ? 'rgba(175,195,215,0.88)' :
-                                    'rgba(95,110,125,0.5)';
-      const label = n.name.length > 16 ? n.name.slice(0, 15) + '…' : n.name;
-      ctx.fillText(label, tx(p.x), ty(p.y));
+      // a small left status pip (filled = owned, ring = available, faint = locked)
+      const pipX = tx(p.x - NODE_W / 2) + 8 * z, pipY = ty(p.y), pipR = 3 * z;
+      ctx.beginPath(); ctx.arc(pipX, pipY, pipR, 0, Math.PI * 2);
+      if (n.owned) { ctx.fillStyle = P.accent; ctx.fill(); }
+      else if (n.available && n.affordable) { ctx.strokeStyle = P.accent; ctx.lineWidth = 1.4 * z; ctx.stroke(); }
+      else if (n.available) { ctx.strokeStyle = P.inkDim; ctx.lineWidth = 1.2 * z; ctx.stroke(); }
+      else { ctx.fillStyle = P.inkFaint; ctx.fill(); }
 
-      // owned mark / cost badge
+      // label — bigger, readable, ink/dim by state
+      const fs = Math.max(8.5, 11 * z);
+      ctx.font = (n.owned ? '600 ' : '') + fs + 'px "Segoe UI", sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = n.owned ? P.ink : n.available ? P.ink : P.inkDim;
+      const maxChars = Math.max(8, Math.floor(rw / (fs * 0.6)) - 3);
+      const label = n.name.length > maxChars ? n.name.slice(0, maxChars - 1) + '…' : n.name;
+      ctx.fillText(label, pipX + 7 * z, ty(p.y));
+
+      // owned check / cost badge, right-aligned
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
       if (n.owned) {
-        ctx.font = Math.max(5, 6.5 * z) + 'px "Segoe UI"';
-        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-        ctx.fillStyle = 'rgba(155,214,234,0.55)';
-        ctx.fillText('✓', tx(p.x + NODE_W / 2 - 2), ty(p.y - NODE_H / 2 + 1));
+        ctx.font = Math.max(8, 9 * z) + 'px "Segoe UI", sans-serif';
+        ctx.fillStyle = P.accent;
+        ctx.fillText('✓', tx(p.x + NODE_W / 2) - 7 * z, ty(p.y));
       } else if (n.available) {
-        ctx.font = Math.max(5, 6 * z) + 'px "Segoe UI", monospace';
-        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-        ctx.fillStyle = n.affordable ? 'rgba(155,214,234,0.8)' : 'rgba(110,118,129,0.5)';
-        ctx.fillText(n.cost + '◇', tx(p.x + NODE_W / 2 - 2), ty(p.y - NODE_H / 2 + 1));
+        ctx.font = Math.max(7.5, 9 * z) + 'px Consolas, monospace';
+        ctx.fillStyle = n.affordable ? P.accent : P.inkDim;
+        ctx.fillText(n.cost + '◇', tx(p.x + NODE_W / 2) - 7 * z, ty(p.y));
       }
+      ctx.globalAlpha = 1;
 
       hits.push({ x: tx(p.x), y: ty(p.y), rw: rw / 2, rh: rh / 2, id: id });
     }
@@ -378,11 +420,23 @@ SW.uiTech = (function () {
       SW.ui.techView.zoom = next;
       drawTechTree(canvas, s, tree);
     };
+    // Release any capture we took and clear the drag, always. The previous
+    // version returned early on a node click without releasing pointer capture,
+    // leaving the mouse stuck in pan mode after selecting a node.
+    function endDrag(e) {
+      if (canvas.releasePointerCapture && e && e.pointerId !== undefined) {
+        try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+      drag = null;
+    }
     canvas.onpointerdown = function (e) {
       if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
       drag = { x: e.clientX, y: e.clientY, moved: false };
-      if (canvas.setPointerCapture && e.pointerId !== undefined) canvas.setPointerCapture(e.pointerId);
+      if (canvas.setPointerCapture && e.pointerId !== undefined) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+      canvas.style.cursor = 'grabbing';
     };
     canvas.onpointermove = function (e) {
       if (!drag) return;
@@ -395,35 +449,95 @@ SW.uiTech = (function () {
     };
     canvas.onpointerup = function (e) {
       if (!drag) return;
-      if (!drag.moved) {
+      const wasClick = !drag.moved;
+      endDrag(e);                       // clear drag + release capture FIRST
+      canvas.style.cursor = 'grab';
+      if (wasClick) {
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
         for (const h of techHits) {
           if (Math.abs(h.x - mx) <= h.rw && Math.abs(h.y - my) <= h.rh) {
             SW.ui.techView.selected = h.id;
             _refreshDetail();
+            drawTechTree(canvas, s, tree);   // re-highlight the selected node
             return;
           }
         }
       }
-      drag = null;
     };
-    canvas.onpointerleave = function () { drag = null; };
+    canvas.onpointerleave = function (e) { endDrag(e); setHover(null, canvas, s, tree); hideTip(); };
+    canvas.onpointercancel = function (e) { endDrag(e); };
     canvas.onmousemove = function (e) {
       if (drag) return;
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       for (const h of techHits) {
         if (Math.abs(h.x - mx) <= h.rw && Math.abs(h.y - my) <= h.rh) {
-          SW.ui.renderInfobox({ kind: 'tech', id: h.id });
+          if (_hoverId !== h.id) setHover(h.id, canvas, s, tree);
+          showTip(h.id, e.clientX, e.clientY, rect);
           canvas.style.cursor = 'pointer';
           return;
         }
       }
+      if (_hoverId) setHover(null, canvas, s, tree);
+      hideTip();
       canvas.style.cursor = 'grab';
     };
     canvas.onclick = null;
   }
+
+  // Set the hovered node and redraw so its connections light up.
+  function setHover(id, canvas, s, tree) {
+    _hoverId = id;
+    if (canvas) drawTechTree(canvas, s, tree);
+  }
+
+  // A small light-up tooltip pinned near the node: name · status · what it does ·
+  // what it needs · what it unlocks. This is the "communicate each node" piece.
+  function ensureTip() {
+    let tip = $('#techTip');
+    if (!tip && typeof document !== 'undefined') {
+      tip = document.createElement('div');
+      tip.id = 'techTip';
+      tip.className = 'techTip hidden';
+      const ov = $('#techOverlay');
+      if (ov && ov.appendChild) ov.appendChild(tip);
+    }
+    return tip;
+  }
+  function showTip(id, clientX, clientY, rect) {
+    const tip = ensureTip();
+    if (!tip) return;
+    const s = st(), t = D.TECHS[id];
+    if (!t) return;
+    const owned = SW.tech.has(s, id), avail = SW.tech.available(s, id);
+    const status = owned ? '<span class="tt-on">✓ researched</span>'
+      : avail ? '<span class="tt-av">◇ ' + T_costLabel(s, id) + '</span>'
+      : '<span class="tt-lk">⊘ locked</span>';
+    // prereqs and what this unlocks
+    const reqs = (t.req || []).map(function (r) { return D.TECHS[r] ? D.TECHS[r].name : r; });
+    const unlocks = [];
+    for (const oid in D.TECHS) { if ((D.TECHS[oid].req || []).indexOf(id) >= 0) unlocks.push(D.TECHS[oid].name); }
+    let html = '<div class="tt-head"><span class="tt-name">' + esc(t.name) + '</span>' + status + '</div>';
+    html += '<div class="tt-desc">' + esc(t.desc || '') + '</div>';
+    if (reqs.length) html += '<div class="tt-rel"><b>needs</b> ' + esc(reqs.join(', ')) + '</div>';
+    if (unlocks.length) html += '<div class="tt-rel"><b>unlocks</b> ' + esc(unlocks.slice(0, 4).join(', ')) + (unlocks.length > 4 ? '…' : '') + '</div>';
+    html += '<div class="tt-foot">click to focus · button at right to research</div>';
+    tip.innerHTML = html;
+    tip.classList.remove('hidden');
+    // Fixed positioning against the viewport, offset from the cursor and clamped
+    // so the tip never spills off-screen (flips to the other side near edges).
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || 1280;
+    const vh = (typeof window !== 'undefined' && window.innerHeight) || 720;
+    const tw = tip.offsetWidth || 240, th = tip.offsetHeight || 90;
+    let px = clientX + 16, py = clientY + 14;
+    if (px + tw > vw - 8) px = clientX - tw - 16;
+    if (py + th > vh - 8) py = Math.max(8, clientY - th - 12);
+    tip.style.left = Math.max(8, px) + 'px';
+    tip.style.top = Math.max(8, py) + 'px';
+  }
+  function hideTip() { const tip = $('#techTip'); if (tip && tip.classList) tip.classList.add('hidden'); }
+  function T_costLabel(s, id) { return SW.tech.costOf(s, id) + (s.research >= SW.tech.costOf(s, id) ? '' : ' (saving)'); }
 
   // resize handler: re-fit on window resize while overlay is open
   function onResize() {

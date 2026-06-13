@@ -352,6 +352,18 @@ step('tech overlay supports pan, zoom, and node details', function () {
   canvas.onpointermove({ clientX: 152, clientY: 144, preventDefault: function () {} });
   canvas.onpointerup({ preventDefault: function () {} });
   if (SW.ui.techView.x === x0 && SW.ui.techView.y === y0) throw new Error('drag pan did not move viewport');
+  // Regression: a CLICK (down then up, no move) must release pointer capture and
+  // not leave the canvas in pan mode — the bug where selecting a node stuck the
+  // mouse in drag. After pointerup, a bare pointermove (no button) must NOT pan.
+  let released = false;
+  canvas.releasePointerCapture = function () { released = true; };
+  canvas.setPointerCapture = function () {};
+  canvas.onpointerdown({ clientX: 130, clientY: 130, button: 0, preventDefault: function () {}, pointerId: 2 });
+  canvas.onpointerup({ clientX: 130, clientY: 130, preventDefault: function () {}, pointerId: 2 });
+  if (!released) throw new Error('pointer capture not released after a click (drag-stuck bug)');
+  const px = SW.ui.techView.x, py = SW.ui.techView.y;
+  canvas.onpointermove({ clientX: 300, clientY: 300, preventDefault: function () {} });
+  if (SW.ui.techView.x !== px || SW.ui.techView.y !== py) throw new Error('canvas still panning after click released the drag (drag-stuck bug)');
   // reset view
   SW.ui.techView.selected = 'analytics';
   fireClick('techResetView');
