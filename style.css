@@ -411,3 +411,95 @@ input:focus-visible {
 .wire-surplus { border-left-color: #7fe0a8; }
 .wire-numbers { opacity: .6; font-style: italic; }
 .wire-bar { font-style: italic; }
+
+/* ===== boot screen (boot.js) — power-on self-test that wakes into the fiction =====
+   Ink on void, one accent. No green: [ OK ] and the Weave lines use the accent;
+   the Scourge line is the only red, per "one red (theirs)". */
+#bootScreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  font-family: var(--mono);
+  overflow: hidden;
+  animation: bootIn .42s ease-out;
+  cursor: pointer;
+}
+#bootScreen.bootOut { animation: bootOut .4s ease-in forwards; }
+@keyframes bootIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bootOut { from { opacity: 1; } to { opacity: 0; } }
+
+/* faint scanline + vignette for CRT character; purely cosmetic, pointer-through */
+.bootScan {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg,
+      rgba(201,209,217,0.025) 0px,
+      rgba(201,209,217,0.025) 1px,
+      transparent 1px,
+      transparent 3px),
+    radial-gradient(ellipse at center,
+      transparent 55%,
+      rgba(4,5,7,0.55) 100%);
+  animation: bootFlicker 4.5s infinite steps(60);
+}
+@keyframes bootFlicker {
+  0%, 97%, 100% { opacity: 1; }
+  98% { opacity: 0.82; }
+  99% { opacity: 0.93; }
+}
+
+.bootTerm {
+  position: relative;
+  width: min(86ch, 92vw);
+  max-height: 84vh;
+  overflow: hidden;
+  font-size: clamp(10px, 1.5vw, 14px);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 0 8px rgba(155, 214, 234, 0.06);
+}
+.bootTerm .bl { display: block; }
+.bl-dim   { color: var(--ink-faint); }
+.bl-info  { color: var(--ink-dim); }
+.bl-ok .bl-ok { color: var(--accent); font-weight: 600; }
+.bl-warn  { color: var(--danger); opacity: 0.9; }
+.bl-weave { color: var(--accent); text-shadow: 0 0 10px rgba(155, 214, 234, 0.35); }
+.bl-prompt { color: var(--ink); }
+.bl-slow .bl-ok { animation: bootBlink .9s ease-in-out 2; }
+@keyframes bootBlink { 50% { opacity: 0.2; } }
+
+/* the threaded wordmark */
+.bl-logo { display: block; margin: 0 0 4px; }
+.bootLogoLine {
+  display: block;
+  color: var(--accent);
+  text-shadow: 0 0 12px rgba(155, 214, 234, 0.4);
+  animation: bootThread .11s ease-out;
+}
+@keyframes bootThread {
+  from { opacity: 0; transform: translateX(-4px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateX(0);    filter: blur(0); }
+}
+
+/* blinking prompt caret on the final line */
+.bl-prompt::after { content: ''; }
+.bl-prompt { animation: bootCaret 1s step-end infinite; }
+@keyframes bootCaret { 50% { color: var(--accent); } }
+
+.bootSkip {
+  position: absolute; bottom: 14px; right: 18px;
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: lowercase;
+  color: var(--ink-faint);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* boot.js skips entirely under reduced motion, but belt-and-suspenders: */
+  #bootScreen, .bootScan, .bootLogoLine, .bl-slow .bl-ok, .bl-prompt { animation: none !important; }
+}

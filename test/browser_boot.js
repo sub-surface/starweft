@@ -105,7 +105,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -717,6 +717,17 @@ step('directive form preserves edits across redraws and events', function () {
   SW.ui.mapClick(s.systems[s.homeId]);
   const d = s.directives[s.directives.length - 1];
   if (s.directives.length !== before + 1 || d.c !== 'MEDS' || d.target !== 140) throw new Error('directive did not use preserved form values');
+});
+
+step('boot screen short-circuits headlessly and invokes the title handoff', function () {
+  if (!SW.boot || typeof SW.boot.play !== 'function') throw new Error('SW.boot.play missing');
+  let called = 0;
+  // No window.matchMedia in the stub DOM, so play() must skip the crawl and call
+  // the callback synchronously -- this is the contract main.js depends on to reach
+  // the title screen. If this ever blocks, the game would boot to a black overlay.
+  SW.boot.play(function () { called++; });
+  if (called !== 1) throw new Error('boot.play did not invoke callback exactly once headlessly (got ' + called + ')');
+  if (SW.boot.isActive && SW.boot.isActive()) throw new Error('boot left itself active after headless skip');
 });
 
 step('title screen omits shallow badlands and no-rivals selectors', function () {

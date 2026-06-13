@@ -16,5 +16,7 @@
   // Boot into the title screen; a fresh paused world shimmers behind it.
   G.newGame({ difficulty: 'standard' });
   SW.ui.afterLoad();
-  SW.ui.showTitle();
+  // Power-on self-test crawl, then hand off to the title. SW.boot short-circuits
+  // in headless/reduced-motion/already-seen cases and just calls the callback.
+  SW.boot.play(function () { SW.ui.showTitle(); });
 })();
