@@ -722,3 +722,121 @@ new fields into `newGame`.
 Tests: smoke (new tables resolve, determinism incl. adversary name, condition fx,
 quiet-year actually stills events) + browser_boot (all selectors render, folds &
 QOL controls present, randomizers run, begin still works).
+
+## 19. The bigger bubble — scale, a galaxy that isn't Sol-centred, and the roadmap
+
+The guiding feel: **the worlds drifted apart.** Stars should sit a real distance
+from each other; the network should still read as connected; and Sol should stop
+being the inevitable centre of every run. This section records what shipped and
+sequences the larger ambitions (in-system richness, richer nebulae & galactic
+features, many-systems completeness, performance). The
+`docs/reviews/GALAXY_SCALE_AND_IN_SYSTEM_LIFE.md` audit is the deep reference;
+this section is the contract and build order.
+
+### 19.1 Distance rescale (shipped)
+
+Distances widened **~1.7x** from the original. The three coupled levers moved
+*together* so the bubble grew while travel commitment and command reach stayed
+constant in relative terms:
+
+- `D.WORLD.density.standard`: bubbleR 58 → **100 ly**, minSysDist 2.0 → **4.5 ly**
+  (the floor that stops procedural stars clumping), sysCount 260 → **230**. Sparse
+  and crowded presets scaled to match. `D.TUNE` defaults track the standard preset.
+- **Hull speeds ×1.7** and **baseRange 20 → 34** so `dist/speed` ticks per hop and
+  the reachable frontier stay familiar — only the absolute numbers (and the visual
+  gaps) grew. `charterPerLy` scaled *down* (18 → 11) so distance-priced fares stay
+  balanced.
+- **Camera framing now scales with `bubbleR`** (`R.fit` was a hardcoded 160 tuned
+  for the small bubble; now `~2.4 × bubbleR`). This is what makes the widening
+  *read* as space on screen rather than just a bigger overflow — the camera sits a
+  touch tighter than a full fit and the player pans outward to take in the weave.
+
+Verification standard (per review §3.4): generation stays **100% lane-connected**
+from home across seeds; bubble mean nearest-neighbour ~11–12 ly; ~10–14 ticks per
+Sparrow hop. Economy seeding survives (smoke green) — and the seed-fragile civic /
+chain-route tests were hardened to assert the *mechanism*, not a specific geometry,
+since "internal economies are hypersensitive to small numbers" (§4).
+
+### 19.2 Home is not always Sol (shipped)
+
+`state.homeId` now **follows The Heart**, so Sol is no longer the universal centre:
+
+- `home` → Sol (the narrative anchor and the prologue's stage).
+- `rim` → home *relocates* to a far settled world, picked from the farthest handful
+  (seeded, so it **varies between galaxies**).
+- `drift` → home relocates to an unsettled star you **claim**: seeded a small
+  population toehold + prosperity so the run is playable from tick 0.
+- A relocated home gets a **relay** (so command range reaches out as Sol's does)
+  and, because `A.buyShip` allows building at `homeId`, a **guaranteed shipyard** —
+  fixing the old soft-lock where the only shipyard was Sol, which a rim/drift start
+  might never have discovered. The camera centres on the real home via `afterLoad`.
+- The **Sol prologue pins the Heart to `home`** regardless of the dial (the cold
+  open *is* the wake-at-home beat and uses Sol-specific bodies).
+
+### 19.3 Starter presets + a deeper Custom section (next — menu)
+
+The New Weave dials have outgrown a flat list. Consolidate into **named starter
+presets** that bundle origin + heart + galaxy dials into a one-click identity,
+with the full dial set tucked into a collapsible **Custom** section:
+
+- Presets read as fantasies, not config: e.g. **Courier** (Sol home, standard
+  galaxy — the classic), **Rimrunner** (rim heart, sparse, lean markets),
+  **Drifter** (drift heart, ancient, filaments), **Daily** (the shared seed).
+  Each is a `D.STARTER_PRESETS` row → applies a set of dial values; "Custom"
+  reveals/edits them. Reuse the `foldHead` collapsible pattern from §18.7.
+- Goal: a first-timer picks a vibe and presses begin; a veteran opens Custom and
+  authors every lever. Presets must be data-only (one table), and "surprise me"
+  becomes "roll a preset, then nudge."
+
+### 19.4 In-system richness (next — generation + render + sim)
+
+A system should feel like a place, not a market with planets behind it (review §8).
+Extend the planet/body generator and the in-system renderer with:
+
+- **More bodies & body types**: comets (eccentric, seasonal), an **Oort cloud**
+  halo of icy bodies at the system edge, distinct **belt types** — rocky asteroid
+  (ORE) vs. **ice belt** (volatiles/GAS) vs. dust — each with its own facility fit
+  and look (review §9, §10.3).
+- **Free-floating structures**: derelict and active **stations** not bound to a
+  body, and **fleet carriers** (mobile depots/shipyards) — new placement classes in
+  the system generator, new `D.FACILITIES`/station roles (review §10.1).
+- **Exotic anchors** already specced in §5 (neutron/magnetar/white-dwarf
+  installations) slot in here as rare body types.
+- Each addition is additive state (ids, defensive init) and ticks **only in hot
+  systems** (§10.3) to stay cheap.
+
+### 19.5 Richer nebulae & realistic galactic features (next — render + galaxy)
+
+Make the sky geography, not wallpaper (review §7.2):
+
+- **Nebulae as real regions** with shape, density falloff and colour — emission vs.
+  reflection vs. dark — that interact with play (sensor fog, survey value), not
+  just a tint. Extend `D.REGIONS` + the background layer.
+- **Named real features** as set-dressing landmarks: open clusters (the **Pleiades
+  / Seven Sisters**), associations, dark lanes — placed from a small catalogue so
+  the local sky is recognisable. Ties to the "one continuous disk" model (review §6)
+  where the bubble is *embedded in* the galaxy, not pasted on.
+- All particle/field work obeys the **bounded-by-LOD** budget (§19.6).
+
+### 19.6 Many systems & performance (the enabling work)
+
+The desire to manage **many more systems** and a more complete galaxy beyond the
+bubble (review §3.4, §6) is gated on performance — costs are already adding up.
+Before scaling counts, land the budget discipline (review §7.4):
+
+- **Hot/cold system simulation**: only "hot" systems (player-touched, on a route,
+  near the front) tick their economies/sites each tick; cold systems aggregate
+  (the §10.3 model). This is the single biggest lever for system-count scale.
+- **Render budgets bounded by LOD**: aggregate at regional scale, no per-star
+  per-frame allocation, cache deterministic fields (the `laneStyleCache` pattern),
+  prefer one shared background layer over per-object gradients, cap & fade trails.
+  **Report live counts in the F3 overlay** (systems drawn, lanes drawn, particles)
+  so regressions are visible.
+- **Spatial culling**: draw/iterate only what's in view or hot; the bubble can grow
+  and the off-bubble galaxy fill in once the hot-set, culling and F3 instrumentation
+  prove the frame/tick budget holds.
+
+**Build order**: 19.3 (menu presets, cheap, all-data) → 19.6 hot/cold + F3 counts
+(unblocks scale) → 19.4 in-system bodies (rides the hot-set) → 19.5 nebulae/features
+(render, bounded budgets) → raise system counts and extend beyond the bubble once
+the budget instrumentation is green. Each step lands green on both suites.

@@ -243,7 +243,12 @@ SW.render = (function () {
   const DIST_MIN = 22, DIST_MAX = 90000;
   R.fit = function () {
     R.cam.tx = 8; R.cam.ty = 0; R.cam.tz = 0;
-    R.cam.dist = 160; R.cam.distTarget = 160;
+    // Frame the bubble proportionally to its actual size (was a hardcoded 160
+    // tuned for the old small bubble). ~2.4x bubbleR sits the camera a touch
+    // tighter than a full fit, so the widened distances *read* as space between
+    // stars and the player pans outward to take in the whole weave.
+    const d = Math.round((D.TUNE.bubbleR || 90) * 2.4);
+    R.cam.dist = d; R.cam.distTarget = d;
     R.cam.yaw = 0.6; R.cam.pitch = 0.45;
     R.cam.yawTarget = 0.6; R.cam.pitchTarget = 0.45;
   };

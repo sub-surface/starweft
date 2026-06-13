@@ -678,8 +678,14 @@ section('Weftworks, Tessellation Yards, Exodus');
   assert(cr.ok, 'chain route created: ' + (cr.msg || cr.route.name));
   assert(cr.route.stops.length >= 4, 'chain route spans the supply chain (' + cr.route.stops.length + ' stops)');
   assert(cr.route.stops[0].action === 'buy' && cr.route.stops[0].c === 'ORE', 'first stop buys the raw input');
-  const prodStops = cr.route.stops.filter(function (x) { return x.sys === prod.id; });
-  assert(prodStops.length === 2 && prodStops[0].action === 'sell' && prodStops[1].action === 'buy', 'factory is fed, then product collected');
+  // The planner picks its own cheapest factory (not necessarily the test's
+  // `prod` hint above), so validate the route's *own* factory: the system that
+  // both takes a raw input in (sell) and gives ALLOY out (buy), in that order.
+  const buyOut = cr.route.stops.filter(function (x) { return x.action === 'buy' && x.c === 'ALLOY'; });
+  assert(buyOut.length === 1, 'chain collects the finished ALLOY exactly once');
+  const factorySys = buyOut[0].sys;
+  const prodStops = cr.route.stops.filter(function (x) { return x.sys === factorySys; });
+  assert(prodStops.length === 2 && prodStops[0].action === 'sell' && prodStops[1].action === 'buy', 'factory is fed (sell raw in), then product collected (buy out)');
   assert(A.createChainRoute(st, 'PANACEA').ok === false, 'fab-only recipes refused');
 
   // -- tessellation yards: crew the unmanned chain route, then reclaim surplus
@@ -1590,8 +1596,14 @@ section('Civic works');
     vigil.discovered = true;
     vigil.prosperity = 90;
     vigil.credits = 5000;
-    vigil.stocks.ALLOY = (vigil.stocks.ALLOY || 0) + 30;
-    vigil.stocks.TECH  = (vigil.stocks.TECH  || 0) + 10;
+    // Stock ALLOY/TECH well above the system's own reserve target so the civic
+    // build can afford its mats (spareStock = stock - reserve must exceed cost).
+    // Raise the caps too, since reserve scales with capacity.
+    vigil.capacity = vigil.capacity || {};
+    vigil.capacity.ALLOY = Math.max(vigil.capacity.ALLOY || 0, 200);
+    vigil.capacity.TECH = Math.max(vigil.capacity.TECH || 0, 200);
+    vigil.stocks.ALLOY = 150;
+    vigil.stocks.TECH  = 80;
     // remove any pre-existing bastion so the build can fire
     vigil.buildings = vigil.buildings.filter(function (b) { return b !== 'bastion'; });
     st.story.flags.scourge_known = true;
@@ -1602,15 +1614,20 @@ section('Civic works');
     // civic threshold = civicMomentum * civicEvery ticks = 12 * 25 = 300 ticks worst case
     // with +2 per civic pass (player dominant), it fires after 6 civic passes = 150 ticks
     const bastionsBefore = vigil.buildings.filter(function (b) { return b === 'bastion'; }).length;
-    let built = false, guard = 0;
+    // Snapshot ALLOY the instant the bastion appears (before the next economy
+    // tick refills it), so the consumption check is robust to any seed/geometry.
+    // Re-pin prosperity each tick so a poor sparse-galaxy system still qualifies.
+    let built = false, guard = 0, alloyBefore = vigil.stocks.ALLOY, alloyAtBuild = null;
     while (!built && guard++ < 600) {
+      alloyBefore = vigil.stocks.ALLOY;
+      vigil.prosperity = 90;
       G.tick(st);
-      if (vigil.buildings.indexOf('bastion') >= 0) built = true;
+      if (vigil.buildings.indexOf('bastion') >= 0) { built = true; alloyAtBuild = vigil.stocks.ALLOY; }
     }
     assert(built, 'vigil system built a bastion (' + guard + ' ticks, prosperity=' + vigil.prosperity.toFixed(0) + ')');
     const creditsDeducted = vigil.credits < 5000;
     assert(creditsDeducted, 'bastion deducted system credits (' + vigil.credits.toFixed(0) + ' remaining)');
-    assert(vigil.stocks.ALLOY < 30, 'bastion consumed ALLOY from system stocks (' + vigil.stocks.ALLOY.toFixed(1) + ' remaining)');
+    assert(alloyAtBuild !== null && alloyAtBuild <= alloyBefore - 10, 'bastion consumed ALLOY from system stocks (' + alloyBefore.toFixed(1) + ' -> ' + (alloyAtBuild === null ? 'n/a' : alloyAtBuild.toFixed(1)) + ')');
     assert(vigil.civic === 0, 'civic momentum reset after successful build');
     assert((st.news || []).some(function (n) { return /bastion/.test(n.text) || /Vigil/.test(n.text); }),
       'bastion build published a news item');
@@ -1790,13 +1807,28 @@ section('New Weave — authored worlds (age / topology / heart / myth / named ad
   assert(disc(young) > disc(ancient), 'a young galaxy starts better charted than an ancient one');
   assert(disc(ancient) >= 1, 'even an ancient galaxy reveals home');
 
-  // The Heart relocates the start system; ships spawn there.
-  const rim = G.newGame({ seed: 'heart-r', difficulty: 'standard', world: { heart: 'rim' } });
+  // The Heart relocates HOME itself (not just the ship): homeId moves off Sol,
+  // the new home anchors range (relay) + builds ships, and your ship spawns there.
   const homeRun = G.newGame({ seed: 'heart-r', difficulty: 'standard', world: { heart: 'home' } });
-  assert(rim.ships[0].at !== homeRun.ships[0].at || rim.ships[0].at !== rim.homeId, 'rim heart can move the start off Sol');
+  assert(homeRun.homeId === 0, 'home heart keeps Sol as home');
+  const rim = G.newGame({ seed: 'heart-r', difficulty: 'standard', world: { heart: 'rim' } });
+  assert(rim.homeId !== 0, 'rim heart relocates home off Sol');
+  assert(rim.ships[0].at === rim.homeId, 'your ship spawns at the relocated home');
+  assert(rim.systems[rim.homeId].buildings.indexOf('relay') >= 0, 'rim home gets a relay so command range reaches out');
+  assert(A.buyShip(rim, 'sparrow', rim.homeId).ok, 'a relocated home can build ships (shipyard not tied to Sol)');
+  // rim start varies by seed (not always the single farthest system)
+  const rim2 = G.newGame({ seed: 'heart-r2', difficulty: 'standard', world: { heart: 'rim' } });
+  assert(rim.homeId !== rim2.homeId, 'the rim start varies between galaxies');
+
   const drift = G.newGame({ seed: 'heart-d', difficulty: 'standard', world: { heart: 'drift' } });
   assert(drift.story.flags.heart_drift === true, 'drift heart sets its story flag');
+  assert(drift.homeId !== 0, 'drift heart relocates home off Sol');
   assert(drift.credits > homeRun.credits, 'drift compensates with extra starting credits');
+  assert(drift.systems[drift.homeId].pop > 0, 'a claimed drift home has a starting toehold of people');
+  assert(drift.systems[drift.homeId].links.length > 0, 'a drift home is lane-connected (no soft-lock)');
+  // the prologue pins home to Sol regardless of the heart dial
+  const tut = G.newGame({ seed: 'heart-t', difficulty: 'standard', world: { heart: 'rim' }, tutorial: true });
+  assert(tut.homeId === 0, 'the Sol prologue forces home to Sol even when a rim heart is chosen');
 
   // Topology resolves and runs without breaking generation (lanes still connect).
   ['filaments', 'cluster', 'halo', 'natural'].forEach(function (t) {
