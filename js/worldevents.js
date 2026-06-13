@@ -35,7 +35,10 @@ SW.worldevents = (function () {
       if (ct.kind === 'survey' && state.systems[ct.sysId].surveyed) completeContract(state, ct);
       else if (state.tick >= ct.deadline) failContract(state, ct);
     }
-    // spawn new world events
+    // spawn new world events (The Quiet Year stills these for the opening
+    // stretch; existing contracts/blockades above still resolve normally)
+    const quietUntil = D.condMax ? D.condMax(state, 'quietUntil') : 0;
+    if (quietUntil && state.tick < quietUntil) return;
     if (state.tick >= state.nextWorldAt) {
       state.nextWorldAt = state.tick + T.contractEvery + U.ri(state, -60, 80);
       spawnWorldEvent(state);

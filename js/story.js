@@ -53,6 +53,10 @@ SW.story = (function () {
         fire(state, item.id, item.ctx); return;
       }
     }
+    // The Quiet Year: hold back random ambient events for the opening stretch
+    // (queued/tutorial beats and hails still flow — this only stills the spice).
+    const quietUntil = D.condMax ? D.condMax(state, 'quietUntil') : 0;
+    if (quietUntil && state.tick < quietUntil) return;
     const pool = SW.eventsData.EVENTS.filter(function (e) {
       if (!allowedNow(state, e)) return false;
       if (e.arrival) return false;

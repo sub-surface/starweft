@@ -946,6 +946,8 @@ SW.ui = (function () {
       }
       case 'confirmYes': SW.uiModals.runConfirm(); return;
       case 'rerollSigil': ui._sigilSeed = Math.floor(Math.random() * 100000); return;
+      case 'rerollName': SW.uiModals.rerollName(); return;
+      case 'surpriseWeave': SW.uiModals.surpriseWeave(); return;
       case 'continueGame': { const r = SW.game.load('auto'); if (r.ok) { hideModals(); afterLoad(); } else toast({ kind: 'bad', text: r.msg }); return; }
       case 'begin': {
         const seedV = $('#ngSeed').value.trim();
@@ -961,12 +963,16 @@ SW.ui = (function () {
           world: {
             density: ($('#ngDen') && $('#ngDen').value) || 'standard',
             wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
+            age: ($('#ngAge') && $('#ngAge').value) || 'settled',
+            topology: ($('#ngTopo') && $('#ngTopo').value) || 'natural',
+            heart: ($('#ngHeart') && $('#ngHeart').value) || 'home',
           },
           identity: {
             name: ($('#idName').value || 'The Provisional Weft').slice(0, 40),
             motto: ($('#idMotto').value || 'Finish the round.').slice(0, 60),
             hue: parseInt($('#idHue').value, 10) || 195,
             sigil: ui._sigilSeed || 7,
+            myth: ($('#ngMyth') && $('#ngMyth').value) || 'none',
           },
         });
         hideModals();

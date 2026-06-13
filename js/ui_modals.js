@@ -153,6 +153,7 @@ SW.uiModals = (function () {
   // first and never has to scroll past config they don't want.
   function showTitle() {
     const modal = $('#titleModal');
+    modal.classList.remove('setupModal');
     modal.classList.add('titleFront');
     const hasAuto = SW.game.hasSave('auto');
     const meta = SW.ui.saveMeta('auto');
@@ -218,6 +219,10 @@ SW.uiModals = (function () {
     const diffs = ['standard', 'standard', 'brutal'];
     const dens = Object.keys(D.WORLD.density);
     const weas = Object.keys(D.WORLD.wealth);
+    const ages = Object.keys(D.WORLD.age);
+    const topos = Object.keys(D.WORLD.topology);
+    const hearts = Object.keys(D.HEART);
+    const myths = D.MYTH_ORDER.slice();
     const pool = D.CONDITION_ORDER.slice();
     // pick two distinct conditions deterministically. Use unsigned shifts —
     // the hash exceeds 2^31, so signed >> would go negative and break indexing.
@@ -227,11 +232,14 @@ SW.uiModals = (function () {
     return {
       seed: 'daily-' + key,
       difficulty: diffs[(h >>> 3) % diffs.length],
-      world: { density: dens[(h >>> 7) % dens.length], wealth: weas[(h >>> 9) % weas.length] },
+      world: {
+        density: dens[(h >>> 7) % dens.length], wealth: weas[(h >>> 9) % weas.length],
+        age: ages[(h >>> 11) % ages.length], topology: topos[(h >>> 13) % topos.length], heart: hearts[(h >>> 15) % hearts.length],
+      },
       conditions: conds,
       tutorial: false,
       daily: key,
-      identity: { name: 'Daily Weft ' + key, motto: 'One galaxy, one day.', hue: 195, sigil: h % 1000 },
+      identity: { name: 'Daily Weft ' + key, motto: 'One galaxy, one day.', hue: 195, sigil: h % 1000, myth: myths[(h >>> 17) % myths.length] },
     };
   }
   function dailySub() {
@@ -263,6 +271,7 @@ SW.uiModals = (function () {
   let chosenThreat = 'inherit';
   let chosenLean = '';
   let chosenConditions = {};   // id -> true
+  let chosenMyth = 'none';
 
   // Build the inline kit summary for an origin (ships, credits, tech, hooks).
   function originKit(def) {
@@ -287,12 +296,26 @@ SW.uiModals = (function () {
     const diff = D.DIFFICULTY[$('#ngDiff') ? $('#ngDiff').value : 'standard'] || D.DIFFICULTY.standard;
     const den = D.WORLD.density[$('#ngDen') ? $('#ngDen').value : 'standard'] || D.WORLD.density.standard;
     const wea = D.WORLD.wealth[$('#ngWea') ? $('#ngWea').value : 'standard'] || D.WORLD.wealth.standard;
+    const ageK = $('#ngAge') ? $('#ngAge').value : 'settled';
+    const heartK = $('#ngHeart') ? $('#ngHeart').value : 'home';
     const thr = D.THREAT[chosenThreat] || {};
     let startAt = thr.scourgeStart !== undefined ? thr.scourgeStart : diff.scourgeStart;
     const wake = startAt < 0 ? 'the Scourge never wakes' : 'the Scourge wakes ~cycle ' + startAt;
     const wealthWord = wea.mult >= 1.4 ? 'fat markets' : wea.mult <= 0.6 ? 'lean markets' : 'balanced markets';
     const skyWord = den.sysCount >= 320 ? 'close skies' : den.sysCount <= 200 ? 'a long dark' : 'open skies';
-    return den.sysCount + ' systems · ' + wealthWord + ' · ' + skyWord + ' · ' + wake + '.';
+    const ageWord = ageK === 'young' ? 'a young galaxy, well-charted' : ageK === 'ancient' ? 'an ancient dark, all but forgotten' : 'a settled galaxy';
+    const heartWord = heartK === 'rim' ? 'you wake on the far rim' : heartK === 'drift' ? 'you wake adrift, homeless' : 'you wake at the Old Orchard';
+    return den.sysCount + ' systems · ' + ageWord + ' · ' + wealthWord + ' · ' + skyWord + ' · ' + heartWord + ' · ' + wake + '.';
+  }
+
+  // A collapsible section header. `open` sets the initial state; `count`, when
+  // > 0, shows a small badge (used by Weave conditions to show how many stack).
+  // Toggling is wired generically after render via [data-fold].
+  function foldHead(key, title, subtitle, open, count) {
+    return '<h4 class="foldHead' + (open ? ' open' : '') + '" data-fold="' + key + '">' +
+      '<span class="foldCaret">' + (open ? '▾' : '▸') + '</span>' + esc(title) +
+      (count ? '<span class="foldCount" data-fold-count="' + key + '">' + count + '</span>' : '<span class="foldCount hidden" data-fold-count="' + key + '"></span>') +
+      (subtitle ? '<span class="h4sub">— ' + esc(subtitle) + '</span>' : '') + '</h4>';
   }
 
   function showNewRun() {
@@ -301,15 +324,41 @@ SW.uiModals = (function () {
     modal.classList.add('setupModal');
     SW.ui._sigilSeed = Math.floor(Math.random() * 1000);
     let html = '<div class="setupHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
-      '<div class="titleArt" style="font-size:20px;letter-spacing:5px">NEW WEAVE</div></div>';
+      '<div class="titleArt" style="font-size:20px;letter-spacing:5px">NEW WEAVE</div>' +
+      '<button class="surpriseBtn" data-act="surpriseWeave" title="Roll a fresh galaxy, doctrine and myth — then tweak to taste">✦ surprise me</button></div>';
+
+    // Prologue toggle — promoted to the top as a proper switch card. It's the
+    // single most consequential choice (guided wake at home vs. dropped cold),
+    // so it leads. Default on for first-timers, off once completed.
+    const prologueDone = !!SW.game.legacy().prologue;
+    const prologueOn = !prologueDone;
+    html += '<label class="prologueToggle' + (prologueOn ? ' on' : '') + '" id="prologueCard">' +
+      '<input type="checkbox" id="ngTut"' + (prologueOn ? ' checked' : '') + '>' +
+      '<span class="ptMark">' + (prologueOn ? '◉' : '○') + '</span>' +
+      '<span class="ptText"><span class="ptName">Sol Prologue' +
+      (prologueDone ? ' <span class="ptDone">✓ completed</span>' : '') + '</span>' +
+      '<span class="ptDesc">Wake at home in the Sol system and learn the one verb that runs everything. ' +
+      (prologueDone ? 'Replay the guided opening, or skip straight to the open galaxy.' : 'Recommended for your first weave.') +
+      '</span></span></label>';
+
+    // Two-column body: left = who you are (Identity + Origin), right = the
+    // galaxy you're dropped into. Forecast + actions live in a sticky footer.
+    html += '<div class="setupCols"><div class="setupCol">';
 
     // Identity
     html += '<h4>Identity</h4>';
     html += '<div class="row"><canvas id="sigilPreview" width="64" height="64" style="border:1px solid var(--line)"></canvas>' +
-      '<div style="flex:1"><div class="row"><input id="idName" placeholder="network name" value="The Provisional Weft" style="flex:1"></div>' +
+      '<div style="flex:1"><div class="row"><input id="idName" placeholder="network name" value="The Provisional Weft" style="flex:1">' +
+      '<button data-act="rerollName" title="New network name">↻</button></div>' +
       '<div class="row"><input id="idMotto" placeholder="motto" value="Finish the round." style="flex:1"></div>' +
       '<div class="row"><span class="sub">hue</span><input id="idHue" type="range" min="0" max="359" value="195" style="flex:1">' +
       '<button data-act="rerollSigil" title="New sigil">↻</button></div></div></div>';
+    // Founding Myth — one line of lore. Flavor only; tints the opening ticker.
+    html += '<div class="row"><span class="sub" style="width:70px">myth</span><select id="ngMyth" data-myth style="flex:1">' +
+      D.MYTH_ORDER.map(function (id) {
+        return '<option value="' + id + '"' + (id === chosenMyth ? ' selected' : '') + '>' + esc(D.MYTHS[id].name) + '</option>';
+      }).join('') + '</select></div>';
+    html += '<div class="mythLine" id="ngMythLine">' + esc((D.MYTHS[chosenMyth] && D.MYTHS[chosenMyth].line) || '') + '</div>';
 
     // Origin — rich cards
     html += '<h4>Origin</h4>';
@@ -331,42 +380,71 @@ SW.uiModals = (function () {
       }
     }
 
-    // Galaxy dials
+    // ---- right column: the galaxy ----
+    html += '</div><div class="setupCol">';
+
+    // Galaxy dials — one aligned label|control grid so the whole column reads
+    // as a tidy form instead of ragged wrapping rows. dialRow() emits one cell
+    // pair; the .dialGrid CSS keeps every control flush and full-width.
+    function opts(table, selected, fmt) {
+      return Object.keys(table).map(function (k) {
+        return '<option value="' + k + '"' + (k === selected ? ' selected' : '') + '>' + (fmt ? fmt(k, table[k]) : table[k].name) + '</option>';
+      }).join('');
+    }
+    // Hover help for each dial. Native title= tooltips — the in-game infobox
+    // HUD doesn't exist behind this pre-game modal, so title is the right tool.
+    // Each tip leads with what the dial *is*, then how its values read, drawn
+    // from the data tables so they can't drift out of sync.
+    function tableTip(lead, table) {
+      const vals = Object.keys(table).map(function (k) {
+        const v = table[k]; return v.name.split(' —')[0] + (v.desc ? ': ' + v.desc : '');
+      });
+      return lead + '\n\n' + vals.join('\n');
+    }
+    const tips = {
+      difficulty: tableTip('Starting economy and the Scourge\'s base clock.', D.DIFFICULTY),
+      systems: tableTip('How many star systems, and how far apart — travel time is your scarcest resource.', D.WORLD.density),
+      markets: tableTip('Galaxy-wide wealth: how fat the markets are. Lean markets are the purest "you are the thread" feel.', D.WORLD.wealth),
+      age: tableTip('The Sundering — how long ago the worlds drifted apart. Tints how charted you start and how much old wealth lies buried.', D.WORLD.age),
+      pattern: tableTip('How the stars cluster. Shapes how the map feels to cross — not its size.', D.WORLD.topology),
+      heart: tableTip('Where you wake. Decoupled from your origin.', D.HEART),
+      threat: tableTip('The Scourge clock, decoupled from difficulty. A relaxed economy can still face a scary reckoning.', D.THREAT),
+    };
+    function dialRow(label, control, tipKey) {
+      const lab = tips[tipKey] ? '<span class="dialHelp" title="' + esc(tips[tipKey]) + '">' + label + '</span>' : label;
+      return '<div class="dialLabel">' + lab + '</div><div class="dialCtrl">' + control + '</div>';
+    }
     html += '<h4>Galaxy</h4>';
-    html += '<div class="row"><span class="sub" style="width:70px">difficulty</span><select id="ngDiff" data-forecast>' +
-      Object.keys(D.DIFFICULTY).map(function (d) {
-        return '<option value="' + d + '"' + (d === 'standard' ? ' selected' : '') + '>' + D.DIFFICULTY[d].name + ' — ' + D.DIFFICULTY[d].desc + '</option>';
-      }).join('') + '</select></div>';
-    html += '<div class="row"><span class="sub" style="width:70px">world</span>' +
-      '<select id="ngDen" data-forecast>' + Object.keys(D.WORLD.density).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.density[k].name + '</option>'; }).join('') + '</select>' +
-      '<select id="ngWea" data-forecast>' + Object.keys(D.WORLD.wealth).map(function (k) { return '<option value="' + k + '"' + (k === 'standard' ? ' selected' : '') + '>' + D.WORLD.wealth[k].name + '</option>'; }).join('') + '</select></div>';
+    html += '<div class="dialGrid">';
+    html += dialRow('difficulty', '<select id="ngDiff" data-forecast>' + opts(D.DIFFICULTY, 'standard', function (k, v) { return v.name + ' — ' + v.desc; }) + '</select>', 'difficulty');
+    html += dialRow('systems', '<select id="ngDen" data-forecast>' + opts(D.WORLD.density, 'standard') + '</select>', 'systems');
+    html += dialRow('markets', '<select id="ngWea" data-forecast>' + opts(D.WORLD.wealth, 'standard') + '</select>', 'markets');
+    html += dialRow('age', '<select id="ngAge" data-forecast>' + opts(D.WORLD.age, 'settled') + '</select>', 'age');
+    html += dialRow('pattern', '<select id="ngTopo" data-forecast>' + opts(D.WORLD.topology, 'natural') + '</select>', 'pattern');
+    html += dialRow('the heart', '<select id="ngHeart" data-forecast>' + opts(D.HEART, 'home') + '</select>', 'heart');
+    html += dialRow('threat', '<select id="ngThreat" data-forecast>' + opts(D.THREAT, chosenThreat, function (k, v) { return v.name + ' — ' + v.desc; }) + '</select>', 'threat');
+    html += '</div>';
 
-    // Threat — decoupled scourge clock
-    html += '<div class="row"><span class="sub" style="width:70px">threat</span><select id="ngThreat" data-forecast>' +
-      Object.keys(D.THREAT).map(function (t) {
-        return '<option value="' + t + '"' + (t === chosenThreat ? ' selected' : '') + '>' + D.THREAT[t].name + ' — ' + D.THREAT[t].desc + '</option>';
-      }).join('') + '</select></div>';
+    // (Live forecast now lives in the sticky footer below.)
 
-    // Live forecast
-    html += '<div class="forecast" id="ngForecast">' + esc(forecastLine()) + '</div>';
-
-    // Doctrine lean + aptitude
-    html += '<h4>Inclination <span class="h4sub">— optional leanings, decided fully out there</span></h4>';
-    html += '<div class="row"><span class="sub" style="width:70px">doctrine</span><select id="ngLean">' +
-      '<option value="">— decide out there —</option>' +
+    // Doctrine lean + aptitude — collapsible (optional, decided out there)
+    html += foldHead('inclination', 'Inclination', 'optional leanings, decided fully out there', false);
+    html += '<div class="foldBody hidden" data-fold-body="inclination"><div class="dialGrid">';
+    html += dialRow('doctrine', '<select id="ngLean"><option value="">— decide out there —</option>' +
       Object.keys(D.DOCTRINE_DISCOUNT).map(function (id) {
         return '<option value="' + id + '"' + (id === chosenLean ? ' selected' : '') + '>' + D.TECHS[id].name.replace('Doctrine: ', '') + ' — ' + D.TECHS[id].desc + '</option>';
-      }).join('') + '</select></div>';
-    html += '<div class="row"><span class="sub" style="width:70px">aptitude</span><select id="ngApt" style="flex:1">' +
-      '<option value="">— undecided (find yourself out there) —</option>' +
+      }).join('') + '</select>');
+    html += dialRow('aptitude', '<select id="ngApt"><option value="">— undecided (find yourself out there) —</option>' +
       Object.keys(D.PERKS).filter(function (id) { return !D.PERKS[id].req; }).map(function (id) {
         const p = D.PERKS[id];
         return '<option value="' + id + '">' + p.icon + ' ' + p.name + ' — ' + p.desc + '</option>';
-      }).join('') + '</select></div>';
+      }).join('') + '</select>');
+    html += '</div></div>';
 
-    // Weave conditions — stackable modifiers
-    html += '<h4>Weave conditions <span class="h4sub">— optional spice, stack freely</span></h4>';
-    html += '<div class="condGrid">';
+    // Weave conditions — collapsible; count badge shows how many are stacked.
+    const condCount = Object.keys(chosenConditions).filter(function (k) { return chosenConditions[k]; }).length;
+    html += foldHead('conditions', 'Weave conditions', 'optional spice, stack freely', false, condCount);
+    html += '<div class="foldBody hidden" data-fold-body="conditions"><div class="condGrid">';
     for (const cid of D.CONDITION_ORDER) {
       const c = D.CONDITIONS[cid];
       const on = !!chosenConditions[cid];
@@ -375,17 +453,22 @@ SW.uiModals = (function () {
         '<span class="condMark">' + (on ? '◉' : '○') + '</span></div>' +
         '<div class="condDesc">' + esc(c.desc) + '</div></div>';
     }
-    html += '</div>';
+    html += '</div></div>';
 
-    // Seed + prologue
-    html += '<div class="row" style="margin-top:8px"><span class="sub" style="width:70px">seed</span><input id="ngSeed" placeholder="random" style="flex:1"></div>';
-    html += '<div class="row"><label class="sub"><input type="checkbox" id="ngTut"' +
-      (SW.game.legacy().prologue ? '' : ' checked') + '> Sol prologue — wake at home, learn the verb' +
-      (SW.game.legacy().prologue ? ' (completed)' : '') + '</label></div>';
+    // Seed (prologue toggle now lives at the top of the panel)
+    html += '<div class="dialGrid"><div class="dialLabel">seed</div><div class="dialCtrl"><input id="ngSeed" placeholder="random"></div></div>';
 
-    html += '<div class="choices" style="margin-top:14px;flex-direction:row;gap:8px">' +
+    // close right column + columns wrapper
+    html += '</div></div>';
+
+    // Sticky footer: the live forecast (the payoff line) stays in view while
+    // you tune dials, with the begin/back actions pinned beside it.
+    html += '<div class="setupFoot">' +
+      '<div class="forecast" id="ngForecast">' + esc(forecastLine()) + '</div>' +
+      '<div class="setupActions">' +
+      '<button data-act="backToTitle">back</button>' +
       '<button class="primary grow" data-act="begin">begin weaving ▸</button>' +
-      '<button data-act="backToTitle">back</button></div>';
+      '</div></div>';
     modal.innerHTML = html;
 
     // wire origin selection
@@ -396,6 +479,21 @@ SW.uiModals = (function () {
         modal.querySelectorAll('.originCard').forEach(function (x) { x.classList.toggle('sel', x === el); });
       });
     });
+    // collapsible section headers (Inclination, Weave conditions)
+    modal.querySelectorAll('[data-fold]').forEach(function (h) {
+      h.addEventListener('click', function () {
+        const key = h.dataset.fold;
+        const open = h.classList.toggle('open');
+        const body = modal.querySelector('[data-fold-body="' + key + '"]');
+        if (body) body.classList.toggle('hidden', !open);
+        const caret = h.querySelector('.foldCaret'); if (caret) caret.textContent = open ? '▾' : '▸';
+      });
+    });
+    function updateCondCount() {
+      const n = Object.keys(chosenConditions).filter(function (k) { return chosenConditions[k]; }).length;
+      const badge = modal.querySelector('[data-fold-count="conditions"]');
+      if (badge) { badge.textContent = n ? n : ''; badge.classList.toggle('hidden', !n); }
+    }
     // wire condition toggles
     modal.querySelectorAll('[data-cond]').forEach(function (el) {
       el.addEventListener('click', function () {
@@ -403,8 +501,25 @@ SW.uiModals = (function () {
         chosenConditions[id] = !chosenConditions[id];
         el.classList.toggle('on', !!chosenConditions[id]);
         const mark = el.querySelector('.condMark'); if (mark) mark.textContent = chosenConditions[id] ? '◉' : '○';
+        updateCondCount();
       });
     });
+    // founding myth: remember the pick and show its line live
+    const mythSel = $('#ngMyth');
+    if (mythSel) {
+      mythSel.addEventListener('change', function () {
+        chosenMyth = mythSel.value;
+        const l = $('#ngMythLine'); if (l) l.textContent = (D.MYTHS[chosenMyth] && D.MYTHS[chosenMyth].line) || '';
+      });
+    }
+    // prologue switch: keep the card's .on state + mark glyph in sync
+    const ptBox = $('#ngTut'), ptCard = $('#prologueCard');
+    if (ptBox && ptCard) {
+      ptBox.addEventListener('change', function () {
+        ptCard.classList.toggle('on', ptBox.checked);
+        const m = ptCard.querySelector('.ptMark'); if (m) m.textContent = ptBox.checked ? '◉' : '○';
+      });
+    }
     // live forecast on any galaxy/threat change
     modal.querySelectorAll('[data-forecast]').forEach(function (el) {
       el.addEventListener('change', function () {
@@ -422,6 +537,42 @@ SW.uiModals = (function () {
   };
   m.selectedThreat = function () { return chosenThreat; };
   m.selectedLean = function () { const el = $('#ngLean'); return (el && el.value) || ''; };
+
+  // A network name + motto generator for the Identity reroll button. Pre-game,
+  // so it uses Math.random (UI only — never the sim RNG). Two evocative parts
+  // stitched into a "The <Adjective> <Noun>" that reads like a trade house.
+  const NAME_A = ['Provisional', 'Patient', 'Far-Threaded', 'Quiet', 'Severed', 'Gilded', 'Long', 'Errant', 'Tidal', 'Hollow', 'Bright', 'Unbroken', 'Drifting', 'Lantern', 'Salt'];
+  const NAME_B = ['Weft', 'Thread', 'Loom', 'Ferry', 'Reach', 'Caravan', 'Concord', 'Span', 'Skein', 'Passage', 'Line', 'Hand', 'Compact', 'Tide', 'Knot'];
+  const MOTTOS = ['Finish the round.', 'One galaxy, one thread.', 'We carry what others won\'t.', 'No world left dark.', 'The long way is the only way.', 'Spin it back together.', 'Late is still arrival.', 'Profit, then mercy.'];
+  function pickR(a) { return a[Math.floor(Math.random() * a.length)]; }
+  m.rerollName = function () {
+    const name = 'The ' + pickR(NAME_A) + ' ' + pickR(NAME_B);
+    const nEl = $('#idName'); if (nEl) nEl.value = name;
+    // motto rerolls alongside the name ~half the time, so it stays a surprise
+    if (Math.random() < 0.5) { const mEl = $('#idMotto'); if (mEl) mEl.value = pickR(MOTTOS); }
+  };
+
+  // "Surprise me": roll every dial to a random-but-valid value, a fresh myth,
+  // name, motto and sigil — then the player tweaks to taste. Sets the form
+  // controls directly and refreshes the dependent UI (forecast, myth line,
+  // condition badge). Conditions are left untouched (they're deliberate spice).
+  m.surpriseWeave = function () {
+    function setSel(id, keys) { const el = $('#' + id); if (el) el.value = keys[Math.floor(Math.random() * keys.length)]; }
+    setSel('ngDiff', Object.keys(D.DIFFICULTY));
+    setSel('ngDen', Object.keys(D.WORLD.density));
+    setSel('ngWea', Object.keys(D.WORLD.wealth));
+    setSel('ngAge', Object.keys(D.WORLD.age));
+    setSel('ngTopo', Object.keys(D.WORLD.topology));
+    setSel('ngHeart', Object.keys(D.HEART));
+    const threats = Object.keys(D.THREAT); chosenThreat = threats[Math.floor(Math.random() * threats.length)];
+    const tEl = $('#ngThreat'); if (tEl) tEl.value = chosenThreat;
+    chosenMyth = D.MYTH_ORDER[Math.floor(Math.random() * D.MYTH_ORDER.length)];
+    const myEl = $('#ngMyth'); if (myEl) myEl.value = chosenMyth;
+    const ml = $('#ngMythLine'); if (ml) ml.textContent = (D.MYTHS[chosenMyth] && D.MYTHS[chosenMyth].line) || '';
+    m.rerollName();
+    SW.ui._sigilSeed = Math.floor(Math.random() * 100000);
+    const f = $('#ngForecast'); if (f) f.textContent = forecastLine();
+  };
 
   // Turn a locked origin's unlock condition into an aspirational goal line.
   function unlockGoal(def) {

@@ -67,7 +67,7 @@ SW.game = (function () {
       doctrineLean: doctrineLean,
       daily: (typeof opts.daily === 'string') ? opts.daily : null,
       origin: originId,
-      identity: Object.assign({ name: 'The Provisional Weft', hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.' }, opts.identity || {}),
+      identity: Object.assign({ name: 'The Provisional Weft', hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.', myth: 'none' }, opts.identity || {}),
       tick: 0, paused: true, speed: 1,
       credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + startCreditsBonus),
       research: 0,
@@ -111,6 +111,51 @@ SW.game = (function () {
     if (opts.aptitude && D.PERKS[opts.aptitude] && !D.PERKS[opts.aptitude].req) state.perks.push(opts.aptitude);
     if (origin.scourgeEarlier && state.scourge.startAt > 0) state.scourge.startAt = Math.max(120, state.scourge.startAt - origin.scourgeEarlier);
     let startSys = state.homeId;
+    // The Heart — where you wake, and where HOME actually is. 'home' keeps Sol
+    // (the prologue's stage and the narrative anchor). 'rim' and 'drift'
+    // *relocate state.homeId itself* to the chosen system, so it becomes your
+    // true home: the range anchor, the guaranteed shipyard (A.buyShip allows
+    // building at homeId), and where the camera centres. Sol stops being the
+    // universal centre. The start neighbourhood is seeded, so it isn't always
+    // the same place. origin.startReach composes on top below.
+    // The Sol prologue *is* the wake-at-home beat, so it pins the Heart to Sol
+    // regardless of the dial (rim/drift are for the open-galaxy start).
+    const heart = opts.tutorial ? 'home' : ((state.world && state.world.heart) || 'home');
+    // helper: adopt `sysId` as the new home — reveal its neighbourhood, ensure
+    // it can anchor range + build ships (a relay grants range from anywhere).
+    function relocateHome(sysId, claimable) {
+      const s0 = state.systems[sysId];
+      state.homeId = sysId;
+      s0.discovered = true; s0.surveyed = true;
+      for (const nb of s0.links) { state.systems[nb].discovered = true; state.systems[nb].surveyed = true; }
+      // a beacon so command range reaches out from the new home like Sol's does
+      if (s0.buildings.indexOf('relay') < 0) s0.buildings.push('relay');
+      if (claimable) {
+        // a drift home is an unsettled star you claim: seed it the toehold an
+        // inhabited world would already have, so the run is playable from tick 0
+        s0.pop = Math.max(s0.pop || 0, 0.4);
+        s0.prosperity = Math.max(s0.prosperity || 0, 45);
+      }
+    }
+    if (heart === 'rim') {
+      // a far, settled world — picked from the farthest handful (seeded), so the
+      // rim start varies between galaxies rather than always the single farthest.
+      const settled = state.systems.filter(function (s) {
+        return s.id !== state.homeId && !s.wonder && s.type !== 'frontier' && s.scourge === 0 && s.pop > 0;
+      }).sort(function (a, b) { return b.hops - a.hops; });
+      const pool = settled.slice(0, Math.max(1, Math.min(6, settled.length)));
+      if (pool.length) { startSys = pool[Math.floor(U.rnd(state) * pool.length)].id; relocateHome(startSys, false); }
+    } else if (heart === 'drift') {
+      // an unsettled star, far enough out to feel like the dark — claim it.
+      const cands = state.systems.filter(function (s) {
+        return s.id !== state.homeId && !s.wonder && s.type === 'frontier' && s.hops >= 3;
+      });
+      if (cands.length) { startSys = cands[Math.floor(U.rnd(state) * cands.length)].id; relocateHome(startSys, true); state.story.flags.heart_drift = true; }
+    }
+    // The Heart may grant a small starting purse (drift wakes you with nothing
+    // but credits to claim a home with).
+    const heartDef = D.HEART[heart];
+    if (heartDef && heartDef.credits) state.credits += heartDef.credits;
     if (origin.startReach) {
       const reach = state.systems.filter(function (s) { return s.region === 'reach' && s.type !== 'frontier'; });
       if (reach.length) {
@@ -124,6 +169,10 @@ SW.game = (function () {
     (origin.ships || ['sparrow']).forEach(function (h, i) {
       SW.ships.create(state, h, startSys, i === 0 ? 'Stitch' : undefined);
     });
+    // Founding Myth — a single line of lore on the run's opening ticker. Pure
+    // flavor; events may read state.identity.myth for tinted text later.
+    const myth = D.MYTHS && D.MYTHS[state.identity.myth];
+    if (myth && myth.line) G.news(state, myth.line, startSys);
     // The Sol cold open — only when explicitly requested (never for bots/tests)
     if (opts.tutorial && SW.tutorial) SW.tutorial.init(state);
     G.state = state;

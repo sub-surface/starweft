@@ -16,6 +16,18 @@ SW.scourge = (function () {
     let accel = thr.spreadAccel !== undefined ? thr.spreadAccel : diff.spreadAccel;
     // The Long Quiet (and friends) push the waking further out.
     if (startAt > 0) startAt = Math.round(startAt * (D.condFx ? D.condFx(state, 'scourgeStartMult', 1) : 1));
+    // The Named Adversary: the threat gets a name and a temperament. The
+    // temperament lightly bends spread feel; 'neutral' leaves every multiplier
+    // at 1, so an un-chosen ('inherit') threat plays exactly as before. Named
+    // via the seeded RNG so replays match.
+    const temps = Object.keys(D.SCOURGE_TEMPERAMENTS);
+    let tempId = 'neutral';
+    if (state.threat === 'relentless' || state.threat === 'early') tempId = 'ravenous';
+    else if (state.threat === 'slow' || state.threat === 'dormant') tempId = 'patient';
+    else if (D.SCOURGE_TEMPERAMENTS[state.threat]) tempId = state.threat;
+    else if (startAt >= 0 && U.chance(state, 0.5)) tempId = U.pick(state, temps); // 'inherit'/standard: a coin-flip personality
+    const temp = D.SCOURGE_TEMPERAMENTS[tempId] || D.SCOURGE_TEMPERAMENTS.neutral;
+    if (startAt > 0) interval = Math.round(interval * (temp.intervalMult || 1));
     state.scourge = {
       phase: startAt < 0 ? 'never' : 'dormant',
       startAt: startAt,
@@ -24,6 +36,8 @@ SW.scourge = (function () {
       nextAt: 0,
       delivered: 0,
       originId: state.scourgeOriginId,
+      name: startAt < 0 ? null : U.pick(state, D.SCOURGE_NAMES),
+      temperament: tempId,
     };
   };
 
@@ -45,6 +59,10 @@ SW.scourge = (function () {
         corrupt(state, state.systems[sc.originId], true);
         state.story.flags.scourge_awake = true;
         state.story.flags.scourge_known = true;
+        if (sc.name) {
+          const t = (D.SCOURGE_TEMPERAMENTS[sc.temperament] || {}).name || '';
+          SW.game.news(state, 'They are calling it ' + sc.name + (t ? ' — ' + t + ', and awake' : ', and it is awake') + '.', sc.originId);
+        }
       }
       return;
     }
@@ -56,8 +74,12 @@ SW.scourge = (function () {
 
     // spread attempt
     if (state.tick >= sc.nextAt) {
-      sc.nextAt = state.tick + Math.max(T.scourgeMinInterval, sc.interval);
+      const temp = (D.SCOURGE_TEMPERAMENTS && D.SCOURGE_TEMPERAMENTS[sc.temperament]) || {};
+      // A capricious adversary jitters its rhythm; others keep a steady beat.
+      const jitter = temp.variance ? (1 + (U.rnd(state) * 2 - 1) * temp.variance) : 1;
+      sc.nextAt = state.tick + Math.max(T.scourgeMinInterval, Math.round(sc.interval * jitter));
       sc.interval = Math.max(T.scourgeMinInterval, sc.interval - sc.accel);
+      const richBias = temp.richBias || 1;
 
       // FIX: frontier-weighted spread. Accumulate all (corrupted -> eligible-neighbor) edges,
       // then pick one weighted by target attractiveness rather than random source + random target.
@@ -71,7 +93,9 @@ SW.scourge = (function () {
           // count how many of tgt's neighbors are already corrupted (pincer pressure)
           let corruptedNeighbors = 0;
           for (const nid2 of tgt.links) { if (state.systems[nid2].scourge === 2) corruptedNeighbors++; }
-          const weight = 1 + (tgt.pop > 0 ? 1 : 0) + (corruptedNeighbors >= 2 ? 1 : 0);
+          // richBias amplifies the pull toward populous worlds (a ravenous
+          // adversary goes for the throat; a patient one is more even-handed).
+          const weight = 1 + (tgt.pop > 0 ? 1 * richBias : 0) + (corruptedNeighbors >= 2 ? 1 : 0);
           frontier.push({ tgt: tgt, weight: weight });
         }
       }

@@ -526,9 +526,17 @@ SW.ships = (function () {
       let score = hops * 1000 + U.dist(state.systems[ship.at], sys) + (sys.discovered ? -120 : 0);
       // every scout reads the charts a little differently (stable per pair)
       score += (U.seedFrom(ship.id + '|' + sys.id) % 1000) * 0.8;
+      // avoid another scout's claim and the space around it. Targeting the very
+      // same system is all but disqualified (a big flat penalty that beats any
+      // hops/distance advantage); nearby space is discouraged on a falloff. The
+      // radius scales with star spacing so it bites at any distance scale (was a
+      // flat 12 ly with a graded penalty — too weak once distances doubled and a
+      // closer-by-one-hop shared target could still win).
+      const avoidR = Math.max(12, (D.TUNE.minSysDist || 3) * 2.5);
       for (const c of claimed) {
+        if (c.id === sys.id) { score += 100000; continue; }
         const d = U.dist(sys, c);
-        if (d < 12) score += 2600 - d * 180;
+        if (d < avoidR) score += 2600 - (d / avoidR) * 2160;
       }
       if (score < bestScore) { bestScore = score; best = sys; }
     }

@@ -54,19 +54,22 @@ SW.data = (function () {
   ];
 
   // ---- Ship hulls (speed in ly/tick; power = combat strength) ----
+  // Hull speeds scaled with the distance rescale (see D.TUNE SCALE NOTE) — ~3.4x
+  // the original — so a haul still takes about the same number of ticks it used
+  // to despite the now-vast distances.
   D.HULLS = {
     // trade line
-    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 0.85, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
-    courier:    { name: 'Courier',     cap: 25,  speed: 1.10, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
-    freighter:  { name: 'Freighter',   cap: 60,  speed: 0.75, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
-    liner:      { name: 'Liner',       cap: 15,  speed: 0.95, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
-    superhauler:{ name: 'Superhauler', cap: 150, speed: 0.65, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
+    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 2.90, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
+    courier:    { name: 'Courier',     cap: 25,  speed: 3.80, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
+    freighter:  { name: 'Freighter',   cap: 60,  speed: 2.60, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
+    liner:      { name: 'Liner',       cap: 15,  speed: 3.30, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
+    superhauler:{ name: 'Superhauler', cap: 150, speed: 2.20, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
     // frontier line
-    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 1.60, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
-    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 1.30, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
+    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 5.50, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
+    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 4.50, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
     // vanguard line
-    corvette:   { name: 'Corvette',    cap: 8,   speed: 1.10, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', desc: 'Escort hull. Assign to a route to guard it.' },
-    lancer:     { name: 'Lancer',      cap: 4,   speed: 1.00, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', desc: 'A wing of fighters and the ship that carries them.' },
+    corvette:   { name: 'Corvette',    cap: 8,   speed: 3.80, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', desc: 'Escort hull. Assign to a route to guard it.' },
+    lancer:     { name: 'Lancer',      cap: 4,   speed: 3.40, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', desc: 'A wing of fighters and the ship that carries them.' },
   };
 
   // ---- Buildings ----
@@ -253,7 +256,7 @@ SW.data = (function () {
     'cats_aboard', 'crew_hired', 'doctrine_chosen', 'doctrine_prompted',
     'archivist_sys', 'archivist_quest', 'archivist_friend', 'archivist_dead',
     'met_helix', 'met_mariner', 'panic_done', 'stance_chosen',
-    'first_thread',
+    'first_thread', 'heart_drift',
   ];
   D.FLAG_PREFIXES = ['met_', 'rival_collapsed_', 'absorbed_', 'mourned_'];
 
@@ -300,17 +303,62 @@ SW.data = (function () {
 
   // ---- World setup presets (run parameters; SPEC §3.5) ----
   D.WORLD = {
+    // Distances doubled again (see D.TUNE SCALE NOTE). Mean lane length is a real
+    // commitment; the sky reads as vast and uncrowded even at catalogue scale.
     density: {
-      sparse:   { name: 'Sparse — the long dark', sysCount: 180, bubbleR: 75, minSysDist: 3.2 },
-      standard: { name: 'Standard',               sysCount: 260, bubbleR: 58, minSysDist: 2.0 },
-      crowded:  { name: 'Crowded — close skies',  sysCount: 330, bubbleR: 52, minSysDist: 1.7 },
+      sparse:   { name: 'Sparse — the long dark', sysCount: 160, bubbleR: 248, minSysDist: 12.8 },
+      standard: { name: 'Standard',               sysCount: 230, bubbleR: 200, minSysDist: 9.0 },
+      crowded:  { name: 'Crowded — close skies',  sysCount: 310, bubbleR: 176, minSysDist: 6.6 },
     },
     wealth: {
       deprived: { name: 'Deprived — you are the thread', mult: 0.55 },
       standard: { name: 'Standard',                      mult: 1.0 },
       gilded:   { name: 'Gilded — fat and slow',         mult: 1.6 },
     },
+    // Galaxy Age — the Sundering. Tints generation, not difficulty. `reveal`
+    // is how many lanes deep the home neighborhood starts charted; `ruinMult`
+    // nudges Halo/ruin-rich region weighting and their research payoff.
+    age: {
+      young:   { name: 'Young — a recent Sundering', reveal: 2, ruinMult: 0.85, desc: 'Old lanes linger; home is better charted.' },
+      settled: { name: 'Settled',                    reveal: 1, ruinMult: 1.0,  desc: 'The standard galaxy.' },
+      ancient: { name: 'Ancient — the Long Forgetting', reveal: 0, ruinMult: 1.35, desc: 'Fully dark, but old wealth lies buried.' },
+    },
+    // Weave Pattern — biases the procedural fill's clumping. The Gabriel graph
+    // stays the lane source of truth; this only shapes where stars land.
+    topology: {
+      natural:   { name: 'Natural drift',  clump: 0,    spread: 1.0, desc: 'Uniform, coreward-dense. The default.' },
+      filaments: { name: 'Filaments',      clump: -0.3, spread: 1.25, desc: 'Long sparse strings — every lane precious.' },
+      cluster:   { name: 'Clustered',      clump: 0.5,  spread: 0.9, desc: 'Tight knots, lonely bridges between.' },
+      halo:      { name: 'Bright Halo',    clump: 0.25, spread: 1.1, desc: 'A rich core ringed by a dark frontier.' },
+    },
     badlands: { name: 'Deep Wilds', count: 180, R: 170 },
+  };
+  // The Heart — where you wake. Decoupled from origin (origin.startReach still
+  // composes/overrides). Resolved to a concrete start system in game.newGame.
+  D.HEART = {
+    home:  { name: 'The Old Orchard', desc: 'Home is Sol — central, settled, safe. The establishment is at your door.' },
+    rim:   { name: 'The Far Rim',     desc: 'Home is a distant settled world far from Sol. Exposed, but yours, and the Scourge comes for you late.', credits: 0 },
+    drift: { name: 'The Drift',       desc: 'No home given. Wake at an unsettled star out in the dark and claim it yourself.', credits: 250 },
+  };
+  // Founding Myth — one line of lore. Pure flavor, never a mechanical lever.
+  D.MYTHS = {
+    none:     { name: '— no myth —',          line: '' },
+    courier:  { name: 'The Last Courier',     line: 'You were a courier who never lost a parcel. The worlds remember.' },
+    keeper:   { name: 'The Loom-Keeper',      line: 'You tended the old Loom until the lanes went quiet. Now you re-spin them.' },
+    exile:    { name: 'The Exile',            line: 'Cast out from a world that no longer answers. You owe the dark nothing.' },
+    heir:     { name: 'The Ferry-Heir',       line: 'Your family ran the ferries before the Sundering. The debt is yours now.' },
+    nobody:   { name: 'Nobody In Particular', line: 'No legend, no lineage. Just a hull, a stick, and a long way to go.' },
+  };
+  D.MYTH_ORDER = ['none', 'courier', 'keeper', 'exile', 'heir', 'nobody'];
+  // The Scourge, named. Seeded at scourge.init; threads into news and events.
+  D.SCOURGE_NAMES = ['the Hush', 'the Unweaving', 'the Grey Tide', 'the Last Silence', 'the Sundering Bloom', 'the Quiet Rot', 'the Pale Verge'];
+  // Temperament lightly modulates spread *feel*. The neutral profile leaves all
+  // multipliers at 1 so 'inherit' threat = no balance change unless chosen.
+  D.SCOURGE_TEMPERAMENTS = {
+    neutral:    { name: 'methodical',  intervalMult: 1.0,  richBias: 1.0, variance: 0.0 },
+    patient:    { name: 'patient',     intervalMult: 1.15, richBias: 0.9, variance: 0.0 },
+    ravenous:   { name: 'ravenous',    intervalMult: 0.85, richBias: 1.4, variance: 0.0 },
+    capricious: { name: 'capricious',  intervalMult: 1.0,  richBias: 1.0, variance: 0.4 },
   };
   D.resolveWorld = function (opts) {
     opts = opts || {};
@@ -319,10 +367,16 @@ SW.data = (function () {
     const bad = D.WORLD.badlands;
     return {
       density: opts.density || 'standard', wealth: opts.wealth || 'standard',
+      age: D.WORLD.age[opts.age] ? opts.age : 'settled',
+      topology: D.WORLD.topology[opts.topology] ? opts.topology : 'natural',
+      heart: D.HEART[opts.heart] ? opts.heart : 'home',
       badlandsPreset: 'deep',
       sysCount: den.sysCount, bubbleR: den.bubbleR, minSysDist: den.minSysDist,
       wealthMult: wea.mult,
-      badlandsCount: bad.count, badlandsR: bad.R,
+      // The dark shell sits beyond the bubble; scale its outer radius with the
+      // bubble (inner edge is bubbleR*1.12 in makeBadlands) so it stays a shell
+      // at any distance scale rather than collapsing inside an enlarged bubble.
+      badlandsCount: bad.count, badlandsR: Math.max(bad.R, den.bubbleR * 2.0),
     };
   };
 
@@ -375,8 +429,17 @@ SW.data = (function () {
     wanderlust:   { name: 'Wanderlust',      glyph: '✧', kind: 'wild',
       desc: 'Surveys pay double. The dark is full of secrets and the urge to chart them — explorers, this one is for you.',
       fx: { surveyMult: 2.0 } },
+    longMemory:   { name: 'The Long Memory',  glyph: '⟲', kind: 'harder',
+      desc: 'Rivals hold a grudge. Undercut one and it presses your lanes harder, longer — competition gets personal.',
+      fx: { rivalGrudge: true, rivalAggression: 1.25 } },
+    pilgrimTide:  { name: 'Pilgrim Tide',     glyph: '⚑', kind: 'wild',
+      desc: 'People are leaving. Passenger demand surges across the weave — ferry the fleeing and be paid for it.',
+      fx: { passengerMult: 1.8 } },
+    quietYear:    { name: 'The Quiet Year',   glyph: '❍', kind: 'kinder',
+      desc: 'The first stretch is utterly still — no events, no alarms. A meditative opening to find your feet.',
+      fx: { quietUntil: 50 } },
   };
-  D.CONDITION_ORDER = ['fatPurse', 'goldenAge', 'wanderlust', 'boomBust', 'longQuiet', 'scarcity', 'pirateTithe', 'ironThread'];
+  D.CONDITION_ORDER = ['fatPurse', 'goldenAge', 'wanderlust', 'quietYear', 'boomBust', 'longQuiet', 'pilgrimTide', 'scarcity', 'pirateTithe', 'longMemory', 'ironThread'];
 
   // Multiply together every active condition's fx[key]; default 1 (or `def`).
   // For boolean fx (e.g. scarcityStart) use D.condHas instead.
@@ -397,13 +460,37 @@ SW.data = (function () {
     }
     return false;
   };
+  // Largest fx[key] across active conditions (for thresholds like quietUntil,
+  // where stacking should take the longest, not multiply). Default 0.
+  D.condMax = function (state, key) {
+    let v = 0;
+    const list = (state && state.conditions) || [];
+    for (let i = 0; i < list.length; i++) {
+      const c = D.CONDITIONS[list[i]];
+      if (c && c.fx && typeof c.fx[key] === 'number') v = Math.max(v, c.fx[key]);
+    }
+    return v;
+  };
 
   // ---- Tuning ----
+  // SCALE NOTE: the bubble was widened in two passes (~1.7x, then doubled again)
+  // for a genuine sense of a vast, drifted-apart galaxy. Every distance lever
+  // moves together so travel commitment and command reach stay constant in
+  // *relative* terms — only the absolute distances (and the screen gaps between
+  // stars) grow. The Gabriel lane graph still auto-connects, so the network
+  // stays legible; the lanes are simply long now.
+  //   distScale stretches the REAL star catalogue (starcat.js) by the same factor
+  //   the procedural bubble grew (bubbleR / 58, the original radius), so the real
+  //   neighbourhood spreads on screen too while keeping its true proportions
+  //   (Proxima & Alpha Centauri stay correctly ~0.2 ly apart).
+  // Keep D.TUNE.bubbleR == D.WORLD.density.standard.bubbleR (render reads TUNE for
+  // the initial zoom-to-fit and the labels).
   D.TUNE = {
-    bubbleR: 58,               // playable bubble radius, ly
-    sysCount: 260,             // total systems (real + procedural)
-    minSysDist: 2.0,           // ly
-    baseRange: 20,             // command range, ly
+    bubbleR: 200,              // playable bubble radius, ly
+    distScale: 200 / 58,       // real-catalogue stretch (bubbleR / original 58)
+    sysCount: 230,             // total systems (real + procedural)
+    minSysDist: 9.0,           // ly — the floor that stops stars clumping
+    baseRange: 68,             // command range, ly
     rangeBoost: 1.45,
     priceLo: 0.35, priceHi: 2.75, priceK: 1.5, priceMid: 1.7,
     capDefault: 120, capProducer: 260,
@@ -437,7 +524,7 @@ SW.data = (function () {
     charterMax: 3,             // open charters at once
     charterTtl: 240,           // ticks before a charter lapses
     charterBase: 300,          // ¤ per M base fare
-    charterPerLy: 18,          // ¤ per M per ly
+    charterPerLy: 6,           // ¤ per M per ly (scaled down with the distance rescale so fares stay balanced)
     // v2
     surveyTicks: 60,           // base ticks for a pathfinder to survey a system
     surveyResearch: 18,        // research per completed survey

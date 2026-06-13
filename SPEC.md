@@ -607,3 +607,236 @@ needs — pad/texture/percussion stems, chord voicings, a tempo/feel reference �
 and translate those into Web Audio synthesis recipes (oscillator stacks, filter
 envelopes, granular textures) so the in-browser soundtrack carries that signature
 without shipping any audio files. See the memory `boot-and-audio-refs`.
+
+## 18. New Weave — authored worlds (run-setup expansion)
+
+Status: **shipped (Tier 1+2).** The run-setup panel (`showNewRun`) graduated
+from "config dials" to "authoring a world." Everything here is additive and
+JSON-serializable — no `SAVE_VERSION` bump; old saves load (read every field
+defensively). The goal is texture: parameters that change a run's *story*, not
+just its difficulty multiplier.
+
+All new dials live in `D.WORLD` (galaxy shape/history) or as their own tables;
+all read through `D.resolveWorld(opts)` into `state.world` so generation and the
+forecast both see one resolved object. Identity gains a **Founding Myth**; the
+Scourge gains a **name and temperament**; three new conditions extend
+`D.CONDITIONS`.
+
+### 18.1 Galaxy Age — *The Sundering* (`D.WORLD.age`)
+
+How long ago the worlds drifted apart. Tints generation, not difficulty.
+
+- `young`   — "A Recent Sundering": some old lanes survive. More pre-discovered
+  systems around home (extra revealed ring), slightly denser lane graph.
+- `settled` — the standard galaxy (default).
+- `ancient` — "The Long Forgetting": fully dark. Fewer systems start discovered,
+  but ruin-rich Halo regions are more common and pay more research.
+
+Hook: `galaxy.generate` reads `W.age` after the home reveal (step 8) to widen or
+narrow the discovered ring; `assignTypes`/region weighting nudged by age.
+
+### 18.2 Topology — *Weave Pattern* (`D.WORLD.topology`)
+
+A hint that biases the procedural fill's clustering, not a hard graph rewrite
+(the Gabriel graph stays the lane source of truth).
+
+- `natural`   — the existing uniform-in-volume + coreward bias (default).
+- `filaments` — long sparse strings: raise `minSysDist`, lower count slightly →
+  every lane precious.
+- `cluster`   — tight knots with lonely bridges: fill seeds extra associations.
+- `halo`      — rich discovered core ringed by a dark frontier.
+
+Hook: `fillProcedural` reads `W.topology` to adjust jitter/clumping; pure
+generation-time, no sim cost.
+
+### 18.3 The Heart — *where you wake* (`D.HEART`, resolved to a start system)
+
+Decouples the start system from origin. Applied in `game.newGame` after galaxy
+gen, before ship creation (so origin's `startReach` still composes/overrides).
+
+- `core`  — safe, rich, slow. Start nearer Sol/coreward-rich; Scourge reaches
+  you last. (Default → home/Sol.)
+- `rim`   — poor, exposed, but bought time: start at a high-`hops` frontier
+  world; +starting reveal of neighbors.
+- `drift` — no settled home: start at an unsettled system, claim it. Slightly
+  more starting credits to compensate; story flag `heart_drift` for flavor.
+
+### 18.4 Founding Myth — *The First Thread* (`state.identity.myth`)
+
+One-line seed of lore chosen in Identity. Pure flavor: tints opening news and
+event text; never a mechanical lever. Stored on `identity.myth` (id into
+`D.MYTHS`); `D.MYTHS[id].line` is the screenshot-able sentence. A "—" option
+means none. Surfaced via `G.news` on tick 0 and available to events as
+`state.identity.myth`.
+
+### 18.5 Named Adversary — *the Scourge has a name* (`state.scourge.name/temperament`)
+
+The threat stops being a faceless clock. At `scourge.init`, seed a name (from
+`D.SCOURGE_NAMES`) and a **temperament** (`D.SCOURGE_TEMPERAMENTS`) that lightly
+modulates spread feel — patient (slower, steadier), ravenous (faster, greedier
+toward rich worlds), capricious (more variance). Temperament defaults so that
+'inherit' threat = the neutral profile (no balance change unless chosen). The
+name threads into the awakening news line and existing scourge events.
+
+Hook: `scourge.init` sets `sc.name`, `sc.temperament`; `scourge.tick` reads the
+temperament multipliers where it already computes interval/target. Determinism
+preserved (named via `U.pick(state, ...)`).
+
+### 18.6 Three new conditions (extend `D.CONDITIONS` + `D.CONDITION_ORDER`)
+
+- **The Long Memory** (`longMemory`, harder) — rivals hold grudges: undercut one
+  and it presses your lanes. `fx.rivalGrudge: true`, read in `rivals.tick`.
+- **Pilgrim Tide** (`pilgrimTide`, wild) — passenger demand surges; people are
+  *leaving*. `fx.passengerMult: 1.8`, read where passenger offers generate.
+- **The Quiet Year** (`quietYear`, kinder) — the first ~50 cycles are utterly
+  still: no story/world events. `fx.quietUntil: 50`, gated in story/worldevents
+  tick. A meditative opening.
+
+### 18.7 Menu, forecast & QOL
+
+`showNewRun` gains an **age / pattern / the heart** dial in the Galaxy column and
+a **Founding Myth** select in Identity. `forecastLine` extends to mention age and
+heart in plain language. `dailyConfig` derives the new dials from the date hash
+so the Daily Weave stays deterministic and shared. The begin handler threads the
+new fields into `newGame`.
+
+**Layout & QOL polish** (the panel earns the "love and care" bar):
+
+- **Aligned dial grid.** The right column is one `label | control` CSS grid
+  (`.dialGrid`) — every select flush and full-width, labels right-aligned —
+  instead of ragged wrapping `.row`s. `world` split into the clearer
+  `systems` / `markets` rows.
+- **Collapsible sections.** *Inclination* and *Weave conditions* are folded by
+  default (`foldHead()` + `[data-fold]` wiring), so the whole panel fits without
+  scrolling. Weave conditions shows a live **count badge** of how many stack.
+- **Per-dial hover tooltips.** Native `title=` on each Galaxy label (the in-game
+  infobox HUD doesn't exist behind a pre-game modal). Tip text is generated from
+  the data tables (`tableTip()`) so it can never drift out of sync.
+- **"✦ surprise me"** rolls every dial + a fresh myth/name/motto/sigil, then the
+  player tweaks to taste (`m.surpriseWeave`). **Name reroll** (`↻` by the network
+  name) draws from a small curated adjective/noun pool (`m.rerollName`). Both are
+  UI-only (`Math.random`, never the sim RNG).
+- **Themed form controls.** `accent-color` on range/checkbox so the hue slider
+  and toggles match the monochrome + one-accent palette.
+
+Tests: smoke (new tables resolve, determinism incl. adversary name, condition fx,
+quiet-year actually stills events) + browser_boot (all selectors render, folds &
+QOL controls present, randomizers run, begin still works).
+
+## 19. The bigger bubble — scale, a galaxy that isn't Sol-centred, and the roadmap
+
+The guiding feel: **the worlds drifted apart.** Stars should sit a real distance
+from each other; the network should still read as connected; and Sol should stop
+being the inevitable centre of every run. This section records what shipped and
+sequences the larger ambitions (in-system richness, richer nebulae & galactic
+features, many-systems completeness, performance). The
+`docs/reviews/GALAXY_SCALE_AND_IN_SYSTEM_LIFE.md` audit is the deep reference;
+this section is the contract and build order.
+
+### 19.1 Distance rescale (shipped)
+
+Distances widened **~1.7x** from the original. The three coupled levers moved
+*together* so the bubble grew while travel commitment and command reach stayed
+constant in relative terms:
+
+- `D.WORLD.density.standard`: bubbleR 58 → **100 ly**, minSysDist 2.0 → **4.5 ly**
+  (the floor that stops procedural stars clumping), sysCount 260 → **230**. Sparse
+  and crowded presets scaled to match. `D.TUNE` defaults track the standard preset.
+- **Hull speeds ×1.7** and **baseRange 20 → 34** so `dist/speed` ticks per hop and
+  the reachable frontier stay familiar — only the absolute numbers (and the visual
+  gaps) grew. `charterPerLy` scaled *down* (18 → 11) so distance-priced fares stay
+  balanced.
+- **Camera framing now scales with `bubbleR`** (`R.fit` was a hardcoded 160 tuned
+  for the small bubble; now `~2.4 × bubbleR`). This is what makes the widening
+  *read* as space on screen rather than just a bigger overflow — the camera sits a
+  touch tighter than a full fit and the player pans outward to take in the weave.
+
+Verification standard (per review §3.4): generation stays **100% lane-connected**
+from home across seeds; bubble mean nearest-neighbour ~11–12 ly; ~10–14 ticks per
+Sparrow hop. Economy seeding survives (smoke green) — and the seed-fragile civic /
+chain-route tests were hardened to assert the *mechanism*, not a specific geometry,
+since "internal economies are hypersensitive to small numbers" (§4).
+
+### 19.2 Home is not always Sol (shipped)
+
+`state.homeId` now **follows The Heart**, so Sol is no longer the universal centre:
+
+- `home` → Sol (the narrative anchor and the prologue's stage).
+- `rim` → home *relocates* to a far settled world, picked from the farthest handful
+  (seeded, so it **varies between galaxies**).
+- `drift` → home relocates to an unsettled star you **claim**: seeded a small
+  population toehold + prosperity so the run is playable from tick 0.
+- A relocated home gets a **relay** (so command range reaches out as Sol's does)
+  and, because `A.buyShip` allows building at `homeId`, a **guaranteed shipyard** —
+  fixing the old soft-lock where the only shipyard was Sol, which a rim/drift start
+  might never have discovered. The camera centres on the real home via `afterLoad`.
+- The **Sol prologue pins the Heart to `home`** regardless of the dial (the cold
+  open *is* the wake-at-home beat and uses Sol-specific bodies).
+
+### 19.3 Starter presets + a deeper Custom section (next — menu)
+
+The New Weave dials have outgrown a flat list. Consolidate into **named starter
+presets** that bundle origin + heart + galaxy dials into a one-click identity,
+with the full dial set tucked into a collapsible **Custom** section:
+
+- Presets read as fantasies, not config: e.g. **Courier** (Sol home, standard
+  galaxy — the classic), **Rimrunner** (rim heart, sparse, lean markets),
+  **Drifter** (drift heart, ancient, filaments), **Daily** (the shared seed).
+  Each is a `D.STARTER_PRESETS` row → applies a set of dial values; "Custom"
+  reveals/edits them. Reuse the `foldHead` collapsible pattern from §18.7.
+- Goal: a first-timer picks a vibe and presses begin; a veteran opens Custom and
+  authors every lever. Presets must be data-only (one table), and "surprise me"
+  becomes "roll a preset, then nudge."
+
+### 19.4 In-system richness (next — generation + render + sim)
+
+A system should feel like a place, not a market with planets behind it (review §8).
+Extend the planet/body generator and the in-system renderer with:
+
+- **More bodies & body types**: comets (eccentric, seasonal), an **Oort cloud**
+  halo of icy bodies at the system edge, distinct **belt types** — rocky asteroid
+  (ORE) vs. **ice belt** (volatiles/GAS) vs. dust — each with its own facility fit
+  and look (review §9, §10.3).
+- **Free-floating structures**: derelict and active **stations** not bound to a
+  body, and **fleet carriers** (mobile depots/shipyards) — new placement classes in
+  the system generator, new `D.FACILITIES`/station roles (review §10.1).
+- **Exotic anchors** already specced in §5 (neutron/magnetar/white-dwarf
+  installations) slot in here as rare body types.
+- Each addition is additive state (ids, defensive init) and ticks **only in hot
+  systems** (§10.3) to stay cheap.
+
+### 19.5 Richer nebulae & realistic galactic features (next — render + galaxy)
+
+Make the sky geography, not wallpaper (review §7.2):
+
+- **Nebulae as real regions** with shape, density falloff and colour — emission vs.
+  reflection vs. dark — that interact with play (sensor fog, survey value), not
+  just a tint. Extend `D.REGIONS` + the background layer.
+- **Named real features** as set-dressing landmarks: open clusters (the **Pleiades
+  / Seven Sisters**), associations, dark lanes — placed from a small catalogue so
+  the local sky is recognisable. Ties to the "one continuous disk" model (review §6)
+  where the bubble is *embedded in* the galaxy, not pasted on.
+- All particle/field work obeys the **bounded-by-LOD** budget (§19.6).
+
+### 19.6 Many systems & performance (the enabling work)
+
+The desire to manage **many more systems** and a more complete galaxy beyond the
+bubble (review §3.4, §6) is gated on performance — costs are already adding up.
+Before scaling counts, land the budget discipline (review §7.4):
+
+- **Hot/cold system simulation**: only "hot" systems (player-touched, on a route,
+  near the front) tick their economies/sites each tick; cold systems aggregate
+  (the §10.3 model). This is the single biggest lever for system-count scale.
+- **Render budgets bounded by LOD**: aggregate at regional scale, no per-star
+  per-frame allocation, cache deterministic fields (the `laneStyleCache` pattern),
+  prefer one shared background layer over per-object gradients, cap & fade trails.
+  **Report live counts in the F3 overlay** (systems drawn, lanes drawn, particles)
+  so regressions are visible.
+- **Spatial culling**: draw/iterate only what's in view or hot; the bubble can grow
+  and the off-bubble galaxy fill in once the hot-set, culling and F3 instrumentation
+  prove the frame/tick budget holds.
+
+**Build order**: 19.3 (menu presets, cheap, all-data) → 19.6 hot/cold + F3 counts
+(unblocks scale) → 19.4 in-system bodies (rides the hot-set) → 19.5 nebulae/features
+(render, bounded budgets) → raise system counts and extend beyond the bubble once
+the budget instrumentation is green. Each step lands green on both suites.

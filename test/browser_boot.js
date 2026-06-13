@@ -782,6 +782,20 @@ step('front-door title shows the menu verbs, new-run setup omits dead selectors'
   if (setup.indexOf('data-act="begin"') < 0) throw new Error('new-run setup missing begin');
   if (setup.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
   if (setup.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
+  // authored-world dials + founding myth + the promoted prologue switch
+  if (setup.indexOf('id="ngAge"') < 0) throw new Error('new-run setup missing galaxy age');
+  if (setup.indexOf('id="ngTopo"') < 0) throw new Error('new-run setup missing topology');
+  if (setup.indexOf('id="ngHeart"') < 0) throw new Error('new-run setup missing the heart');
+  if (setup.indexOf('id="ngMyth"') < 0) throw new Error('new-run setup missing founding myth');
+  if (setup.indexOf('id="ngTut"') < 0) throw new Error('new-run setup missing prologue toggle');
+  if (setup.indexOf('id="prologueCard"') < 0) throw new Error('prologue toggle not promoted to a switch card');
+  // collapsible sections + the surprise-me / name reroll QOL controls
+  if (setup.indexOf('data-fold="conditions"') < 0) throw new Error('weave conditions not collapsible');
+  if (setup.indexOf('data-act="surpriseWeave"') < 0) throw new Error('surprise-me button missing');
+  if (setup.indexOf('data-act="rerollName"') < 0) throw new Error('name reroll button missing');
+  // the randomizers run without throwing against the form
+  SW.uiModals.rerollName();
+  SW.uiModals.surpriseWeave();
 });
 
 step('daily weave config is deterministic and well-formed', function () {
@@ -791,6 +805,9 @@ step('daily weave config is deterministic and well-formed', function () {
   if (a.seed !== 'daily-2026-06-13') throw new Error('daily seed not date-derived');
   if (!Array.isArray(a.conditions) || a.conditions.length < 1) throw new Error('daily has no conditions');
   if (a.daily !== '2026-06-13') throw new Error('daily key not stamped');
+  // the authored-world dials are derived deterministically too
+  if (!a.world.age || !a.world.topology || !a.world.heart) throw new Error('daily config missing authored-world dials');
+  if (!a.identity.myth) throw new Error('daily config missing founding myth');
   // A different day should (almost always) differ in seed.
   const c = SW.uiModals.dailyConfig('2026-06-14');
   if (c.seed === a.seed) throw new Error('different day produced same seed');
