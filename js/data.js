@@ -54,21 +54,22 @@ SW.data = (function () {
   ];
 
   // ---- Ship hulls (speed in ly/tick; power = combat strength) ----
-  // Hull speeds scaled ~1.7x with the distance rescale (see D.TUNE SCALE NOTE)
-  // so a haul still takes about the same number of ticks it used to.
+  // Hull speeds scaled with the distance rescale (see D.TUNE SCALE NOTE) — ~3.4x
+  // the original — so a haul still takes about the same number of ticks it used
+  // to despite the now-vast distances.
   D.HULLS = {
     // trade line
-    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 1.45, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
-    courier:    { name: 'Courier',     cap: 25,  speed: 1.90, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
-    freighter:  { name: 'Freighter',   cap: 60,  speed: 1.30, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
-    liner:      { name: 'Liner',       cap: 15,  speed: 1.65, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
-    superhauler:{ name: 'Superhauler', cap: 150, speed: 1.10, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
+    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 2.90, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
+    courier:    { name: 'Courier',     cap: 25,  speed: 3.80, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
+    freighter:  { name: 'Freighter',   cap: 60,  speed: 2.60, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
+    liner:      { name: 'Liner',       cap: 15,  speed: 3.30, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
+    superhauler:{ name: 'Superhauler', cap: 150, speed: 2.20, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
     // frontier line
-    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 2.75, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
-    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 2.25, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
+    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 5.50, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
+    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 4.50, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
     // vanguard line
-    corvette:   { name: 'Corvette',    cap: 8,   speed: 1.90, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', desc: 'Escort hull. Assign to a route to guard it.' },
-    lancer:     { name: 'Lancer',      cap: 4,   speed: 1.70, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', desc: 'A wing of fighters and the ship that carries them.' },
+    corvette:   { name: 'Corvette',    cap: 8,   speed: 3.80, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', desc: 'Escort hull. Assign to a route to guard it.' },
+    lancer:     { name: 'Lancer',      cap: 4,   speed: 3.40, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', desc: 'A wing of fighters and the ship that carries them.' },
   };
 
   // ---- Buildings ----
@@ -302,12 +303,12 @@ SW.data = (function () {
 
   // ---- World setup presets (run parameters; SPEC §3.5) ----
   D.WORLD = {
-    // Distances widened ~1.4x across all presets (see D.TUNE SCALE NOTE).
-    // Mean lane length now reads as a real commitment; stars no longer clump.
+    // Distances doubled again (see D.TUNE SCALE NOTE). Mean lane length is a real
+    // commitment; the sky reads as vast and uncrowded even at catalogue scale.
     density: {
-      sparse:   { name: 'Sparse — the long dark', sysCount: 160, bubbleR: 124, minSysDist: 6.4 },
-      standard: { name: 'Standard',               sysCount: 230, bubbleR: 100, minSysDist: 4.5 },
-      crowded:  { name: 'Crowded — close skies',  sysCount: 310, bubbleR: 88,  minSysDist: 3.3 },
+      sparse:   { name: 'Sparse — the long dark', sysCount: 160, bubbleR: 248, minSysDist: 12.8 },
+      standard: { name: 'Standard',               sysCount: 230, bubbleR: 200, minSysDist: 9.0 },
+      crowded:  { name: 'Crowded — close skies',  sysCount: 310, bubbleR: 176, minSysDist: 6.6 },
     },
     wealth: {
       deprived: { name: 'Deprived — you are the thread', mult: 0.55 },
@@ -372,7 +373,10 @@ SW.data = (function () {
       badlandsPreset: 'deep',
       sysCount: den.sysCount, bubbleR: den.bubbleR, minSysDist: den.minSysDist,
       wealthMult: wea.mult,
-      badlandsCount: bad.count, badlandsR: bad.R,
+      // The dark shell sits beyond the bubble; scale its outer radius with the
+      // bubble (inner edge is bubbleR*1.12 in makeBadlands) so it stays a shell
+      // at any distance scale rather than collapsing inside an enlarged bubble.
+      badlandsCount: bad.count, badlandsR: Math.max(bad.R, den.bubbleR * 2.0),
     };
   };
 
@@ -469,18 +473,24 @@ SW.data = (function () {
   };
 
   // ---- Tuning ----
-  // SCALE NOTE: distances were widened ~1.4x (the "the bubble should feel big"
-  // pass). bubbleR, minSysDist, baseRange and every hull speed scaled together
-  // so absolute distances (and the visual gaps between stars) grew while travel
-  // commitment and command reach stayed constant in *relative* terms. The
-  // Gabriel lane graph still auto-connects, so the network stays legible — the
-  // lanes are simply longer now. Keep D.TUNE.bubbleR == D.WORLD.density.standard
-  // .bubbleR (render reads TUNE for the initial zoom-to-fit and the labels).
+  // SCALE NOTE: the bubble was widened in two passes (~1.7x, then doubled again)
+  // for a genuine sense of a vast, drifted-apart galaxy. Every distance lever
+  // moves together so travel commitment and command reach stay constant in
+  // *relative* terms — only the absolute distances (and the screen gaps between
+  // stars) grow. The Gabriel lane graph still auto-connects, so the network
+  // stays legible; the lanes are simply long now.
+  //   distScale stretches the REAL star catalogue (starcat.js) by the same factor
+  //   the procedural bubble grew (bubbleR / 58, the original radius), so the real
+  //   neighbourhood spreads on screen too while keeping its true proportions
+  //   (Proxima & Alpha Centauri stay correctly ~0.2 ly apart).
+  // Keep D.TUNE.bubbleR == D.WORLD.density.standard.bubbleR (render reads TUNE for
+  // the initial zoom-to-fit and the labels).
   D.TUNE = {
-    bubbleR: 100,              // playable bubble radius, ly
+    bubbleR: 200,              // playable bubble radius, ly
+    distScale: 200 / 58,       // real-catalogue stretch (bubbleR / original 58)
     sysCount: 230,             // total systems (real + procedural)
-    minSysDist: 4.5,           // ly — the floor that stops stars clumping
-    baseRange: 34,             // command range, ly
+    minSysDist: 9.0,           // ly — the floor that stops stars clumping
+    baseRange: 68,             // command range, ly
     rangeBoost: 1.45,
     priceLo: 0.35, priceHi: 2.75, priceK: 1.5, priceMid: 1.7,
     capDefault: 120, capProducer: 260,
@@ -514,7 +524,7 @@ SW.data = (function () {
     charterMax: 3,             // open charters at once
     charterTtl: 240,           // ticks before a charter lapses
     charterBase: 300,          // ¤ per M base fare
-    charterPerLy: 11,          // ¤ per M per ly (scaled down with the 1.7x distance rescale so fares stay balanced)
+    charterPerLy: 6,           // ¤ per M per ly (scaled down with the distance rescale so fares stay balanced)
     // v2
     surveyTicks: 60,           // base ticks for a pathfinder to survey a system
     surveyResearch: 18,        // research per completed survey

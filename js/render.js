@@ -244,10 +244,11 @@ SW.render = (function () {
   R.fit = function () {
     R.cam.tx = 8; R.cam.ty = 0; R.cam.tz = 0;
     // Frame the bubble proportionally to its actual size (was a hardcoded 160
-    // tuned for the old small bubble). ~2.4x bubbleR sits the camera a touch
-    // tighter than a full fit, so the widened distances *read* as space between
-    // stars and the player pans outward to take in the whole weave.
-    const d = Math.round((D.TUNE.bubbleR || 90) * 2.4);
+    // tuned for the old small bubble). ~1.7x bubbleR opens on a generous slice
+    // of the weave rather than the whole sphere, so the vast distances *read*
+    // as real space between stars and the player pans/zooms out to take in the
+    // rest. (Tighter than a full fit on purpose — the galaxy should feel big.)
+    const d = Math.round((D.TUNE.bubbleR || 90) * 1.7);
     R.cam.dist = d; R.cam.distTarget = d;
     R.cam.yaw = 0.6; R.cam.pitch = 0.45;
     R.cam.yawTarget = 0.6; R.cam.pitchTarget = 0.45;

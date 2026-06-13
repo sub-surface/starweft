@@ -6,6 +6,12 @@ var SW = globalThis.SW = globalThis.SW || {};
 
 SW.starcat = (function () {
   // [name, RA(h), Dec(deg), dist(ly), spectral, companions, knownPlanets, note]
+  // NB: Alpha Centauri (4.37 ly) and Proxima Centauri (4.24 ly) are a real
+  // gravitationally-bound system ~0.2 ly apart — the two near-touching stars you
+  // see hugging each other just off Sol on the map are ASTRONOMICALLY CORRECT,
+  // not a clumping bug. minSysDist only governs the procedural fill, never the
+  // real catalogue. (The galaxy-wide distScale below spreads them on screen
+  // while preserving their true separation.)
   const RAW = [
     ['Alpha Centauri', 14.66, -60.84, 4.37, 'G2V', ['K1V'], 0, 'Closest neighbor. A perfect twin of Sol, with a quieter friend.'],
     ['Proxima Centauri', 14.49, -62.68, 4.24, 'M5.5V', [], 2, 'A flare-prone ember with worlds of its own.'],
@@ -76,10 +82,15 @@ SW.starcat = (function () {
 
   function build() {
     const U = SW.util;
+    // Galaxy-wide distance scale: stretches the WHOLE map (real catalogue +
+    // procedural fill) uniformly, so the bubble feels vast while every real
+    // star keeps its true relative position. Procedural gen reads the same
+    // factor; see D.TUNE.distScale. Falls back to 1 if data isn't loaded.
+    const k = (SW.data && SW.data.TUNE && SW.data.TUNE.distScale) || 1;
     return RAW.map(function (r) {
       const p = U.eqToGal(r[1], r[2], r[3]);
       return {
-        name: r[0], x: p.x, y: p.y, z: p.z, dist: r[3],
+        name: r[0], x: p.x * k, y: p.y * k, z: p.z * k, dist: r[3] * k,
         spec: r[4], companions: r[5], knownPlanets: r[6], note: r[7] || '',
         real: true,
       };
