@@ -52,18 +52,28 @@ input[type=checkbox] { accent-color: var(--accent); }
 ::-webkit-scrollbar-thumb { background: var(--line-bright); border-radius: 0; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ---- chrome ---- */
-#topbar {
-  position: fixed; top: 0; left: 0; right: 0; height: 42px; z-index: 30;
-  display: flex; align-items: center; gap: 14px; padding: 0 12px;
+/* ---- chrome: the One Command Strip (REWEAVE §13.2) ---- */
+/* #topbar + #bottombar collapsed into a single slim strip: one div, one
+   z-layer. Row 1 = live read-outs + speed + more; row 2 = objective/ticker;
+   the "more" row slides down for the rarer buttons. */
+:root { --stripH: 58px; }
+#strip {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; flex-direction: column;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
-#topbar .logo { font-weight: 600; letter-spacing: 4px; font-size: 13px; color: var(--ink); }
-#topbar .logo i { color: var(--accent); font-style: normal; }
-#topbar .stat { color: var(--ink-dim); white-space: nowrap; font-size: 12.5px; }
-#topbar .stat span { color: var(--ink); font-family: var(--mono); font-size: 12.5px; }
-#topbar .spacer { flex: 1; }
+#strip .srow { display: flex; align-items: center; gap: 12px; padding: 0 10px; }
+#stripMain { height: 34px; }
+#stripSub { height: 23px; border-top: 1px solid var(--line); font-size: 12px; }
+#stripMore { padding: 4px 10px; border-top: 1px solid var(--line); gap: 6px; }
+#btnMenu, #btnMore { padding: 2px 9px; font-size: 14px; line-height: 1; }
+#btnMore.active { border-color: var(--accent); color: var(--accent); }
+#strip .logo { font-weight: 600; letter-spacing: 4px; font-size: 13px; color: var(--ink); }
+#strip .logo i { color: var(--accent); font-style: normal; }
+#strip .stat { color: var(--ink-dim); white-space: nowrap; font-size: 12.5px; }
+#strip .stat span { color: var(--ink); font-family: var(--mono); font-size: 12.5px; }
+#strip .spacer { flex: 1; }
 #searchWrap { position: relative; }
 #searchBox { width: 170px; }
 #searchResults {
@@ -95,17 +105,11 @@ input[type=checkbox] { accent-color: var(--accent); }
 }
 #alerts .alert.hailChip.grim { color: var(--danger); border-color: rgba(255,77,87,0.4); }
 
-#main { position: fixed; top: 42px; bottom: 30px; left: 0; right: 0; }
+#main { position: fixed; top: var(--stripH); bottom: 0; left: 0; right: 0; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #map.dragging { cursor: grabbing; }
 #map.picking { cursor: crosshair; }
 
-#bottombar {
-  position: fixed; bottom: 0; left: 0; right: 0; height: 30px; z-index: 30;
-  display: flex; align-items: center; gap: 12px; padding: 0 12px;
-  background: var(--panel); border-top: 1px solid var(--line);
-  font-size: 12px;
-}
 #objective { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44%; }
 #objective b { color: var(--accent); font-weight: 600; }
 #ticker { flex: 1; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
@@ -226,7 +230,7 @@ hr.thin { border: none; border-top: 1px solid var(--line); margin: 8px 0; }
 .num { font-family: var(--mono); }
 
 /* ---- toasts ---- */
-#toasts { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 5px; align-items: center; pointer-events: none; }
+#toasts { position: fixed; top: calc(var(--stripH) + 8px); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 5px; align-items: center; pointer-events: none; }
 .toast {
   background: var(--panel); border: 1px solid var(--line-bright);
   padding: 5px 14px; font-size: 12px; max-width: 600px;
@@ -294,9 +298,9 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 /* tech tree canvas (legacy dock tab stub) */
 #techCanvas { width: 100%; display: block; background: rgba(255,255,255,0.01); border: 1px solid var(--line); cursor: pointer; }
 
-/* ---- tech overlay (full-viewport, below topbar) ---- */
+/* ---- tech overlay (full-viewport, below the strip) ---- */
 #techOverlay {
-  position: fixed; top: 42px; bottom: 0; left: 0; right: 0; z-index: 40;
+  position: fixed; top: var(--stripH); bottom: 0; left: 0; right: 0; z-index: 40;
   background: var(--panel);
   border-top: 1px solid var(--line-bright);
   display: flex; flex-direction: column;
@@ -779,7 +783,7 @@ input:focus-visible {
 
 /* --- AMOLED polish: solid compartments, calmer elevation --- */
 .panel { background: var(--surface); }
-#topbar, #bottombar, #dock, #sysPanel, #commandBar, #infobox { background: var(--surface); }
+#strip, #dock, #sysPanel, #commandBar, #infobox { background: var(--surface); }
 /* elevated list rows read as their own quiet cards on true black */
 .listItem { background: var(--surface-2); border-color: var(--line); }
 .perkCard, .msCard, .condCard, .dailySpec, .originCard { background: var(--surface-2); }
@@ -801,34 +805,33 @@ input:focus-visible {
 @media (max-width: 760px) {
   :root { font-size: 13px; }
 
-  /* compact topbar: keep the vital read-outs + speed + menu; the rest moves
-     into the ☰ menu and the bottom nav so nothing overflows */
-  #topbar {
-    height: auto; min-height: 46px; gap: 8px; padding: calc(4px + var(--safe-t)) 8px 4px;
-    padding-left: calc(8px + var(--safe-l)); padding-right: calc(8px + var(--safe-r));
+  /* compact strip: keep the vital read-outs + speed + menu + more; row 1
+     scrolls if it must, row 2 collapses to the objective alone */
+  :root { --stripH: 72px; }
+  #strip {
+    padding-top: var(--safe-t);
+    padding-left: var(--safe-l); padding-right: var(--safe-r);
+  }
+  #stripMain {
+    height: auto; min-height: 46px; gap: 8px; padding: 4px 8px;
     flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
-  #topbar::-webkit-scrollbar { display: none; }
-  #topbar .logo, #searchWrap { display: none; }   /* the map IS the navigator; search + wordmark fold away */
-  /* the overlay buttons stay reachable — the strip scrolls if it must */
-  #btnTech, #btnExchange, #btnCodex { flex: 0 0 auto; padding: 3px 9px; }
-  #topbar .spacer { flex: 0 0 2px; }
-  #topbar .stat { font-size: 12px; flex: 0 0 auto; }
+  #stripMain::-webkit-scrollbar { display: none; }
+  #strip .logo, #searchWrap { display: none; }   /* the map IS the navigator; search + wordmark fold away */
+  #stripMore button { flex: 0 0 auto; padding: 3px 9px; }
+  #strip .spacer { flex: 0 0 2px; }
+  #strip .stat { font-size: 12px; flex: 0 0 auto; }
   #alerts { flex: 0 0 auto; }
 
-  /* the map owns the screen; chrome reserves only the two bars */
+  /* the map owns the screen; chrome reserves only the strip and bottom nav */
   #main {
-    top: calc(46px + var(--safe-t)); bottom: calc(52px + var(--safe-b));
+    top: calc(var(--stripH) + var(--safe-t)); bottom: calc(52px + var(--safe-b));
     left: var(--safe-l); right: var(--safe-r);
   }
   #commandBar { display: none; }
 
-  /* objective stays as a slim strip pinned above the bottom nav */
-  #bottombar {
-    height: 26px; bottom: calc(52px + var(--safe-b));
-    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-    padding: 0 10px; z-index: 44;
-  }
+  /* row 2 collapses to the objective alone (ticker is a drawer, not ambient) */
+  #stripSub { height: 26px; padding: 0 10px; }
   #objective { max-width: 100%; }
   #ticker { display: none; }
 
@@ -903,6 +906,6 @@ input:focus-visible {
 
 /* very small phones: single-column dials, tighter type */
 @media (max-width: 400px) {
-  #topbar .stat { font-size: 11px; }
+  #strip .stat { font-size: 11px; }
   #dockTabs button { min-width: 54px; font-size: 9px; }
 }

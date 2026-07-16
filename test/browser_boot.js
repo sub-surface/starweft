@@ -231,6 +231,21 @@ step('PLEDGE surface: board + manifest render, take + abandon dispatch', functio
   SW.ui.setTab('fleet');
 });
 
+step('command strip: more-row toggles, objective renders in the strip', function () {
+  // F2 (REWEAVE §13.2): topbar+bottombar merged into #strip; the rarer
+  // buttons live behind the ⋯ glyph. Assert the state machine, not pixels.
+  // The stub DOM doesn't parse index.html — seed the markup's initial class.
+  document.querySelector('#stripMore').classList.add('hidden');
+  if (SW.ui.moreOpen()) throw new Error('more-row should start closed');
+  if (SW.ui.toggleMore() !== true) throw new Error('toggleMore did not open');
+  if (!SW.ui.moreOpen()) throw new Error('more-row did not report open');
+  if (SW.ui.toggleMore() !== false) throw new Error('toggleMore did not close');
+  if (SW.ui.moreOpen()) throw new Error('more-row did not report closed');
+  SW.ui.refresh();
+  const obj = elCache['#objective span'];
+  if (!obj || typeof obj.textContent !== 'string' || !obj.textContent.length) throw new Error('objective line missing from the strip');
+});
+
 step('Act Ladder: HUD, boundary banner, push + bank + graduate dispatch', function () {
   const saved = G.state;                     // isolate: restore the main run after
   try {
@@ -315,7 +330,7 @@ step('interval refresh does not replace UI while pointer is down', function () {
     if (renders === 0) throw new Error('test setup did not observe interval panel render');
 
     renders = 0;
-    firePointer('pointerdown', { closest: function (sel) { return sel && sel.indexOf('#topbar') >= 0 ? {} : null; } });
+    firePointer('pointerdown', { closest: function (sel) { return sel && sel.indexOf('#strip') >= 0 ? {} : null; } });
     G.tick(G.state);
     intervals.forEach(function (fn) { fn(); });
     if (renders !== 0) throw new Error('panel rendered during active UI pointer press');

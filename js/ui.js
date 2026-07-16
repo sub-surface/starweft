@@ -142,7 +142,7 @@ SW.ui = (function () {
   }
 
   function isUiPointerTarget(target) {
-    return !!(target && target.closest && target.closest('#topbar, #main .panel, #exchange, #techOverlay, #modalShade, #bottombar, #mapHint, #btnBackGalaxy'));
+    return !!(target && target.closest && target.closest('#strip, #main .panel, #exchange, #techOverlay, #modalShade, #mapHint, #btnBackGalaxy'));
   }
   function releaseUiPointer() {
     if (!uiPointerActive) return;
@@ -202,6 +202,7 @@ SW.ui = (function () {
     fleet: { title: 'FLEET ▲', sub: 'ships', lines: ['Your hulls. Buy more at Sol or Industrial hubs. Idle ships are wasted ships.'] },
     infamy: { title: 'INFAMY †', sub: 'reputation', lines: ['Raiding raises it. At ' + D.TUNE.infamyBlackMarket + '+ the Reach\'s black markets open to you; at 5+ the Vigil starts collecting.'] },
     weaveHealth: { title: 'WEAVE HEALTH', sub: 'the state of the weave', lines: ['One number for the galaxy you tend: how well known worlds live, whether essentials reach them, whether factories can run, and how much of the map your threads touch.'] },
+    more: { title: 'MORE ⋯', sub: 'the quiet controls', lines: ['Development, the Market terminal, the Codex, and sound — one tap away, out of the strip\'s width. Tap again to fold them back.'] },
     weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
     pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
     acts: { title: 'THE ACT LADDER ◈', sub: 'a focused run', lines: ['Each act is a Guild Charter: a WEAVE quota and a clock. Its Commission tints the pledge economy — read it, and build to it.', 'Meet the quota and choose: BANK the thread (a clean win) or PUSH — draft a Boon, take a harder Charter, widen your reach. Miss the clock and you are Cut; lose the Loomship and you are Burned; lose the Heart and you are Eaten.'] },
@@ -274,6 +275,7 @@ SW.ui = (function () {
       if (SW.uiTech.isOpen()) SW.uiTech.close(); else SW.uiTech.open();
     });
     $('#btnExchange').addEventListener('click', function () { ui.closeSheet(); SW.uiMarket.toggleExchange(); });
+    $('#btnMore').addEventListener('click', function () { ui.toggleMore(); });
     $('#btnBackGalaxy').addEventListener('click', function () { ui.exitSystem(); });
     syncAudioButtons();
 
@@ -375,7 +377,20 @@ SW.ui = (function () {
     renderDock(true);
   };
 
-  // ============ topbar ============
+  // ============ the command strip (REWEAVE §13.2) ============
+  // The rarer buttons (Development, Market, Codex, sound) live behind the ⋯
+  // glyph in a slide-down row: one tap away, never eating strip width.
+  ui.toggleMore = function (force) {
+    const more = $('#stripMore'), btn = $('#btnMore');
+    if (!more) return false;
+    const open = (force !== undefined) ? !!force : more.classList.contains('hidden');
+    more.classList.toggle('hidden', !open);
+    if (btn && btn.classList) btn.classList.toggle('active', open);
+    if (btn && btn.setAttribute) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    return open;
+  };
+  ui.moreOpen = function () { const m = $('#stripMore'); return !!(m && !m.classList.contains('hidden')); };
+
   function renderTopbar() {
     const s = st();
     $('#stCredits').textContent = U.fmt(s.credits);
@@ -1128,6 +1143,7 @@ SW.ui = (function () {
     else if (e.key === 'Home') { ui.exitSystem(); SW.render.centerOn(s.homeId); }
     else if (e.key === 'F3') { e.preventDefault(); SW.render.showPerf = !SW.render.showPerf; }
     else if (e.key === 'Escape') {
+      if (ui.moreOpen()) { ui.toggleMore(false); return; }
       if (SW.uiTech && SW.uiTech.isOpen && SW.uiTech.isOpen()) { SW.uiTech.close(); return; }
       if (!$('#exchange').classList.contains('hidden')) { $('#exchange').classList.add('hidden'); return; }
       // A modal is open: close it (but never the blocking title/event/gameover).

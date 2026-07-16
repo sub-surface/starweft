@@ -13,32 +13,41 @@
 </head>
 <body>
 
-<div id="topbar">
-  <div class="logo"><i>✦</i> STARWEFT</div>
-  <div class="stat" data-info="ui:credits">¤ <span id="stCredits">0</span></div>
-  <div class="stat" data-info="ui:research">◇ <span id="stResearch">0</span></div>
-  <div class="stat" data-info="ui:fleet">▲ <span id="stFleet">0</span></div>
-  <div class="stat" data-info="ui:weave" id="stWeaveWrap">◈ <span id="stWeave">0</span></div>
-  <div class="stat" data-info="ui:infamy" id="stInfamyWrap" style="display:none">† <span id="stInfamy">0</span></div>
-  <div class="stat">⧗ <span id="stTick">0</span></div>
-  <div id="alerts"></div>
-  <div class="spacer"></div>
-  <div id="searchWrap">
-    <input id="searchBox" placeholder="search systems…" autocomplete="off">
-    <div id="searchResults" class="hidden"></div>
+<div id="strip">
+  <div class="srow" id="stripMain">
+    <button id="btnMenu" title="Menu" aria-label="Menu">☰</button>
+    <div class="logo"><i>✦</i> STARWEFT</div>
+    <div class="stat" data-info="ui:weave" id="stWeaveWrap">◈ <span id="stWeave">0</span></div>
+    <div class="stat" data-info="ui:credits">¤ <span id="stCredits">0</span></div>
+    <div class="stat" data-info="ui:research">◇ <span id="stResearch">0</span></div>
+    <div class="stat" data-info="ui:fleet">▲ <span id="stFleet">0</span></div>
+    <div class="stat" data-info="ui:infamy" id="stInfamyWrap" style="display:none">† <span id="stInfamy">0</span></div>
+    <div class="stat">⧗ <span id="stTick">0</span></div>
+    <div id="alerts"></div>
+    <div class="spacer"></div>
+    <div id="searchWrap">
+      <input id="searchBox" placeholder="search systems…" autocomplete="off">
+      <div id="searchResults" class="hidden"></div>
+    </div>
+    <div id="speedCtrls">
+      <button id="spdPause" title="Pause (Space)" aria-label="Pause" aria-pressed="false">⏸</button>
+      <button id="spd1" title="Normal (1)" aria-label="Normal speed">▶</button>
+      <button id="spd3" title="Fast (2)" aria-label="Fast speed">▶▶</button>
+      <button id="spd10" title="Very fast (3)" aria-label="Very fast speed">▶▶▶</button>
+    </div>
+    <button id="btnMore" title="More — development, market, codex, sound" aria-label="More controls" aria-expanded="false" data-info="ui:more">⋯</button>
   </div>
-  <button id="btnTech" title="Development — research tree, aptitudes and milestones in one place" data-info="ui:research">DEVELOPMENT</button>
-  <button id="btnExchange" title="Exchange Terminal (requires research)" disabled>THE MARKET</button>
-  <button id="btnCodex" title="Codex — ships, cast, chronicle">CODEX</button>
-  <div id="speedCtrls">
-    <button id="spdPause" title="Pause (Space)" aria-label="Pause" aria-pressed="false">⏸</button>
-    <button id="spd1" title="Normal (1)" aria-label="Normal speed">▶</button>
-    <button id="spd3" title="Fast (2)" aria-label="Fast speed">▶▶</button>
-    <button id="spd10" title="Very fast (3)" aria-label="Very fast speed">▶▶▶</button>
+  <div class="srow" id="stripSub">
+    <div id="objective"><b>◈</b> <span>…</span></div>
+    <div id="ticker"></div>
   </div>
-  <button id="btnMute" title="Sound effects" aria-label="Sound effects" aria-pressed="false">♪</button>
-  <button id="btnMusic" title="Ambient music" aria-label="Ambient music" aria-pressed="false">∿</button>
-  <button id="btnMenu" title="Menu" aria-label="Menu">☰</button>
+  <div class="srow hidden" id="stripMore">
+    <button id="btnTech" title="Development — research tree, aptitudes and milestones in one place" data-info="ui:research">DEVELOPMENT</button>
+    <button id="btnExchange" title="Exchange Terminal (requires research)" disabled>THE MARKET</button>
+    <button id="btnCodex" title="Codex — ships, cast, chronicle">CODEX</button>
+    <button id="btnMute" title="Sound effects" aria-label="Sound effects" aria-pressed="false">♪</button>
+    <button id="btnMusic" title="Ambient music" aria-label="Ambient music" aria-pressed="false">∿</button>
+  </div>
 </div>
 
 <div id="main">
@@ -61,11 +70,6 @@
   <div id="mapHint" class="hidden"></div>
   <div id="exchange" class="hidden"></div>
   <div id="techOverlay" class="hidden"></div>
-</div>
-
-<div id="bottombar">
-  <div id="objective"><b>◈</b> <span>…</span></div>
-  <div id="ticker"></div>
 </div>
 
 <div id="toasts"></div>
