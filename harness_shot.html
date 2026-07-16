@@ -3,12 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
-<meta name="color-scheme" content="dark">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>✦ STARWEFT</title>
+<title>STARWEFT shot harness</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -126,7 +121,36 @@
 <script src="js/ui_tech.js"></script>
 <script src="js/ui_modals.js"></script>
 <script src="js/ui.js"></script>
-<script src="js/boot.js"></script>
-<script src="js/main.js"></script>
+<script>
+/* shot harness: boot straight into a live acts run, no title, no boot crawl */
+(function () {
+  const G = SW.game;
+  G.handlers.toast = function (t) { SW.ui.toast(t); };
+  G.handlers.event = function () { /* keep the map clear for the shot */ };
+  G.handlers.sfx = function () {};
+  G.handlers.gameover = function () {};
+  G.handlers.objective = function () {};
+  SW.render.init(document.getElementById('map'));
+  SW.ui.init();
+  G.newGame({ seed: 'shot-f2', difficulty: 'standard', acts: true });
+  SW.ui.afterLoad();
+  SW.ui.hideModals();
+  for (let i = 0; i < 30; i++) G.tick(G.state);
+  if (location.hash === '#beacons') {
+    const st = G.state;
+    st.systems.filter(function (x) { return x.pop > 0 && x.id !== st.homeId; }).slice(0, 4).forEach(function (x) { x.discovered = true; });
+    SW.pledges.refreshBoard(st);
+    const away = st.systems.find(function (x) { return x.discovered && x.id !== st.homeId; });
+    if (away) { away.scourge = 1; away.threatAt = st.tick + 100; }
+    const sh = st.ships[0]; if (sh) sh.stranded = true;
+    SW.render.selectedSys = null;
+    SW.render.cam.dist = 260; SW.render.cam.distTarget = 260;
+  }
+  G.state.paused = true;
+  SW.ui.refresh();
+  if (location.hash === '#more') SW.ui.toggleMore(true);
+  G.startLoop();
+})();
+</script>
 </body>
 </html>

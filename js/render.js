@@ -474,7 +474,9 @@ SW.render = (function () {
           if (sp) { R.selectedShip = sp.id; SW.ui.refresh(); }
           else SW.ui.bodyClick(pickBody(mx, my));
         } else {
-          SW.ui.mapClick(pickSystem(mx, my));
+          const bk = pickBeacon(mx, my);
+          if (bk && SW.ui.beaconTap) SW.ui.beaconTap(bk);
+          else SW.ui.mapClick(pickSystem(mx, my));
         }
       }
       drag = null;
@@ -753,9 +755,60 @@ SW.render = (function () {
     if (dist < LOD.rivalShips) drawRivalShips(st);
     if (dist < LOD.playerShips) drawPlayerShips(st, now);
     drawFx(st, now);
+    drawBeacons(st, now, proj);
     drawCompass(st);
     drawOrbitGuide(now);
   }
+
+  // ---------- signal beacons (REWEAVE §13.4): the map tells you ----------
+  // The beacon model lives DOM-free in signals.js; this layer draws it and
+  // keeps a pickable list so beacons are tappable. Threats keep their native
+  // dashed-ring rendering in drawSystem — here they only gain pickability and
+  // membership in the edge-compass set. Quiet, steady lights for everything
+  // that is not a crisis (§12.9: juice serves legibility, never noise).
+  let beaconPickables = [];
+  function drawBeacons(st, now, proj) {
+    beaconPickables = [];
+    R._beacons = (SW.signals && st) ? SW.signals.list(st) : [];
+    if (!proj || !R._beacons.length) return;
+    ctx.textAlign = 'center';
+    for (const b of R._beacons) {
+      const p = proj[b.sys];
+      if (!p) continue;
+      if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) continue; // off-screen -> edge compass (F6)
+      const bx = p.x, by = p.y - 16;
+      beaconPickables.push({ x: bx, y: by, r: 12, b: b });
+      if (b.kind === 'threat') continue; // drawSystem already draws the one true red
+      let alpha, fill;
+      if (b.kind === 'boundary') {
+        alpha = 0.6 + 0.4 * Math.abs(Math.sin(now / 420));
+        fill = accent(alpha);
+        // radiating ring: the Heart asking for a decision
+        ctx.strokeStyle = accent(0.5 * (1 - ((now / 1400) % 1)));
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 10 + 14 * ((now / 1400) % 1), 0, Math.PI * 2); ctx.stroke();
+      } else if (b.kind === 'stranded') {
+        alpha = 0.35 + 0.25 * Math.abs(Math.sin(now / 1100));
+        fill = 'rgba(139,148,158,' + alpha + ')';
+      } else { // board, hail: gentle / steady accent
+        alpha = b.kind === 'board' ? 0.55 + 0.25 * Math.abs(Math.sin(now / 900)) : 0.8;
+        fill = accent(alpha);
+      }
+      ctx.fillStyle = fill;
+      ctx.font = '600 11px sans-serif';
+      ctx.fillText(b.glyph + (b.n > 1 ? '' + b.n : ''), bx, by);
+    }
+    ctx.textAlign = 'left';
+  }
+  function pickBeacon(mx, my) {
+    let best = null, bestD = 13;
+    for (const p of beaconPickables) {
+      const d = Math.hypot(p.x - mx, p.y - my);
+      if (d < bestD) { bestD = d; best = p.b; }
+    }
+    return best;
+  }
+  R.debugBeacons = function () { return beaconPickables; };
 
   // The whole Milky Way, and your little life inside it. Drawn into the cached
   // background layer — it only changes when the camera does.

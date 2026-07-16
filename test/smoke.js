@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -2139,6 +2139,65 @@ section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
 
   invariants(s, 'post-acts');
   invariants(grad, 'post-graduate');
+}
+
+// ---------- signal beacons (REWEAVE §13.4) ----------
+section('Signal beacons (the map tells you)');
+{
+  const st = G.newGame({ seed: 'smoke-signals', difficulty: 'relaxed' });
+  const kinds = function (list) { return list.map(function (b) { return b.kind; }).sort().join(','); };
+
+  // a clean start has no threat/stranded/hail beacons (board may seed offers)
+  const base = SW.signals.list(st).filter(function (b) { return b.kind !== 'board'; });
+  assert(base.length === 0, 'fresh game carries no non-board beacons (' + kinds(base) + ')');
+
+  // threat: discovered + scourge===1 only
+  const away = st.systems.find(function (x) { return x.id !== st.homeId && !x.discovered; });
+  away.scourge = 1;
+  assert(!SW.signals.list(st).some(function (b) { return b.kind === 'threat'; }), 'undiscovered threat casts no beacon');
+  away.discovered = true;
+  const threat = SW.signals.list(st).find(function (b) { return b.kind === 'threat'; });
+  assert(threat && threat.sys === away.id && threat.urgent, 'discovered threat casts an urgent beacon at its system');
+  away.scourge = 0;
+
+  // board offers glow at their destination (discovered only), counted per system
+  st.systems.filter(function (x) { return x.pop > 0 && x.id !== st.homeId; }).slice(0, 4)
+    .forEach(function (x) { x.discovered = true; });
+  SW.pledges.refreshBoard(st);
+  if (st.board.length) {
+    const dest = st.board[0].to;
+    const bb = SW.signals.list(st).find(function (b) { return b.kind === 'board' && b.sys === dest; });
+    const expected = st.board.filter(function (o) { return o.to === dest; }).length;
+    assert(bb && bb.n === expected, 'board beacon counts its system\'s open offers (' + (bb && bb.n) + '/' + expected + ')');
+  }
+
+  // stranded ships pool into one beacon per system, first ship carried for the tap
+  const sh = st.ships[0];
+  sh.stranded = true;
+  const sb = SW.signals.list(st).find(function (b) { return b.kind === 'stranded'; });
+  assert(sb && sb.sys === sh.at && sb.shipId === sh.id && sb.n === 1, 'stranded ship casts a beacon at its system');
+  sh.stranded = false;
+
+  // hails: anchored ones become beacons, unanchored keep their strip chips
+  SW.story.pushHail(st, { key: 'sig_a', id: 'ev_pod', ctx: { sys: st.homeId }, at: st.tick, title: 'ANCHORED' });
+  SW.story.pushHail(st, { key: 'sig_b', id: 'ev_pod', ctx: null, at: st.tick, title: 'LOOSE' });
+  const hb = SW.signals.list(st).filter(function (b) { return b.kind === 'hail'; });
+  assert(hb.length === 1 && hb[0].sys === st.homeId && hb[0].hailKey === 'sig_a', 'anchored hail casts a beacon');
+  const loose = SW.signals.unanchoredHails(st);
+  assert(loose.length === 1 && loose[0].key === 'sig_b', 'unanchored hail stays a strip chip');
+
+  // counts: totals per kind for the strip's overflow counter
+  const c = SW.signals.counts(st);
+  assert(c.hail === 1 && !c.threat && !c.stranded, 'counts reflect the beacon list');
+
+  // boundary: an open act boundary radiates at the Heart
+  const ag = G.newGame({ seed: 'smoke-signals-acts', difficulty: 'relaxed', acts: true });
+  ag.weave = ag.acts.startWeave + ag.acts.quota;
+  G.tick(ag);
+  assert(ag.acts.boundary, 'boundary opened for the beacon check');
+  const bd = SW.signals.list(ag).find(function (b) { return b.kind === 'boundary'; });
+  assert(bd && bd.sys === ag.homeId && bd.glyph === '◈◈', 'open boundary casts its beacon at the Heart');
+  assert(SW.signals.counts(ag).boundary === undefined, 'boundary stays out of the overflow counter (the act chip owns it)');
 }
 
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');

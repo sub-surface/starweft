@@ -106,7 +106,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'signals', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -245,6 +245,32 @@ step('command strip: more-row toggles, objective renders in the strip', function
   SW.ui.refresh();
   const obj = elCache['#objective span'];
   if (!obj || typeof obj.textContent !== 'string' || !obj.textContent.length) throw new Error('objective line missing from the strip');
+});
+
+step('signal beacons: drawn on the map, counted in the strip (REWEAVE §13.4)', function () {
+  const s = G.state;
+  // stage a threat and point the camera at it so it projects on-screen
+  const sys = s.systems[s.homeId];
+  sys.scourge = 1; sys.threatAt = s.tick + 100;
+  SW.render.centerOn(s.homeId);
+  SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  pumpFrames(3);
+  const hits = SW.render.debugBeacons();
+  if (!hits.some(function (p) { return p.b.kind === 'threat' && p.b.sys === s.homeId; })) {
+    throw new Error('threat beacon not pickable on the map (' + hits.length + ' beacons drawn)');
+  }
+  // the strip folds beacons into one overflow counter
+  SW.ui.refresh();
+  const alerts = (elCache['#alerts'] && elCache['#alerts'].innerHTML) || '';
+  if (alerts.indexOf('jumpSignals') < 0) throw new Error('strip overflow counter missing');
+  if (alerts.indexOf('△1') < 0) throw new Error('counter does not show the threat');
+  // tapping the beacon centers + opens the system drawer
+  SW.render.selectedSys = null; SW.ui.drawer.close('sys');
+  SW.ui.beaconTap({ kind: 'threat', sys: s.homeId });
+  if (SW.render.selectedSys !== s.homeId) throw new Error('beacon tap did not select the system');
+  if (!SW.ui.drawer.isOpen('sys')) throw new Error('beacon tap did not open the system drawer');
+  sys.scourge = 0; delete sys.threatAt;
+  SW.ui.refresh();
 });
 
 step('drawers: state machine, pin pref, delegation (REWEAVE §13.3)', function () {

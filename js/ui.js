@@ -476,8 +476,6 @@ SW.ui = (function () {
     $('#stInfamy').textContent = infStatus.label + ' ' + U.fmt1(s.infamy || 0);
     $('#btnExchange').disabled = !SW.tech.has(s, 'exchange');
     syncSpeedButtons();
-    const threatened = s.systems.filter(function (x) { return x.scourge === 1 && x.discovered; });
-    const stranded = s.ships.filter(function (x) { return x.stranded; });
     const expiring = s.contracts.filter(function (c) { return c.deadline - s.tick < 80; });
     let html = '';
     if (SW.acts && SW.acts.active(s)) {
@@ -490,15 +488,25 @@ SW.ui = (function () {
         html += '<div class="alert' + (low ? '' : '') + '" data-act="openPledges" title="Act ' + SW.acts.roman(a.n) + ' quota ' + U.fmt(a.quota) + ' — ' + U.fmt(Math.round(SW.acts.progress(s))) + ' woven, ' + left + ' ticks left">◈ ' + SW.acts.roman(a.n) + ' ' + Math.round(SW.acts.progress(s) / Math.max(1, a.quota) * 100) + '%' + (low ? ' ⧗' + left : '') + '</div>';
       }
     }
-    if (threatened.length) html += '<div class="alert" data-act="jumpThreat">△ ' + threatened.length + ' THREATENED</div>';
-    if (stranded.length) html += '<div class="alert" data-act="jumpStranded">▲ ' + stranded.length + ' STRANDED</div>';
+    // Beacons live on the map (REWEAVE §13.4); the strip keeps one compact
+    // overflow counter — a summary, not a second alert surface.
+    const counts = SW.signals ? SW.signals.counts(s) : {};
+    const parts = [];
+    if (counts.threat) parts.push('△' + counts.threat);
+    if (counts.stranded) parts.push('▲' + counts.stranded);
+    if (counts.hail) parts.push('◌' + counts.hail);
+    if (counts.board) parts.push('◈' + counts.board);
+    if (parts.length) {
+      html += '<div class="alert' + (counts.threat ? '' : ' hailChip') + '" data-act="jumpSignals" title="Signals on the map — tap to jump to the most urgent">' + parts.join(' ') + '</div>';
+    }
     if (expiring.length) html += '<div class="alert" data-act="openOps">◷ CONTRACT</div>';
     if (s.story && s.story.hail) html += '<div class="alert" data-act="openHail" title="' + esc(s.story.hail.title || 'Incoming hail') + '">◌ HAIL</div>';
-    const hails = (s.story && s.story.hails) || [];
-    for (const h of hails.slice(0, 3)) {
+    // Hails that name no system have no beacon — they keep their chips.
+    const looseHails = SW.signals ? SW.signals.unanchoredHails(s) : ((s.story && s.story.hails) || []);
+    for (const h of looseHails.slice(0, 3)) {
       html += '<div class="alert hailChip' + (h.mood === 'bad' ? ' grim' : '') + '" data-act="openHail" data-key="' + esc(h.key) + '" title="' + esc(h.title || 'Signal') + ' — click to answer, or let it lapse">◌ ' + esc(h.title || 'SIGNAL') + (h.count > 1 ? ' ×' + h.count : '') + '</div>';
     }
-    if (hails.length > 3) html += '<div class="alert hailChip" data-act="openSignals" title="All waiting signals — Journal tab">◌ +' + (hails.length - 3) + '</div>';
+    if (looseHails.length > 3) html += '<div class="alert hailChip" data-act="openSignals" title="All waiting signals — Journal tab">◌ +' + (looseHails.length - 3) + '</div>';
     $('#alerts').innerHTML = html;
     $('#objective span').textContent = s.story.objective || '…';
   }
@@ -591,6 +599,25 @@ SW.ui = (function () {
   };
   ui.mapHover = function (sys) {
     renderInfobox(sys ? { kind: 'system', id: sys.id } : null);
+  };
+  // A beacon tap does what the signal asks (REWEAVE §13.4's table), not what
+  // a generic system click would do.
+  ui.beaconTap = function (b) {
+    const s = st();
+    SW.audio.sfx('click');
+    if (b.kind === 'threat') {
+      SW.render.centerOn(b.sys); SW.render.selectedSys = b.sys; ui.drawer.open('sys');
+    } else if (b.kind === 'stranded') {
+      SW.render.centerOn(b.sys); SW.render.selectedShip = b.shipId || null;
+    } else if (b.kind === 'hail') {
+      const r = A().openHail(s, b.hailKey || undefined);
+      if (!r.ok) toast({ kind: 'bad', text: r.msg || 'The channel is dead.' });
+    } else if (b.kind === 'board') {
+      SW.render.selectedSys = b.sys; ui.drawer.open('sys'); ui.setTab('pledges');
+    } else if (b.kind === 'boundary') {
+      ui.setTab('pledges');
+    }
+    ui.refresh();
   };
   ui.bodyClick = function (body) {
     SW.render.selectedBody = body || null;
@@ -1165,6 +1192,14 @@ SW.ui = (function () {
       case 'openOps': ui.setTab('ops'); break;
       case 'openPledges': ui.setTab('pledges'); break;
       case 'pinDock': ui.drawer.pin('dock'); break;
+      case 'jumpSignals': {
+        // jump to the most urgent beacon: threat > stranded > hail > board
+        const rank = { threat: 0, stranded: 1, hail: 2, board: 3 };
+        const list = (SW.signals ? SW.signals.list(s) : []).filter(function (x) { return rank[x.kind] !== undefined; });
+        list.sort(function (a, b2) { return rank[a.kind] - rank[b2.kind]; });
+        if (list.length) { ui.exitSystem(); ui.beaconTap(list[0]); }
+        break;
+      }
     }
     ui.refresh();
   }
