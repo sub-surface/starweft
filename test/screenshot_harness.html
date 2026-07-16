@@ -156,6 +156,24 @@
     SW.render.centerOn(st.homeId);
     SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
   }
+  if (location.hash === '#compass') {
+    const st = G.state;
+    const home = st.systems[st.homeId];
+    let far = null, bestD = -1;
+    st.systems.forEach(function (sys) {
+      if (sys.id === st.homeId) return;
+      const d = SW.util.dist(home, sys);
+      if (d > bestD) { bestD = d; far = sys; }
+    });
+    far.discovered = true; far.scourge = 1; far.threatAt = st.tick + 100;
+    const dx = far.x - home.x, dy = far.y - home.y;
+    const yaw = Math.atan2(-dy, dx);
+    SW.render.centerOn(st.homeId);
+    SW.render.cam.yaw = yaw; SW.render.cam.yawTarget = yaw;
+    SW.render.cam.pitch = 0; SW.render.cam.pitchTarget = 0;
+    SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+    SW.render.selectedSys = null;
+  }
   G.state.paused = true;
   SW.ui.refresh();
   if (location.hash === '#more') SW.ui.toggleMore(true);

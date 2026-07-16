@@ -482,8 +482,10 @@ SW.render = (function () {
           if (sp) { R.selectedShip = sp.id; SW.ui.refresh(); }
           else SW.ui.bodyClick(pickBody(mx, my));
         } else {
-          const bk = pickBeacon(mx, my);
-          if (bk && SW.ui.beaconTap) SW.ui.beaconTap(bk);
+          const ep = pickEdgePing(mx, my);
+          const bk = ep ? null : pickBeacon(mx, my);
+          if (ep) R.centerOn(ep.sys);
+          else if (bk && SW.ui.beaconTap) SW.ui.beaconTap(bk);
           else SW.ui.mapClick(pickSystem(mx, my));
         }
       }
@@ -780,15 +782,17 @@ SW.render = (function () {
   // membership in the edge-compass set. Quiet, steady lights for everything
   // that is not a crisis (§12.9: juice serves legibility, never noise).
   let beaconPickables = [];
+  let edgePingPickables = [];
   function drawBeacons(st, now, proj) {
     beaconPickables = [];
+    edgePingPickables = [];
     R._beacons = (SW.signals && st) ? SW.signals.list(st) : [];
     if (!proj || !R._beacons.length) return;
     ctx.textAlign = 'center';
     for (const b of R._beacons) {
       const p = proj[b.sys];
       if (!p) continue;
-      if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) continue; // off-screen -> edge compass (F6)
+      if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) { drawEdgePing(b, p, now); continue; }
       const bx = p.x, by = p.y - 16;
       beaconPickables.push({ x: bx, y: by, r: 12, b: b });
       if (b.kind === 'threat') continue; // drawSystem already draws the one true red
@@ -822,6 +826,53 @@ SW.render = (function () {
     return best;
   }
   R.debugBeacons = function () { return beaconPickables; };
+
+  // ---------- edge compass (REWEAVE §13.6) ----------
+  // A beacon's system fell outside the viewport: point at it from the edge
+  // instead of letting it vanish. Reuses the same raw (unclipped) projection
+  // drawBeacons already has — clamp the camera-center-to-system ray to an
+  // inset rect and draw a small arrow at the intersection. Tap eases the
+  // camera there (R.centerOn) — wayfinding only, no side actions; beaconTap
+  // already owns "what to do once you arrive."
+  function drawEdgePing(b, p, now) {
+    const cx = W / 2, cy = H / 2;
+    const margin = 22;
+    const halfW = Math.max(10, W / 2 - margin), halfH = Math.max(10, H / 2 - margin);
+    const dx = p.x - cx, dy = p.y - cy;
+    let scale = Infinity;
+    if (dx) scale = Math.min(scale, Math.abs(halfW / dx));
+    if (dy) scale = Math.min(scale, Math.abs(halfH / dy));
+    if (!isFinite(scale) || scale <= 0) return;
+    const ex = cx + dx * scale, ey = cy + dy * scale;
+    const angle = Math.atan2(dy, dx);
+    let color;
+    if (b.kind === 'threat') { const blink = 0.5 + 0.5 * Math.abs(Math.sin(now / 280)); color = 'rgba(255,77,87,' + blink + ')'; }
+    else if (b.kind === 'stranded') color = 'rgba(139,148,158,0.75)';
+    else color = accent(0.8);
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(angle);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(8, 0); ctx.lineTo(-6, 5); ctx.lineTo(-6, -5); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (b.n > 1) {
+      ctx.fillStyle = color; ctx.font = '600 10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('' + b.n, ex - Math.cos(angle) * 15, ey - Math.sin(angle) * 15 + 3);
+      ctx.textAlign = 'left';
+    }
+    edgePingPickables.push({ x: ex, y: ey, r: 12, b: b });
+  }
+  function pickEdgePing(mx, my) {
+    let best = null, bestD = 13;
+    for (const p of edgePingPickables) {
+      const d = Math.hypot(p.x - mx, p.y - my);
+      if (d < bestD) { bestD = d; best = p.b; }
+    }
+    return best;
+  }
+  R.debugEdgePings = function () { return edgePingPickables; };
 
   // The whole Milky Way, and your little life inside it. Drawn into the cached
   // background layer — it only changes when the camera does.

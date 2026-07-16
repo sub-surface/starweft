@@ -315,6 +315,43 @@ step('signal beacons: drawn on the map, counted in the strip (REWEAVE §13.4)', 
   SW.ui.refresh();
 });
 
+step('edge compass: off-screen beacons ping the viewport edge, tap centers camera (REWEAVE §13.6)', function () {
+  const s = G.state;
+  const home = s.systems[s.homeId];
+  // the farthest system from home, guaranteed off-screen: pick the yaw that
+  // zeroes the rotated y-component (y1) for the home->far vector, so its
+  // projection depth is always exactly R.cam.dist (never behind the camera,
+  // regardless of which system or ambient orientation this runs under) while
+  // its x-offset carries the full 2D distance — comfortably past the canvas edge
+  let far = null, bestD = -1;
+  for (const sys of s.systems) {
+    if (sys.id === s.homeId) continue;
+    const d = SW.util.dist(home, sys);
+    if (d > bestD) { bestD = d; far = sys; }
+  }
+  const dx = far.x - home.x, dy = far.y - home.y;
+  const yaw = Math.atan2(-dy, dx);
+  SW.render.centerOn(s.homeId);
+  SW.render.cam.yaw = yaw; SW.render.cam.yawTarget = yaw;
+  SW.render.cam.pitch = 0; SW.render.cam.pitchTarget = 0;
+  SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  // system fields only (not ship state) — trivial, safe to restore before any assert
+  const prev = { scourge: far.scourge, threatAt: far.threatAt, discovered: far.discovered };
+  far.scourge = 1; far.threatAt = s.tick + 100; far.discovered = true;
+  pumpFrames(3);
+  const pings = SW.render.debugEdgePings();
+  const onscreen = SW.render.debugBeacons();
+  const found = pings.some(function (p) { return p.b.kind === 'threat' && p.b.sys === far.id; });
+  const leaked = onscreen.some(function (p) { return p.b.sys === far.id; });
+  far.scourge = prev.scourge; far.threatAt = prev.threatAt; far.discovered = prev.discovered;
+  if (!found) throw new Error('no edge ping for the far threat (' + pings.length + ' pings drawn, dist ' + Math.round(bestD) + ')');
+  if (leaked) throw new Error('an off-screen system should not also carry an on-screen beacon');
+  // tap centers the camera on the pinged system, nothing else (wayfinding only)
+  SW.render.centerOn(far.id);
+  if (SW.render.cam.tx !== far.x || SW.render.cam.ty !== far.y) throw new Error('centerOn did not move the camera target to the pinged system');
+  SW.render.centerOn(s.homeId); // restore for later steps
+});
+
 step('drawers: state machine, pin pref, delegation (REWEAVE §13.3)', function () {
   const d = SW.ui.drawer;
   const body = document.body;
