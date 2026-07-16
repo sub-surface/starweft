@@ -81,6 +81,7 @@ const documentStub = {
   addEventListener: function (type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
   activeElement: null,
   documentElement: documentElement,
+  body: stubEl('body'), // real enough for body-class state (dockOpen/dockRail)
   createElement: function (tag) { return stubEl(tag); },
 };
 const storageMap = {};
@@ -244,6 +245,47 @@ step('command strip: more-row toggles, objective renders in the strip', function
   SW.ui.refresh();
   const obj = elCache['#objective span'];
   if (!obj || typeof obj.textContent !== 'string' || !obj.textContent.length) throw new Error('objective line missing from the strip');
+});
+
+step('drawers: state machine, pin pref, delegation (REWEAVE §13.3)', function () {
+  const d = SW.ui.drawer;
+  const body = document.body;
+  // start from a known state (no pin, closed): the desktop rail
+  d.pin('dock', false); d.close('dock');
+  if (d.isOpen('dock')) throw new Error('dock did not close');
+  if (!body.classList.contains('dockRail')) throw new Error('closed dock should rail on desktop');
+  d.open('dock');
+  if (!d.isOpen('dock')) throw new Error('dock did not open');
+  if (body.classList.contains('dockRail')) throw new Error('open dock must drop the rail');
+  // re-tapping the active tab dismisses (desktop mirror of the mobile sheet)
+  SW.ui.setTab('routes');
+  SW.ui.setTab('routes');
+  if (d.isOpen('dock')) throw new Error('re-tap of the active tab should close the dock');
+  // pinning opens, survives close(), and persists as a pref
+  d.pin('dock', true);
+  if (!d.isOpen('dock')) throw new Error('pinning should open the dock');
+  d.close('dock');
+  if (!d.isOpen('dock')) throw new Error('a pinned dock must not close');
+  if (!(SW.ui.prefs().drawerPins || {}).dock) throw new Error('pin pref not persisted');
+  d.pin('dock', false);
+  // exchange + tech delegate to their existing open/close paths
+  d.open('exchange'); if (!d.isOpen('exchange')) throw new Error('exchange drawer did not open');
+  d.close('exchange'); if (d.isOpen('exchange')) throw new Error('exchange drawer did not close');
+  d.open('tech'); if (!d.isOpen('tech')) throw new Error('tech drawer did not open');
+  d.close('tech'); if (d.isOpen('tech')) throw new Error('tech drawer did not close');
+  // sys drawer: dismissing hides it even while the selection stands; it stays
+  // dismissed across refresh; a fresh summons reopens it
+  SW.render.selectedSys = G.state.homeId;
+  d.open('sys'); SW.ui.refresh();
+  if (!d.isOpen('sys')) throw new Error('sys drawer should show for a selection');
+  d.close('sys');
+  if (d.isOpen('sys')) throw new Error('sys drawer did not close');
+  SW.ui.refresh();
+  if (d.isOpen('sys')) throw new Error('a dismissed sys drawer must survive refresh');
+  d.open('sys');
+  if (!d.isOpen('sys')) throw new Error('sys drawer did not reopen on summons');
+  SW.ui.setTab('fleet');
+  d.close('dock');
 });
 
 step('Act Ladder: HUD, boundary banner, push + bank + graduate dispatch', function () {

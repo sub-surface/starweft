@@ -128,6 +128,15 @@ input[type=checkbox] { accent-color: var(--accent); }
   position: absolute; top: 8px; right: 8px; width: 326px; max-height: calc(100% - 16px);
   display: flex; flex-direction: column; z-index: 20;
 }
+/* dock rail (REWEAVE §13.3): closed by default on desktop — only the tab
+   strip remains; hovering it peeks the body, the ▣ thumbtack pins it open */
+body.dockRail #dockBody { display: none; }
+body.dockRail #dock:hover #dockBody { display: block; }
+#btnPinDock {
+  flex: 0 0 auto; border: none; border-radius: 0; background: transparent;
+  color: var(--ink-dim); padding: 6px 9px; font-size: 12px;
+}
+#btnPinDock.active { color: var(--accent); }
 #dockTabs { display: flex; border-bottom: 1px solid var(--line); }
 #dockTabs button {
   flex: 1; border: none; border-radius: 0; background: transparent;
@@ -857,6 +866,7 @@ input:focus-visible {
     overflow-x: auto; z-index: 46;
   }
   #dockTabs::-webkit-scrollbar { display: none; }
+  #btnPinDock { display: none; }   /* the sheet, not the rail, is mobile's drawer */
   #dockTabs button {
     flex: 1 0 auto; min-width: 60px; padding: 0 6px; font-size: 9.5px;
     letter-spacing: 0.06em;

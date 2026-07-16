@@ -203,6 +203,7 @@ SW.ui = (function () {
     infamy: { title: 'INFAMY †', sub: 'reputation', lines: ['Raiding raises it. At ' + D.TUNE.infamyBlackMarket + '+ the Reach\'s black markets open to you; at 5+ the Vigil starts collecting.'] },
     weaveHealth: { title: 'WEAVE HEALTH', sub: 'the state of the weave', lines: ['One number for the galaxy you tend: how well known worlds live, whether essentials reach them, whether factories can run, and how much of the map your threads touch.'] },
     more: { title: 'MORE ⋯', sub: 'the quiet controls', lines: ['Development, the Market terminal, the Codex, and sound — one tap away, out of the strip\'s width. Tap again to fold them back.'] },
+    pin: { title: 'PIN ▣', sub: 'drawer', lines: ['Keeps this drawer open instead of folding it to its rail. Remembered on this device — pin it once and the old always-visible panel is back.'] },
     weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
     pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
     acts: { title: 'THE ACT LADDER ◈', sub: 'a focused run', lines: ['Each act is a Guild Charter: a WEAVE quota and a clock. Its Commission tints the pledge economy — read it, and build to it.', 'Meet the quota and choose: BANK the thread (a clean win) or PUSH — draft a Boon, take a harder Charter, widen your reach. Miss the clock and you are Cut; lose the Loomship and you are Burned; lose the Heart and you are Eaten.'] },
@@ -259,9 +260,10 @@ SW.ui = (function () {
     document.addEventListener('pointercancel', releaseUiPointer);
     window.addEventListener('blur', releaseUiPointer);
 
-    document.querySelectorAll('#dockTabs button').forEach(function (b) {
+    document.querySelectorAll('#dockTabs button[data-tab]').forEach(function (b) {
       b.addEventListener('click', function () { ui.setTab(b.dataset.tab); });
     });
+    syncDrawerDom(); // dock starts railed on desktop unless the pin pref says otherwise
     $('#spdPause').addEventListener('click', function () { A().togglePause(st()); syncSpeedButtons(); });
     $('#spd1').addEventListener('click', function () { A().setSpeed(st(), 1); syncSpeedButtons(); });
     $('#spd3').addEventListener('click', function () { A().setSpeed(st(), 3); syncSpeedButtons(); });
@@ -373,9 +375,73 @@ SW.ui = (function () {
     if (b && ui.isTouch()) {
       if (wasActive && b.contains('dockOpen')) b.remove('dockOpen');
       else b.add('dockOpen');
+    } else {
+      // desktop drawer semantics (REWEAVE §13.3): a tab is a summons; re-tapping
+      // the active tab dismisses; the thumbtack keeps it ambient
+      if (wasActive && ui.drawer.isOpen('dock') && !ui.drawer.isPinned('dock')) ui.drawer.close('dock');
+      else ui.drawer.open('dock');
     }
     renderDock(true);
   };
+
+  // ============ drawers (REWEAVE §13.3) ============
+  // Same organs, closed by default: the four big surfaces are edge drawers.
+  // The machine owns only open/pin state — every renderer keeps its DOM target
+  // and signature. On touch the dock keeps the F1 bottom-sheet behavior
+  // (body.dockOpen); the rail is a desktop idea. Pin preference is sticky.
+  const drawerWant = { sys: true, dock: false }; // sys: selection summons it (until F5 re-wires the reflex)
+  function syncDrawerDom() {
+    const b = bodyClass();
+    if (b) b.toggle('dockRail', !ui.isTouch() && !drawerWant.dock && !ui.drawer.isPinned('dock'));
+    const pin = $('#btnPinDock');
+    if (pin) {
+      const on = ui.drawer.isPinned('dock');
+      pin.textContent = on ? '▣' : '▢';
+      if (pin.setAttribute) pin.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (pin.classList) pin.classList.toggle('active', on);
+    }
+  }
+  ui.drawer = {
+    isOpen: function (id) {
+      if (id === 'exchange') return !$('#exchange').classList.contains('hidden');
+      if (id === 'tech') return !!(SW.uiTech && SW.uiTech.isOpen && SW.uiTech.isOpen());
+      if (id === 'sys') return !$('#sysPanel').classList.contains('hidden');
+      if (id === 'dock') {
+        if (ui.isTouch()) { const b = bodyClass(); return !!(b && b.contains('dockOpen')); }
+        return !!(drawerWant.dock || ui.drawer.isPinned('dock'));
+      }
+      return false;
+    },
+    wants: function (id) { return !!drawerWant[id]; },
+    open: function (id) {
+      if (id === 'exchange') { if (!ui.drawer.isOpen('exchange')) SW.uiMarket.toggleExchange(); return; }
+      if (id === 'tech') { if (!ui.drawer.isOpen('tech')) SW.uiTech.open(); return; }
+      if (id === 'sys') { drawerWant.sys = true; SW.uiSystem.renderSysPanel(); return; }
+      if (id === 'dock') {
+        if (ui.isTouch()) { const b = bodyClass(); if (b) b.add('dockOpen'); }
+        drawerWant.dock = true; syncDrawerDom(); renderDock(true);
+      }
+    },
+    close: function (id) {
+      if (id === 'exchange') { $('#exchange').classList.add('hidden'); return; }
+      if (id === 'tech') { if (ui.drawer.isOpen('tech')) SW.uiTech.close(); return; }
+      if (id === 'sys') { drawerWant.sys = false; $('#sysPanel').classList.add('hidden'); return; }
+      if (id === 'dock') {
+        if (ui.isTouch()) { ui.closeSheet(); return; }
+        drawerWant.dock = false; syncDrawerDom();
+      }
+    },
+    toggle: function (id) { if (ui.drawer.isOpen(id)) { ui.drawer.close(id); return false; } ui.drawer.open(id); return true; },
+    isPinned: function (id) { const pins = ui.prefs().drawerPins || {}; return !!pins[id]; },
+    pin: function (id, val) {
+      const pins = Object.assign({}, ui.prefs().drawerPins || {});
+      const on = (val === undefined) ? !pins[id] : !!val;
+      pins[id] = on; ui.setPref('drawerPins', pins);
+      if (on) ui.drawer.open(id); else syncDrawerDom();
+      return on;
+    },
+  };
+  ui.syncDrawerDom = syncDrawerDom;
 
   // ============ the command strip (REWEAVE §13.2) ============
   // The rarer buttons (Development, Market, Codex, sound) live behind the ⋯
@@ -479,6 +545,7 @@ SW.ui = (function () {
     ui.exitSystem();
     SW.render.centerOn(id);
     SW.render.selectedSys = id;
+    ui.drawer.open('sys');
     $('#searchResults').classList.add('hidden');
     $('#searchBox').value = '';
     ui.refresh();
@@ -518,6 +585,7 @@ SW.ui = (function () {
       pinnedInfo = { kind: 'system', id: sys.id };
       const here = s.ships.filter(function (sh) { return sh.at === sys.id; });
       if (here.length && !selectedShip()) SW.render.selectedShip = here[0].id;
+      ui.drawer.open('sys'); // selecting is a fresh summons even if the drawer was dismissed
     } else pinnedInfo = null;
     ui.refresh();
   };
@@ -1096,6 +1164,7 @@ SW.ui = (function () {
       }
       case 'openOps': ui.setTab('ops'); break;
       case 'openPledges': ui.setTab('pledges'); break;
+      case 'pinDock': ui.drawer.pin('dock'); break;
     }
     ui.refresh();
   }
@@ -1153,6 +1222,8 @@ SW.ui = (function () {
       }
       if (SW.render.mode === 'system') { ui.exitSystem(); return; }
       if (mapMode) { setMapMode(null); if (ui.editorOpen) { ui.editorOpen = false; ui.routeDraft = null; renderDock(true); } return; }
+      // an unpinned dock drawer is the most recent summons — dismiss it next
+      if (!ui.isTouch() && ui.drawer.isOpen('dock') && !ui.drawer.isPinned('dock')) { ui.drawer.close('dock'); return; }
       // Nothing pinned/selected left to clear, and we're in-game: open the pause
       // menu — the muscle-memory behavior players expect from Esc.
       if (SW.render.selectedShip === null && SW.render.selectedSys === null && !pinnedInfo) {
