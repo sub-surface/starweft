@@ -106,7 +106,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'signals', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'founders', 'pledges', 'acts', 'signals', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -1125,6 +1125,36 @@ step('front-door title shows the menu verbs, new-run setup omits dead selectors'
   // the randomizers run without throwing against the form
   SW.uiModals.rerollName();
   SW.uiModals.surpriseWeave();
+});
+
+step('Founder picker (REWEAVE §6): cards render; begin resolves a founder only for a Focused run', function () {
+  // The stub DOM's querySelector/querySelectorAll don't parse innerHTML (they
+  // key a memoized stub by selector string — see elCache above), so neither
+  // per-card click wiring nor chosenFounderFromModal's live .sel lookup can be
+  // exercised realistically here; this is a pre-existing limitation (no test
+  // verifies a non-default origin-card pick through begin() either, for the
+  // same reason). What IS real and worth locking in: the cards render with
+  // the right ids, and newGame's acts-gate on opts.founder actually applies
+  // end-to-end through the dispatcher, not just in the direct-call smoke test.
+  SW.uiModals.showNewRun();
+  const setup = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
+  if (setup.indexOf('data-founder="courier"') < 0) throw new Error('founder picker missing the Courier card');
+  if (setup.indexOf('data-founder="underwriter"') < 0) throw new Error('founder picker missing the Underwriter card');
+  if (setup.indexOf('data-founder="rockhopper"') < 0) throw new Error('founder picker missing the Rockhopper card');
+
+  elCache['#ngSeed'] = stubEl('input'); elCache['#ngSeed'].value = 'boot-founder-focused';
+  elCache['#ngDiff'] = stubEl('select'); elCache['#ngDiff'].value = 'standard';
+  elCache['#idName'] = stubEl('input'); elCache['#idName'].value = 'Test Weft';
+  elCache['#idMotto'] = stubEl('input'); elCache['#idMotto'].value = 'x';
+  elCache['#ngShape'] = stubEl('input'); elCache['#ngShape'].checked = true;   // Focused — founders matter
+  elCache['#ngTut'] = stubEl('input'); elCache['#ngTut'].checked = false;
+  fireClick('begin');
+  if (!G.state.founder) throw new Error('a Focused run through the dispatcher resolved no founder at all');
+
+  elCache['#ngSeed'].value = 'boot-founder-sandbox';
+  elCache['#ngShape'].checked = false; // Long Weave — founders should not apply
+  fireClick('begin');
+  if (G.state.founder) throw new Error('a Long Weave run through the dispatcher should resolve no founder (' + G.state.founder + ')');
 });
 
 step('daily weave config is deterministic and well-formed', function () {

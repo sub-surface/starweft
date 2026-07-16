@@ -106,6 +106,7 @@
 <script src="../js/tutorial.js"></script>
 <script src="../js/quests.js"></script>
 <script src="../js/civics.js"></script>
+<script src="../js/founders.js"></script>
 <script src="../js/pledges.js"></script>
 <script src="../js/acts.js"></script>
 <script src="../js/signals.js"></script>
@@ -218,6 +219,7 @@
   G.state.paused = true;
   SW.ui.refresh();
   if (location.hash === '#more') SW.ui.toggleMore(true);
+  if (location.hash === '#founders') SW.uiModals.showNewRun();
   G.startLoop();
 })();
 </script>

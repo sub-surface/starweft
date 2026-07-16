@@ -245,6 +245,45 @@ SW.data = (function () {
   };
   D.LEGACY_HINTS = { won: 'Win a run', wonder: 'Survey a galactic wonder', infamy: 'Reach infamy 5' };
 
+  // ---- Founders (REWEAVE §6): who the Guild seats at the Loomship's helm ----
+  // Orthogonal to Origin (which still sets ships/credits/rep flavor): a Founder
+  // is chosen for a *focused* (Act Ladder) run and layers one rule-bend, one
+  // liability, and a lore line on top. `fx` reuses the exact bag SW.acts.mods()
+  // already folds Commission x Boons through (a Founder's law and a drafted
+  // Boon can literally be the same rule — see 'firstlight' below); fields that
+  // fx has no shape for (tier bump, board-slot penalty, bust-forfeit) are read
+  // directly by SW.founders' small pure helpers. No founder touches a D.TUNE
+  // base number (REWEAVE §12.8) — every effect is a conditional, not a percent
+  // stacked on the same old thing. All three ship unlocked (Chronicle gating
+  // for the other five is R8).
+  D.FOUNDERS = {
+    courier: {
+      name: 'The Courier', locked: null,
+      bend: 'The first pledge you keep each act scores double THREAD.',
+      liability: 'None — the classic.',
+      lore: 'Every haul before this one was practice.',
+      fx: { firstlightX2: true },
+    },
+    underwriter: {
+      name: 'The Underwriter', locked: null,
+      bend: 'May hold two pledges beyond the normal manifest cap.',
+      liability: 'A bust forfeits double the bond.',
+      lore: 'She never met an overcommitment she liked less than the last one.',
+      fx: { maxActiveBonus: 2 },
+      bustForfeitMult: 2,
+    },
+    rockhopper: {
+      name: 'The Rockhopper', locked: null,
+      bend: 'Raw goods (Ore, Gas, Biomass, Crystal) count one tier higher for TONNAGE.',
+      liability: 'Settled worlds distrust an outsider: the board runs one offer thinner.',
+      lore: 'Grew up reading rock, not charts.',
+      tierBumpComms: ['ORE', 'GAS', 'BIO', 'CRYSTAL'],
+      boardSlotPenalty: 1,
+      startBelt: true, credits: 250, // "starts in the belt with a rig"
+    },
+  };
+  D.FOUNDER_IDS = Object.keys(D.FOUNDERS);
+
   // ---- Story flag registry ----
   // Every literal story-flag key must be listed here (dynamic keys by prefix).
   // The smoke test scans the source and fails on unregistered flags, so a

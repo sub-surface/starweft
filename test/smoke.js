@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'founders', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -2139,6 +2139,101 @@ section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
 
   invariants(s, 'post-acts');
   invariants(grad, 'post-graduate');
+}
+
+// ---------- Founders (REWEAVE §6) ----------
+section('Founders — one rule-bend, one liability each');
+{
+  function mkf(seed, founder) {
+    const s = G.newGame({ seed: seed, difficulty: 'relaxed', acts: true, founder: founder });
+    s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; }).slice(0, 6).forEach(function (x) { x.discovered = true; });
+    s.credits = 99999;
+    return s;
+  }
+
+  // orthogonality: a Long Weave (acts off) run never resolves a founder, even
+  // if one is requested — Founders only mean something with a clock to bend
+  const noActs = G.newGame({ seed: 'no-founder', difficulty: 'relaxed', founder: 'courier' });
+  assert(!noActs.founder, 'a Long Weave run resolves no founder even if one is requested');
+  // an unknown id is ignored rather than crashing
+  const bogus = G.newGame({ seed: 'bogus-founder', difficulty: 'relaxed', acts: true, founder: 'nonsense' });
+  assert(!bogus.founder, 'an unrecognized founder id resolves to none');
+
+  // ---- Courier: first pledge kept each act scores double THREAD ----
+  const cour = mkf('founder-courier', 'courier');
+  assert(cour.founder === 'courier', 'courier founder resolved');
+  assert(SW.acts.mods(cour).firstlightX2 === true, "the Courier's law folds into the acts mods bag (same rule the Boon offers)");
+  SW.pledges.refreshBoard(cour);
+  const firstOffer = cour.board[0];
+  A.takePledge(cour, firstOffer.id);
+  const heldThread = SW.pledges.thread(cour, 0);
+  SW.pledges.onDeliver(cour, firstOffer.to, firstOffer.c, firstOffer.qty);
+  assert(cour.acts.firstKeptDone === true, 'first completion this act is marked kept');
+  // the completion's WEAVE reflects the doubled thread, not the plain one
+  const expectedFirst = Math.round(Math.round(firstOffer.chips) * (heldThread * 2));
+  assert(Math.abs(cour.weave - expectedFirst) <= 1, 'first pledge this act scored at double THREAD (' + cour.weave + ' vs ' + expectedFirst + ')');
+  SW.pledges.refreshBoard(cour);
+  if (cour.board.length) {
+    const weaveAfterFirst = cour.weave;
+    const secondOffer = cour.board[0];
+    A.takePledge(cour, secondOffer.id);
+    const thread2 = SW.pledges.thread(cour, 0);
+    SW.pledges.onDeliver(cour, secondOffer.to, secondOffer.c, secondOffer.qty);
+    const gained = cour.weave - weaveAfterFirst;
+    const plainSecond = Math.round(Math.round(secondOffer.chips) * thread2);
+    assert(Math.abs(gained - plainSecond) <= 1, 'the second completion this act scores at plain THREAD, not doubled again');
+  }
+
+  // ---- Underwriter: +2 manifest cap; a bust forfeits double the bond ----
+  const uw = mkf('founder-underwriter', 'underwriter');
+  const baseCap = D.TUNE.pledgeMaxActive;
+  assert(SW.pledges.maxActive(uw) === baseCap + 2, 'Underwriter holds two pledges beyond the normal cap (' + SW.pledges.maxActive(uw) + ' vs base ' + baseCap + ')');
+  SW.pledges.refreshBoard(uw);
+  const uwOffer = uw.board[0];
+  A.takePledge(uw, uwOffer.id);
+  const creditsAfterTake = uw.credits;
+  const bond = uw.pledges[0].bond;
+  uw.pledges[0].deadline = uw.tick; // force a bust on the next tick
+  G.tick(uw);
+  assert(uw.pledges.length === 0, 'the pledge busted');
+  assert(uw.credits === creditsAfterTake - bond, 'Underwriter bust forfeits double: bond already lost at take-time, plus one more bond deducted here (' +
+    uw.credits + ' vs expected ' + (creditsAfterTake - bond) + ')');
+
+  // a plain founder's bust forfeits only the one bond already escrowed (no extra debit)
+  const plain = mkf('founder-none-bust', null);
+  SW.pledges.refreshBoard(plain);
+  const plainOffer = plain.board[0];
+  A.takePledge(plain, plainOffer.id);
+  const plainCreditsAfterTake = plain.credits;
+  plain.pledges[0].deadline = plain.tick;
+  G.tick(plain);
+  assert(plain.credits === plainCreditsAfterTake, 'without Underwriter, a bust deducts nothing further beyond the already-escrowed bond');
+
+  // ---- Rockhopper: raw goods one tier higher; board runs one offer thinner; starts in the belt ----
+  const rh = mkf('founder-rockhopper', 'rockhopper');
+  const plainChips = SW.pledges.chips(cour, 'ORE', 20, 3);   // a founder-less/other-founder stream for comparison
+  const bumpedChips = SW.pledges.chips(rh, 'ORE', 20, 3);
+  assert(bumpedChips > plainChips, 'Rockhopper raw-good chips exceed the plain tier-0 rate (' + bumpedChips + ' vs ' + plainChips + ')');
+  const expectedBumped = Math.round(20 * D.TUNE.pledgeTierChips[1] * (1 + D.TUNE.pledgeDistChips * 3));
+  assert(bumpedChips === expectedBumped, 'Rockhopper prices ORE at the tier-1 rate exactly');
+  const unaffected = SW.pledges.chips(rh, 'TECH', 20, 3); // tier 2, not a raw good — untouched
+  const plainTech = SW.pledges.chips(cour, 'TECH', 20, 3);
+  assert(unaffected === plainTech, "Rockhopper's bump does not touch a non-raw commodity (TECH)");
+  SW.pledges.refreshBoard(rh);
+  assert(rh.board.length <= D.TUNE.pledgeBoardMax - 1, 'the board runs one offer thinner for Rockhopper (' + rh.board.length + ' <= ' + (D.TUNE.pledgeBoardMax - 1) + ')');
+  const rhShip = rh.ships[0];
+  const rhAt = rh.systems[rhShip.at];
+  assert(rhAt && (rhAt.id === rh.homeId || (rhAt.prod && rhAt.prod.ORE > 0)), 'Rockhopper starts at home or a real ore-producing belt world (' + rhAt.name + ')');
+
+  // starting credit stipend — checked on a fresh, un-clobbered newGame (mkf's
+  // helper stamps 99999 credits over whatever newGame set, for headroom)
+  const rhFresh = G.newGame({ seed: 'founder-rockhopper-fresh', difficulty: 'relaxed', acts: true, founder: 'rockhopper' });
+  const courFresh = G.newGame({ seed: 'founder-rockhopper-fresh', difficulty: 'relaxed', acts: true, founder: 'courier' });
+  assert(rhFresh.credits === courFresh.credits + D.FOUNDERS.rockhopper.credits, "the Rockhopper's rig grants a starting credit stipend over an equivalent founder (" + rhFresh.credits + ' vs ' + courFresh.credits + ')');
+
+  invariants(cour, 'post-founder-courier');
+  invariants(uw, 'post-founder-underwriter');
+  invariants(rh, 'post-founder-rockhopper');
 }
 
 // ---------- signal beacons (REWEAVE §13.4) ----------

@@ -15,6 +15,7 @@ SW.uiModals = (function () {
   // Module-private state
   let codexTab = 'ships', codexHull = 'sparrow';
   let chosenOrigin = 'courier';
+  let chosenFounder = 'courier';
   let sim = null, raidChoice = null;
 
   // Expose codexHull for portraitLoop in coordinator (reads at animation time)
@@ -401,6 +402,21 @@ SW.uiModals = (function () {
       }
     }
 
+    // Founder (REWEAVE §6) — who the Guild seats at the Loomship's helm for a
+    // Focused run. Orthogonal to Origin: one rule-bend, one liability, one
+    // lore line. Only matters if the Focused toggle above is checked; shown
+    // unconditionally (like Origin) rather than wired to that toggle live —
+    // newGame ignores opts.founder entirely for a Long Weave run either way.
+    html += '<h4 data-info="ui:founders">Founder</h4>';
+    for (const fid of D.FOUNDER_IDS) {
+      const def = D.FOUNDERS[fid];
+      html += '<div class="originCard rich' + (chosenFounder === fid ? ' sel' : '') + '" data-founder="' + fid + '">' +
+        '<div style="flex:1"><div class="oname">' + esc(def.name) + '</div>' +
+        '<div class="sub">' + esc(def.bend) + '</div>' +
+        '<div class="oHooks"><span class="oHook">' + esc(def.liability) + '</span></div>' +
+        '</div></div>';
+    }
+
     // ---- right column: the galaxy ----
     html += '</div><div class="setupCol">';
 
@@ -498,6 +514,13 @@ SW.uiModals = (function () {
         if (!el.dataset.origin) return;
         chosenOrigin = el.dataset.origin;
         modal.querySelectorAll('.originCard').forEach(function (x) { x.classList.toggle('sel', x === el); });
+      });
+    });
+    // wire founder selection
+    modal.querySelectorAll('[data-founder]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        chosenFounder = el.dataset.founder;
+        modal.querySelectorAll('[data-founder]').forEach(function (x) { x.classList.toggle('sel', x === el); });
       });
     });
     // collapsible section headers (Inclination, Weave conditions)

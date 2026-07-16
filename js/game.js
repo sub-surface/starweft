@@ -47,6 +47,12 @@ SW.game = (function () {
     const difficulty = D.DIFFICULTY[opts.difficulty] ? opts.difficulty : 'standard';
     const originId = (D.ORIGINS[opts.origin] && G.originUnlocked(opts.origin)) ? opts.origin : 'courier';
     const origin = D.ORIGINS[originId];
+    // Founder (REWEAVE §6): orthogonal to Origin, chosen only for a Focused
+    // (Act Ladder) run — the Long Weave sandbox has no use for a rule-bend
+    // with no acts to bend. All three ● founders are unlocked at zero (the
+    // other five are Chronicle-gated, R8).
+    const founderId = (opts.acts && D.FOUNDERS[opts.founder]) ? opts.founder : null;
+    const founder = founderId ? D.FOUNDERS[founderId] : null;
     // Threat (scourge clock, decoupled from difficulty) and weave conditions
     // (stackable modifiers). Both default to harmless/empty for old callers.
     const threat = D.THREAT[opts.threat] ? opts.threat : 'inherit';
@@ -67,9 +73,10 @@ SW.game = (function () {
       doctrineLean: doctrineLean,
       daily: (typeof opts.daily === 'string') ? opts.daily : null,
       origin: originId,
+      founder: founderId,
       identity: Object.assign({ name: 'The Provisional Weft', hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.', myth: 'none' }, opts.identity || {}),
       tick: 0, paused: true, speed: 1,
-      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + startCreditsBonus),
+      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + (founder ? (founder.credits || 0) : 0) + startCreditsBonus),
       research: 0,
       nextId: 1,
       systems: [], ships: [], routes: [], directives: [], rivals: [],
@@ -170,7 +177,20 @@ SW.game = (function () {
         for (const nb of s0.links) state.systems[nb].discovered = true;
       }
     }
-    (origin.ships || ['sparrow']).forEach(function (h, i) {
+    if (founder && founder.startBelt) {
+      // "starts in the belt": a nearby ore-producing world, not a new map
+      // feature — the belt is wherever the seed already put the ore.
+      const belt = state.systems.filter(function (s) {
+        return s.id !== state.homeId && s.prod && s.prod.ORE > 0 && (s.hops || 0) <= 6;
+      }).sort(function (a, b) { return (a.hops || 0) - (b.hops || 0); });
+      if (belt.length) {
+        const s0 = belt[Math.floor(U.rnd(state) * Math.min(4, belt.length))];
+        startSys = s0.id;
+        s0.discovered = true; s0.surveyed = true;
+        for (const nb of s0.links) state.systems[nb].discovered = true;
+      }
+    }
+    ((founder && founder.ships) || origin.ships || ['sparrow']).forEach(function (h, i) {
       SW.ships.create(state, h, startSys, i === 0 ? 'Stitch' : undefined);
     });
     // Founding Myth — a single line of lore on the run's opening ticker. Pure

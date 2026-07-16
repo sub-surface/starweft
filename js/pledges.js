@@ -52,8 +52,9 @@ SW.pledges = (function () {
   // TONNAGE: the chip base an offer is worth. One number feeds both the credit
   // fare and the WEAVE score, so the two never drift apart.
   P.chips = function (state, c, qty, distHops) {
-    const t = D.COMMODITIES[c] ? (D.COMMODITIES[c].tier || 0) : 0;
-    const per = D.TUNE.pledgeTierChips[t] || D.TUNE.pledgeTierChips[0];
+    let t = D.COMMODITIES[c] ? (D.COMMODITIES[c].tier || 0) : 0;
+    if (SW.founders) t = SW.founders.chipTier(state, c, t);
+    const per = D.TUNE.pledgeTierChips[t] || D.TUNE.pledgeTierChips[D.TUNE.pledgeTierChips.length - 1];
     return Math.round(qty * per * (1 + D.TUNE.pledgeDistChips * Math.max(0, distHops)));
   };
   // THREAD: the live multiplier the *next* completion would score at, given how
@@ -125,7 +126,8 @@ SW.pledges = (function () {
     });
     // trust throttles how full the board runs (busting a pledge dims your boards)
     const trust = P.trust(state);
-    const target = Math.max(1, Math.round(D.TUNE.pledgeBoardMax * trust));
+    const slotPenalty = SW.founders ? SW.founders.boardSlotPenalty(state) : 0;
+    const target = Math.max(1, Math.round(D.TUNE.pledgeBoardMax * trust) - slotPenalty);
     let guard = 0;
     while (state.board.length < target && guard++ < 12) {
       const o = makeOffer(state);
@@ -252,7 +254,12 @@ SW.pledges = (function () {
     state.pledgeStreak = 0;                   // the thread snaps
     state.pledgeStats.busted = (state.pledgeStats.busted || 0) + 1;
     state.stats.pledgesBust = (state.stats.pledgesBust || 0) + 1;
-    SW.game.emit('toast', { kind: 'bad', text: '✂ Pledge broken: ' + p.toName + ' — ' + (reason || 'deadline missed') + '. Bond ' + U.fmt(p.bond) + '¤ forfeit, thread reset.' });
+    // Underwriter: a bust forfeits double the bond — the bond itself is
+    // already lost (it just isn't returned, unlike complete()); this is the
+    // *extra* debit on top of that, clamped so credits never go negative.
+    const extra = SW.founders ? SW.founders.bustForfeitExtra(state, p.bond) : 0;
+    if (extra > 0) state.credits = Math.max(0, state.credits - extra);
+    SW.game.emit('toast', { kind: 'bad', text: '✂ Pledge broken: ' + p.toName + ' — ' + (reason || 'deadline missed') + '. Bond ' + U.fmt(p.bond) + '¤ forfeit' + (extra > 0 ? ' (double, ' + U.fmt(extra) + '¤ more)' : '') + ', thread reset.' });
     SW.game.emit('sfx', 'error');
     SW.game.news(state, 'A pledge to ' + p.toName + ' lapsed. The Guild remembers.', p.to);
   }

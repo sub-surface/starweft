@@ -74,6 +74,7 @@ SW.acts = (function () {
       farThreadBonus: 0, tautThreadBonus: 0, firstlightX2: false, fifthSeal: false, streakCapBonus: 0 };
     const sources = [D.COMMISSIONS[state.acts.commission] && D.COMMISSIONS[state.acts.commission].fx];
     for (const id of (state.acts.boons || [])) sources.push(D.BOONS[id] && D.BOONS[id].fx);
+    if (SW.founders) { const fo = SW.founders.current(state); if (fo) sources.push(fo.fx); }
     for (const fx of sources) {
       if (!fx) continue;
       if (fx.chipMult) m.chipMult *= fx.chipMult;

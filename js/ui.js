@@ -217,6 +217,7 @@ SW.ui = (function () {
     ringBoard: { title: 'BOARD ◈', sub: 'Guild offers', lines: ['This system is carrying open pledge offers. Opens the board.'] },
     ringBookmark: { title: 'BOOKMARK ☆', sub: 'quick recall', lines: ['Marks this system so you can find it again fast — the search box and Journal both surface bookmarks.'] },
     ringBuild: { title: 'BUILD ▦', sub: 'construction', lines: ['Opens the system panel with Construction expanded — every buildable here, one tap from raising it.'] },
+    founders: { title: 'FOUNDER', sub: 'who the Guild seats at the helm', lines: ['One rule-bend, one liability, for a Focused run. WEFT flies the network; the Founder bends its laws. Only matters if the run above is Focused, not Long Weave.'] },
     weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
     pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
     acts: { title: 'THE ACT LADDER ◈', sub: 'a focused run', lines: ['Each act is a Guild Charter: a WEAVE quota and a clock. Its Commission tints the pledge economy — read it, and build to it.', 'Meet the quota and choose: BANK the thread (a clean win) or PUSH — draft a Boon, take a harder Charter, widen your reach. Miss the clock and you are Cut; lose the Loomship and you are Burned; lose the Heart and you are Eaten.'] },
@@ -1277,6 +1278,7 @@ SW.ui = (function () {
           conditions: SW.uiModals.selectedConditions ? SW.uiModals.selectedConditions() : [],
           doctrineLean: ($('#ngLean') && $('#ngLean').value) || undefined,
           origin: chosenOriginFromModal(),
+          founder: chosenFounderFromModal(),
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
           tutorial: !!($('#ngTut') && $('#ngTut').checked),
           // Focused run = the Act Ladder. Off during the prologue (the cold open
@@ -1378,6 +1380,10 @@ SW.ui = (function () {
   function chosenOriginFromModal() {
     const sel = document.querySelector('#titleModal .originCard.sel');
     return (sel && sel.dataset.origin) || 'courier';
+  }
+  function chosenFounderFromModal() {
+    const sel = document.querySelector('#titleModal [data-founder].sel');
+    return (sel && sel.dataset.founder) || 'courier';
   }
 
   function dispatchChange(e) {
