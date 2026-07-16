@@ -134,6 +134,12 @@
   G.handlers.objective = function () {};
   SW.render.init(document.getElementById('map'));
   SW.ui.init();
+  // Headless Chrome via a plain --window-size can't flip matchMedia(pointer:
+  // coarse) (confirmed empirically — no CLI flag does it without full CDP
+  // device emulation), so #f8touch forces ui.isTouch() for a harness-only,
+  // visual-only verification of the touch-specific sys-panel default. Never
+  // ships — shipped code has no such override.
+  if (location.hash === '#f8touch') SW.ui.isTouch = function () { return true; };
   G.newGame({ seed: 'shot-f2', difficulty: 'standard', acts: true });
   SW.ui.afterLoad();
   SW.ui.hideModals();
@@ -184,6 +190,30 @@
     SW.render.cam.pitch = 0; SW.render.cam.pitchTarget = 0;
     SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
     SW.render.selectedSys = null;
+  }
+  if (location.hash === '#f8' || location.hash === '#f8touch') {
+    // F8 mobile-parity scene: ring (selected system + ship) + flyout (board
+    // offer at a second system) + edge compass (a far threat) all together
+    const st = G.state;
+    const home = st.systems[st.homeId];
+    st.systems.filter(function (x) { return x.pop > 0 && x.id !== st.homeId; }).slice(0, 4).forEach(function (x) { x.discovered = true; });
+    SW.pledges.refreshBoard(st);
+    let far = null, bestD = -1;
+    st.systems.forEach(function (sys) {
+      if (sys.id === st.homeId || sys.discovered) return;
+      const d = SW.util.dist(home, sys);
+      if (d > bestD) { bestD = d; far = sys; }
+    });
+    if (far) { far.discovered = true; far.scourge = 1; far.threatAt = st.tick + 100; }
+    const dx = far ? far.x - home.x : 1, dy = far ? far.y - home.y : 0;
+    const yaw = Math.atan2(-dy, dx);
+    SW.render.cam.yaw = yaw; SW.render.cam.yawTarget = yaw;
+    SW.render.cam.pitch = 0; SW.render.cam.pitchTarget = 0;
+    SW.render.selectedSys = st.homeId;
+    SW.render.selectedShip = st.ships.length ? st.ships[0].id : null;
+    SW.render.centerOn(st.homeId);
+    SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+    if (st.board.length) SW.ui.openBoardFlyout(st.board[0].to);
   }
   G.state.paused = true;
   SW.ui.refresh();

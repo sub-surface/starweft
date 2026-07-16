@@ -359,6 +359,44 @@ step('Guild board flyout: opens from a beacon tap, terms + take, tap-away and Es
   if (SW.ui.boardFlyoutOpen()) throw new Error('Esc did not dismiss the flyout');
 });
 
+step('mobile parity (F8): flyout stays clamped on-screen at the viewport edge', function () {
+  // A screenshot verification pass at a narrow width caught a real bug this
+  // locks in: the flyout's fixed +56px offset from its star could push its
+  // take button past the viewport's right edge. It also confirmed (via the
+  // screenshot harness, which boots a genuinely fresh module — this suite's
+  // shared state can't re-observe a "never touched" default) that the sys
+  // panel now opens closed-by-default on touch instead of burying a
+  // touch-width ring/flyout under its own half-screen bottom sheet.
+  const s = G.state;
+  s.credits = 8000;
+  s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; })
+    .slice(0, 4).forEach(function (x) { x.discovered = true; });
+  SW.pledges.refreshBoard(s);
+  if (!s.board.length) return;
+  const dest = s.board[0].to, sysD = s.systems[dest];
+  // deterministic near-right-edge projection (the F6 lesson: don't trust
+  // ambient yaw/pitch not to put the target behind the camera, or — new
+  // lesson here — push it so far off that screenPosOf's on-screen-only
+  // posById drops it and the flyout correctly just hides instead of
+  // clamping). yaw/pitch flattened, camera 49 units left of the system at
+  // dist 60 puts it ~20px from the canvas's right edge: on-screen by
+  // posById's own margin, but the flyout's +56 offset still overflows it.
+  SW.render.cam.tx = sysD.x - 49; SW.render.cam.ty = sysD.y; SW.render.cam.tz = sysD.z || 0;
+  SW.render.cam.yaw = 0; SW.render.cam.yawTarget = 0;
+  SW.render.cam.pitch = 0; SW.render.cam.pitchTarget = 0;
+  SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  pumpFrames(3);
+  SW.ui.openBoardFlyout(dest);
+  pumpFrames(2);
+  const fly = elCache['#boardFlyout'];
+  const m = fly.style.transform.match(/translate\((-?\d+)px/);
+  if (!m) throw new Error('flyout has no transform — did not position at all');
+  const left = parseInt(m[1], 10);
+  if (left > 1280 - 250 - 8) throw new Error('flyout transform not clamped to the stubbed viewport (' + fly.style.transform + ')');
+  SW.render.centerOn(s.homeId);
+  SW.ui.closeBoardFlyout();
+});
+
 step('edge compass: off-screen beacons ping the viewport edge, tap centers camera (REWEAVE §13.6)', function () {
   const s = G.state;
   const home = s.systems[s.homeId];

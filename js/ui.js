@@ -406,7 +406,11 @@ SW.ui = (function () {
   // The machine owns only open/pin state — every renderer keeps its DOM target
   // and signature. On touch the dock keeps the F1 bottom-sheet behavior
   // (body.dockOpen); the rail is a desktop idea. Pin preference is sticky.
-  const drawerWant = { sys: true, dock: false }; // sys: selection summons it (until F5 re-wires the reflex)
+  // sys: null until the player explicitly opens/closes it once — defaults to
+  // open on desktop (legacy reflex) but closed on touch, where the panel is a
+  // half-screen bottom sheet that would otherwise bury the ring/flyout (F5/F7)
+  // under itself the moment a system is first selected. Once toggled, sticky.
+  const drawerWant = { sys: null, dock: false };
   function syncDrawerDom() {
     const b = bodyClass();
     if (b) b.toggle('dockRail', !ui.isTouch() && !drawerWant.dock && !ui.drawer.isPinned('dock'));
@@ -429,7 +433,10 @@ SW.ui = (function () {
       }
       return false;
     },
-    wants: function (id) { return !!drawerWant[id]; },
+    wants: function (id) {
+      if (id === 'sys' && drawerWant.sys === null) return !ui.isTouch();
+      return !!drawerWant[id];
+    },
     open: function (id) {
       if (id === 'exchange') { if (!ui.drawer.isOpen('exchange')) SW.uiMarket.toggleExchange(); return; }
       if (id === 'tech') { if (!ui.drawer.isOpen('tech')) SW.uiTech.open(); return; }
@@ -569,7 +576,21 @@ SW.ui = (function () {
       else {
         const fp = SW.render.screenPosOf(boardFlyoutSys);
         if (!fp || !fly.innerHTML) fly.classList.add('hidden');
-        else { fly.classList.remove('hidden'); fly.style.transform = 'translate(' + Math.round(fp.x + 56) + 'px,' + Math.round(fp.y - 20) + 'px)'; }
+        else {
+          fly.classList.remove('hidden');
+          // clamp on-screen: a star past the midpoint on a narrow viewport
+          // would otherwise push the flyout's take button past the edge —
+          // read real dimensions where available (offsetWidth is 0 while
+          // hidden, so this must run after the class removal above)
+          const main = $('#main');
+          const vw = (main && main.clientWidth) || (typeof window !== 'undefined' && window.innerWidth) || 1280;
+          const vh = (main && main.clientHeight) || (typeof window !== 'undefined' && window.innerHeight) || 720;
+          const fw = fly.offsetWidth || 250, fh = fly.offsetHeight || 120;
+          let left = fp.x + 56, top = fp.y - 20;
+          left = Math.max(8, Math.min(left, vw - fw - 8));
+          top = Math.max(8, Math.min(top, vh - fh - 8));
+          fly.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(top) + 'px)';
+        }
       }
     }
   };
