@@ -340,6 +340,7 @@ SW.ui = (function () {
       SW.uiSystem.renderSysPanel();
       SW.uiShip.renderCommandBar();
       renderRing();
+      renderBoardFlyout();
       renderDock(false);
       if (!$('#exchange').classList.contains('hidden')) SW.uiMarket.renderExchange();
       renderInfobox(null);
@@ -351,6 +352,7 @@ SW.ui = (function () {
     SW.uiSystem.renderSysPanel();
     SW.uiShip.renderCommandBar();
     renderRing();
+    renderBoardFlyout();
     // Prologue UI gating: shrink the interface while the map is locked
     const _st = st();
     if (_st && SW.tutorial && SW.tutorial.mapLocked(_st)) {
@@ -504,17 +506,72 @@ SW.ui = (function () {
     ring.dataset.builtFor = String(sysId);
   }
   ui.renderRing = renderRing;
+
+  // ============ the Guild board flyout (REWEAVE §13.7) ============
+  // Open pledge offers glow at their destination system, not in a list. A
+  // beacon tap (or the ring's ◈ board verb) opens this compact flyout —
+  // terms + one take button per offer, anchored near the star. The held
+  // manifest is not per-system and keeps its home in the Pledges drawer.
+  let boardFlyoutSys = null;
+  function renderBoardFlyout() {
+    const fly = $('#boardFlyout');
+    if (!fly) return;
+    const s = st();
+    if (boardFlyoutSys === null || !s || !s.systems[boardFlyoutSys]) { fly.classList.add('hidden'); fly.innerHTML = ''; return; }
+    const sys = s.systems[boardFlyoutSys];
+    const PG = SW.pledges;
+    const offers = PG ? PG.offersAt(s, sys.id) : [];
+    if (!offers.length) { boardFlyoutSys = null; fly.classList.add('hidden'); fly.innerHTML = ''; return; }
+    const bd = SW.uiPledge.threadBreakdown(s);
+    const full = s.pledges.length >= PG.maxActive(s);
+    const nextThread = 1 + Math.max(0, s.pledges.length) * D.TUNE.pledgeConcurrentThread + bd.streakBonus;
+    let html = '<div class="row"><span class="title grow">◈ ' + esc(sys.name) + '</span>' +
+      '<button data-act="closeBoardFlyout" title="Dismiss">✕</button></div>';
+    for (const o of offers) {
+      const canAfford = s.credits >= o.bond;
+      const dis = full || !canAfford;
+      const weaveIf = Math.round(o.chips * nextThread);
+      html += '<div class="listItem">' +
+        '<div class="row"><span class="title grow">' + o.qty + '× ' + commName(o.c) + '</span>' +
+        '<span class="num" title="WEAVE if taken now, at ×' + nextThread.toFixed(1) + '">+' + U.fmt(weaveIf) + '</span></div>' +
+        '<div class="row"><span class="sub num grow">' + o.hops + ' hops · ' + o.window + '-tick window · bond ' + U.fmt(o.bond) + '¤</span>' +
+        '<button class="primary" data-act="takePledge" data-id="' + o.id + '"' + (dis ? ' disabled' : '') +
+        ' title="' + (full ? 'Manifest full' : (canAfford ? 'Seal this pledge' : 'Cannot cover the bond')) + '">take</button></div></div>';
+    }
+    fly.innerHTML = html;
+  }
+  ui.renderBoardFlyout = renderBoardFlyout;
+  ui.openBoardFlyout = function (sysId) { boardFlyoutSys = sysId; renderBoardFlyout(); };
+  ui.closeBoardFlyout = function () {
+    boardFlyoutSys = null;
+    const fly = $('#boardFlyout');
+    if (fly) { fly.classList.add('hidden'); fly.innerHTML = ''; }
+  };
+  ui.boardFlyoutOpen = function () { return boardFlyoutSys !== null; };
+  ui.boardFlyoutSysId = function () { return boardFlyoutSys; };
+
   // Called every rAF frame from render.js's post-render step: pure position +
   // visibility sync, never rebuilds content (that only happens on state change).
   ui.onFrame = function () {
     const ring = $('#ring');
-    if (!ring) return;
-    const sysId = SW.render.selectedSys;
-    if (SW.render.mode !== 'galaxy' || sysId === null || sysId === undefined) { ring.classList.add('hidden'); return; }
-    const pos = SW.render.screenPosOf(sysId);
-    if (!pos || !ring.innerHTML) { ring.classList.add('hidden'); return; }
-    ring.classList.remove('hidden');
-    ring.style.transform = 'translate(' + Math.round(pos.x) + 'px,' + Math.round(pos.y) + 'px)';
+    if (ring) {
+      const sysId = SW.render.selectedSys;
+      if (SW.render.mode !== 'galaxy' || sysId === null || sysId === undefined) { ring.classList.add('hidden'); }
+      else {
+        const pos = SW.render.screenPosOf(sysId);
+        if (!pos || !ring.innerHTML) ring.classList.add('hidden');
+        else { ring.classList.remove('hidden'); ring.style.transform = 'translate(' + Math.round(pos.x) + 'px,' + Math.round(pos.y) + 'px)'; }
+      }
+    }
+    const fly = $('#boardFlyout');
+    if (fly && boardFlyoutSys !== null) {
+      if (SW.render.mode !== 'galaxy') { fly.classList.add('hidden'); }
+      else {
+        const fp = SW.render.screenPosOf(boardFlyoutSys);
+        if (!fp || !fly.innerHTML) fly.classList.add('hidden');
+        else { fly.classList.remove('hidden'); fly.style.transform = 'translate(' + Math.round(fp.x + 56) + 'px,' + Math.round(fp.y - 20) + 'px)'; }
+      }
+    }
   };
 
   // ============ the command strip (REWEAVE §13.2) ============
@@ -670,6 +727,9 @@ SW.ui = (function () {
       // panel stays wherever the player last left it; ✕/Esc-dismiss stays
       // dismissed across further selections until the ring's ⓘ reopens it.
     } else pinnedInfo = null;
+    // tap-away (REWEAVE §13.7): clicking elsewhere on the map dismisses a
+    // flyout anchored to a different system (or empty space)
+    if (ui.boardFlyoutOpen() && (!sys || sys.id !== ui.boardFlyoutSysId())) ui.closeBoardFlyout();
     ui.refresh();
   };
   ui.mapHover = function (sys) {
@@ -688,7 +748,7 @@ SW.ui = (function () {
       const r = A().openHail(s, b.hailKey || undefined);
       if (!r.ok) toast({ kind: 'bad', text: r.msg || 'The channel is dead.' });
     } else if (b.kind === 'board') {
-      SW.render.selectedSys = b.sys; ui.drawer.open('sys'); ui.setTab('pledges');
+      ui.openBoardFlyout(b.sys);
     } else if (b.kind === 'boundary') {
       ui.setTab('pledges');
     }
@@ -957,6 +1017,7 @@ SW.ui = (function () {
         break;
       }
       case 'ringBoard': if (sysId !== null) ui.beaconTap({ kind: 'board', sys: sysId }); break;
+      case 'closeBoardFlyout': ui.closeBoardFlyout(); break;
       case 'ringBuild': if (sysId !== null) { ui.drawer.open('sys'); ui.openPanelSection('sys:construction'); } break;
       case 'alignPlane':
         if (SW.render.mode === 'system') {
@@ -1284,7 +1345,7 @@ SW.ui = (function () {
         const rank = { threat: 0, stranded: 1, hail: 2, board: 3 };
         const list = (SW.signals ? SW.signals.list(s) : []).filter(function (x) { return rank[x.kind] !== undefined; });
         list.sort(function (a, b2) { return rank[a.kind] - rank[b2.kind]; });
-        if (list.length) { ui.exitSystem(); ui.beaconTap(list[0]); }
+        if (list.length) { ui.exitSystem(); SW.render.centerOn(list[0].sys); ui.beaconTap(list[0]); }
         break;
       }
     }
@@ -1334,6 +1395,7 @@ SW.ui = (function () {
     else if (e.key === 'Home') { ui.exitSystem(); SW.render.centerOn(s.homeId); }
     else if (e.key === 'F3') { e.preventDefault(); SW.render.showPerf = !SW.render.showPerf; }
     else if (e.key === 'Escape') {
+      if (ui.boardFlyoutOpen()) { ui.closeBoardFlyout(); return; }
       if (ui.moreOpen()) { ui.toggleMore(false); return; }
       if (SW.uiTech && SW.uiTech.isOpen && SW.uiTech.isOpen()) { SW.uiTech.close(); return; }
       if (!$('#exchange').classList.contains('hidden')) { $('#exchange').classList.add('hidden'); return; }

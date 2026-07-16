@@ -138,6 +138,13 @@ input[type=checkbox] { accent-color: var(--accent); }
   background: var(--surface); border: 1px solid var(--line-bright); color: var(--ink);
 }
 #ring button:hover, #ring button:focus-visible { border-color: var(--accent); color: var(--accent); }
+
+/* ---- Guild board flyout (REWEAVE §13.7): offers glow at their system, not a list ---- */
+#boardFlyout {
+  position: absolute; top: 0; left: 0; z-index: 17;
+  width: 250px; max-width: 72vw; padding: 10px 10px 6px;
+}
+#boardFlyout .listItem { margin-top: 6px; }
 #dock {
   position: absolute; top: 8px; right: 8px; width: 326px; max-height: calc(100% - 16px);
   display: flex; flex-direction: column; z-index: 20;

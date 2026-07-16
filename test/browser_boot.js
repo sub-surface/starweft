@@ -125,6 +125,10 @@ function fireClick(act, data) {
   const evt = { target: { closest: function () { return btn; }, tagName: 'BUTTON' } };
   for (const fn of (listeners.click || [])) fn(evt);
 }
+function fireKey(key) {
+  const evt = { key: key, code: key, target: { tagName: 'BODY' }, preventDefault: function () {} };
+  for (const fn of (listeners.keydown || [])) fn(evt);
+}
 function fireSectionClick(section) {
   const h = {
     dataset: { section: section },
@@ -313,6 +317,46 @@ step('signal beacons: drawn on the map, counted in the strip (REWEAVE §13.4)', 
   if (!SW.ui.drawer.isOpen('sys')) throw new Error('beacon tap did not open the system drawer');
   sys.scourge = 0; delete sys.threatAt;
   SW.ui.refresh();
+});
+
+step('Guild board flyout: opens from a beacon tap, terms + take, tap-away and Esc dismiss (REWEAVE §13.7)', function () {
+  const s = G.state;
+  s.credits = 8000;
+  s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; })
+    .slice(0, 4).forEach(function (x) { x.discovered = true; });
+  SW.pledges.refreshBoard(s);
+  if (!s.board.length) throw new Error('no board offers seeded to test the flyout against');
+  const dest = s.board[0].to;
+  SW.render.centerOn(dest);
+  SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  pumpFrames(3);
+  // beacon tap opens the flyout, not the sys drawer or the pledges tab
+  SW.ui.drawer.close('sys');
+  SW.ui.beaconTap({ kind: 'board', sys: dest });
+  if (!SW.ui.boardFlyoutOpen()) throw new Error('board beacon tap did not open the flyout');
+  if (SW.ui.drawer.isOpen('sys')) throw new Error('board beacon tap should not also force the sys panel open');
+  let html = (elCache['#boardFlyout'] && elCache['#boardFlyout'].innerHTML) || '';
+  if (html.indexOf('data-act="takePledge"') < 0) throw new Error('flyout missing a take button for the offer');
+  if (html.indexOf(s.systems[dest].name) < 0) throw new Error('flyout does not name its system');
+  // the ring's ◈ board verb reaches the same flyout
+  SW.render.selectedSys = dest;
+  SW.ui.refresh();
+  const ringHtml = (elCache['#ring'] && elCache['#ring'].innerHTML) || '';
+  if (ringHtml.indexOf('data-act="ringBoard"') < 0) throw new Error('ring missing the board verb for a system carrying offers');
+  // take the offer through the flyout's own button; the flyout re-renders live
+  const offerId = s.board[0].id, held0 = s.pledges.length;
+  fireClick('takePledge', { id: offerId });
+  if (s.pledges.length !== held0 + 1) throw new Error('flyout take button did not seal a pledge');
+  // tap-away: selecting a different (or no) system dismisses it
+  SW.pledges.refreshBoard(s);
+  SW.ui.openBoardFlyout(dest);
+  if (!SW.ui.boardFlyoutOpen()) throw new Error('flyout did not reopen for the next check');
+  SW.ui.mapClick(null);
+  if (SW.ui.boardFlyoutOpen()) throw new Error('clicking empty space did not dismiss the flyout');
+  // Esc dismisses it too, ahead of the more-row/drawer chain
+  SW.ui.openBoardFlyout(dest);
+  fireKey('Escape');
+  if (SW.ui.boardFlyoutOpen()) throw new Error('Esc did not dismiss the flyout');
 });
 
 step('edge compass: off-screen beacons ping the viewport edge, tap centers camera (REWEAVE §13.6)', function () {

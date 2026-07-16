@@ -50,6 +50,7 @@
   <button id="btnBackGalaxy" class="hidden">← THE BUBBLE</button>
   <div id="sysPanel" class="panel hidden"></div>
   <div id="ring" class="hidden"></div>
+  <div id="boardFlyout" class="panel hidden"></div>
   <div id="dock" class="panel">
     <div id="dockTabs">
       <button data-tab="fleet" class="active">Fleet</button>
@@ -155,6 +156,16 @@
     SW.render.selectedShip = st.ships.length ? st.ships[0].id : null;
     SW.render.centerOn(st.homeId);
     SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  }
+  if (location.hash === '#flyout') {
+    const st = G.state;
+    st.systems.filter(function (x) { return x.pop > 0 && x.id !== st.homeId; }).slice(0, 4).forEach(function (x) { x.discovered = true; });
+    SW.pledges.refreshBoard(st);
+    const dest = st.board.length ? st.board[0].to : st.homeId;
+    SW.render.selectedSys = dest;
+    SW.render.centerOn(dest);
+    SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+    SW.ui.openBoardFlyout(dest);
   }
   if (location.hash === '#compass') {
     const st = G.state;
