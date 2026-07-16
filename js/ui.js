@@ -202,6 +202,8 @@ SW.ui = (function () {
     fleet: { title: 'FLEET ▲', sub: 'ships', lines: ['Your hulls. Buy more at Sol or Industrial hubs. Idle ships are wasted ships.'] },
     infamy: { title: 'INFAMY †', sub: 'reputation', lines: ['Raiding raises it. At ' + D.TUNE.infamyBlackMarket + '+ the Reach\'s black markets open to you; at 5+ the Vigil starts collecting.'] },
     weaveHealth: { title: 'WEAVE HEALTH', sub: 'the state of the weave', lines: ['One number for the galaxy you tend: how well known worlds live, whether essentials reach them, whether factories can run, and how much of the map your threads touch.'] },
+    weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
+    pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
   };
   function uiTopicInfo(id) {
     if (id === 'infamy' && SW.combat && SW.combat.infamyStatus) {
@@ -364,6 +366,13 @@ SW.ui = (function () {
     $('#stCredits').textContent = U.fmt(s.credits);
     $('#stResearch').textContent = U.fmt(Math.floor(s.research));
     $('#stFleet').textContent = s.ships.length;
+    const weaveEl = $('#stWeave');
+    if (weaveEl) {
+      weaveEl.textContent = U.fmt(s.weave || 0);
+      const held = (s.pledges && s.pledges.length) || 0;
+      const wrap = $('#stWeaveWrap');
+      if (wrap) wrap.title = 'WEAVE ' + U.fmt(s.weave || 0) + (held ? ' · ' + held + ' pledge' + (held === 1 ? '' : 's') + ' held' : '');
+    }
     $('#stTick').textContent = s.tick;
     const inf = Math.floor(s.infamy || 0);
     $('#stInfamyWrap').style.display = inf > 0 ? '' : 'none';
@@ -519,6 +528,7 @@ SW.ui = (function () {
     else if (activeTab === 'routes') SW.uiRoutes.renderRoutes(body, force);
     else if (activeTab === 'ops') SW.uiRoutes.renderOps(body);
     else if (activeTab === 'you') SW.uiRoutes.renderYou(body);
+    else if (activeTab === 'pledges') SW.uiPledge.renderPledges(body);
     else if (activeTab === 'log') SW.uiRoutes.renderLog(body);
     else if (activeTab === 'tech') SW.uiTech.renderTech(body, force); // fallback: tab removed from dock but kept for safety
   }
@@ -686,6 +696,8 @@ SW.ui = (function () {
         break;
       }
       case 'landPax': if (ship) { const r = A().landPax(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
+      case 'takePledge': { const r = A().takePledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { SW.audio.sfx('click'); renderDock(true); } break; }
+      case 'abandonPledge': { const r = A().abandonPledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else renderDock(true); break; }
       case 'buyShip': { const r = A().buyShip(s, btn.dataset.h, sysId); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'selShip': SW.render.selectedShip = btn.dataset.id; break;
       case 'deselShip': SW.render.selectedShip = null; SW.render.followShip = null; break;

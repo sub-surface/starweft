@@ -592,6 +592,22 @@ SW.data = (function () {
     // afford the cheapest hull at home, a salvage advance tops them up so a lost
     // last ship is never a dead end. Throttled so it can't be farmed.
     strandedAidEvery: 80,           // ticks between salvage advances
+    // ---- PLEDGE: the core verb, scored (REWEAVE §5). WEAVE = TONNAGE x THREAD.
+    pledgeBoardEvery: 30,           // ticks between board refreshes
+    pledgeBoardMax: 4,              // open offers on a full-trust board
+    pledgeMaxActive: 3,             // concurrent pledges held (Founders bend this)
+    pledgeTierChips: [10, 16, 26, 44], // TONNAGE chips per unit, by commodity tier
+    pledgeDistChips: 0.5,           // + fraction of chips per hop of distance
+    pledgeConcurrentThread: 0.5,    // +THREAD per *other* pledge held at completion
+    pledgeStreakThread: 0.2,        // +THREAD per consecutive no-bust completion
+    pledgeStreakCap: 2.0,           // ceiling on the streak's THREAD contribution
+    pledgeWindowBase: 90,           // deadline ticks granted, baseline
+    pledgeWindowPerHop: 24,         // + deadline ticks per hop (far pledges get time)
+    pledgeQtyBase: 8,               // baseline pledged quantity
+    pledgeQtyPerHop: 1.5,           // + quantity per hop (bigger far hauls)
+    pledgeFarePerChip: 1.2,         // credits paid on completion, per chip of TONNAGE
+    pledgeBondFrac: 0.2,            // escrow to seal a pledge, as fraction of fare; forfeit on bust
+    pledgeOfferTtl: 150,            // ticks an untaken offer lingers on the board
   };
 
   D.RIVAL_DEFS = [

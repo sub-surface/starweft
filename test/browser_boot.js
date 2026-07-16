@@ -105,7 +105,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -191,7 +191,44 @@ step('map hover + click on every system type', function () {
 });
 
 step('all dock tabs render', function () {
-  ['fleet', 'routes', 'ops', 'you', 'log'].forEach(function (t) { SW.ui.setTab(t); });
+  ['fleet', 'routes', 'ops', 'pledges', 'you', 'log'].forEach(function (t) { SW.ui.setTab(t); });
+});
+
+step('PLEDGE surface: board + manifest render, take + abandon dispatch', function () {
+  const s = G.state;
+  s.credits = 8000;
+  // ensure at least one populated, discovered destination and a stocked board
+  s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; })
+    .slice(0, 4).forEach(function (x) { x.discovered = true; });
+  SW.pledges.refreshBoard(s);
+  SW.ui.setTab('pledges');
+  SW.ui.refresh();
+  let dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+  if (dock.indexOf('WEAVE') < 0) throw new Error('pledge surface missing WEAVE headline');
+  if (dock.indexOf('Guild board') < 0) throw new Error('pledge surface missing the board');
+  if (s.board.length && dock.indexOf('data-act="takePledge"') < 0) throw new Error('board offers have no take button');
+  // the topbar WEAVE readout exists and updates
+  if (!elCache['#stWeave']) throw new Error('topbar WEAVE stat missing');
+  // take a pledge through the dispatch, then complete it via the seam
+  if (s.board.length) {
+    const offerId = s.board[0].id, held0 = s.pledges.length;
+    fireClick('takePledge', { id: offerId });
+    if (s.pledges.length !== held0 + 1) throw new Error('takePledge did not seal a pledge');
+    const p = s.pledges[s.pledges.length - 1];
+    SW.pledges.onDeliver(s, p.to, p.c, p.qty);
+    if (s.weave <= 0) throw new Error('completing a pledge scored no WEAVE');
+    SW.ui.setTab('pledges'); SW.ui.refresh();
+    dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+    // take another and abandon it via dispatch
+    SW.pledges.refreshBoard(s);
+    if (s.board.length) {
+      fireClick('takePledge', { id: s.board[0].id });
+      const pid = s.pledges[s.pledges.length - 1].id, n = s.pledges.length;
+      fireClick('abandonPledge', { id: pid });
+      if (s.pledges.length !== n - 1) throw new Error('abandonPledge did not drop the pledge');
+    }
+  }
+  SW.ui.setTab('fleet');
 });
 
 step('camera alignment action flattens the orbit view', function () {

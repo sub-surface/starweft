@@ -88,6 +88,7 @@ SW.game = (function () {
     SW.rivals.init(state);
     SW.combat.init(state);
     SW.worldevents.init(state);
+    if (SW.pledges) SW.pledges.init(state);
 
     // origin effects
     for (const f in (origin.rep || {})) state.rep[f] = origin.rep[f];
@@ -204,6 +205,7 @@ SW.game = (function () {
     })();
     SW.scourge.tick(state);
     SW.worldevents.tick(state);
+    if (SW.pledges) SW.pledges.tick(state);
     SW.story.tick(state);
     if (SW.tutorial) SW.tutorial.tick(state);
     tickStrandedGuard(state);
@@ -789,6 +791,16 @@ SW.game = (function () {
     if (!ship) return err('No such ship.');
     ship.queue = []; ship.queueNote = null;
     return { ok: true };
+  };
+
+  // ---- PLEDGE: the core verb, scored (REWEAVE §5) ----
+  A.takePledge = function (state, offerId) {
+    if (!SW.pledges) return err('Pledges unavailable.');
+    return SW.pledges.take(state, offerId);
+  };
+  A.abandonPledge = function (state, pledgeId) {
+    if (!SW.pledges) return err('Pledges unavailable.');
+    return SW.pledges.abandon(state, pledgeId);
   };
 
   A.supplyMission = function (state, shipId, targetSysId, c, qty) {

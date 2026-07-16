@@ -217,6 +217,9 @@ SW.ships = (function () {
     state.stats.creditsEarned = (state.stats.creditsEarned || 0) + t.revenue;
     const profit = t.revenue - (ship.basis[c] || 0) * t.qty;
     SW.worldevents.onPlayerSell(state, sys.id, c, t.qty);
+    // PLEDGE fulfilment seam: every delivery route (manual, route, queue,
+    // mission, directive) lands here, so pledge progress is checked in one place.
+    if (SW.pledges) SW.pledges.onDeliver(state, sys.id, c, t.qty);
     SW.game.emit('fx', { kind: 'floater', sysId: sys.id, text: '+' + U.fmt(t.revenue) + '¤', good: profit >= 0 });
     return { ok: true, qty: t.qty, revenue: t.revenue, profit: profit };
   };

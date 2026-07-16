@@ -4,6 +4,33 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-07-16 — Core verb ratified: PLEDGE. R3 (PLEDGE v1) shipped.
+
+The REWEAVE §5 core-verb question is closed: **PLEDGE** wins over TENSION and
+CAST. Rationale (REWEAVE §5.4): it is the only candidate where the core verb
+and the scoring verb are the *same physical act* — a crate landing at a hungry
+world is the fantasy, the economy, and the points at once. It hands the act
+ladder its quota for free, gives Charters a clean pipeline to bend, keeps every
+delivery a discrete hit, and composes *with* automation instead of fighting it.
+TENSION is retained as lane *terrain* (a later Charter/laneFlow salvage); CAST
+as a pledge *type* (deep-ring push-your-luck).
+
+**Shipped this session (R3, PLEDGE v1):** new DOM-free sim module `js/pledges.js`
+— Guild board of seeded offers, `WEAVE = TONNAGE × THREAD` scoring, concurrent-
+pledge + streak multiplier, bond escrow, deadline busts, Guild trust. Fulfilment
+is detected at the single delivery seam (`S.sell → SW.pledges.onDeliver`), so
+manual/route/queue/mission deliveries all count. Board generation runs on a
+dedicated serialized RNG sub-stream (`state.pledgeRng`) so it is replayable but
+never perturbs the main `U.rand` stream — every prior seeded assertion is
+unchanged. Actions `A.takePledge`/`A.abandonPledge` (journaled). UI: a Pledges
+dock tab (`js/ui_pledge.js`) + topbar WEAVE readout + infobox topics. All
+additive state, no `SAVE_VERSION` bump. Both suites green except the two
+failures that predate this work (auto-explorer divergence seed-flake in smoke;
+supply-mission dispatch in browser_boot) — confirmed red on clean `main`.
+
+Naming note: `state.charters` is already the passenger-charter layer; the future
+REWEAVE Charter synergy layer must use a different key (e.g. `state.exemptions`).
+
 ## 2026-07-16 — LOOM.md is the world bible; the cut-the-weave canon; craft laws
 
 Final coherence pass before implementation. Two commitments logged so content

@@ -218,7 +218,7 @@ interesting decision, and a natural hook for Founders and Charters to bend
 Decision 3 asks for fully-designed candidates. All three keep pillar 6
 (GATHER → MOVE → DELIVER); they differ in *what turns the verb into a game*.
 
-### 5.1 Candidate A — PLEDGE (the Manifest) ★ recommended
+### 5.1 Candidate A — PLEDGE (the Manifest) ★ RATIFIED (2026-07-16; shipped R3)
 
 **One sentence:** deliveries become *scored commitments* — you pledge what
 you'll deliver and by when, stacking concurrent pledges raises a fragile
@@ -466,7 +466,7 @@ graduation. No flag-day rewrite; the roguelike frame grows alongside.
 |---|---|---|
 | **R1** | Hot/cold sim + aperture plumbing | the enabler (§3.3); SPEC §10.3 promoted to prerequisite; F3 counts prove budget |
 | **R2** | Campaign/Thread state split + death + Interregnum v1 | die → coarse sim → wake; ruins/salvage minimal (derelicts only) |
-| **R3** | PLEDGE v1 | boards, TONNAGE × THREAD, busts, streaks; act I quota + clock + Cut death; reuses contract/supplyMission machinery |
+| **R3** | ✅ PLEDGE v1 | `js/pledges.js` — Guild board, TONNAGE × THREAD, bonds, busts, streaks, trust; fulfilment at the `S.sell` seam; dedicated serialized RNG sub-stream; `A.takePledge`/`A.abandonPledge`; Pledges dock tab + topbar WEAVE. Remaining for R3+: act quota + clock + Cut death (folds into R4) |
 | **R4** | Act ladder | bank-or-push, aperture growth, Burned/Eaten deaths, epitaphs |
 | **R5** | Founders v1 | the three ● founders + picker screen |
 | **R6** | Charters v1 | 5 sockets, ~16 commons across 3 families, boundary draft + board vendor |
@@ -591,7 +591,7 @@ itself in one infobox line.
 
 ## 14. Open questions (small residue, none blocking R1–R2)
 
-1. Ratify the core verb (§5 argues PLEDGE) → `docs/DECISIONS.md`.
+1. ✅ Core verb ratified: PLEDGE (see `docs/DECISIONS.md`, shipped R3).
 2. Naming pass: Thread/Loomship/Charter/WEAVE/fragments — placeholder-final.
 3. Interregnum length & mercy-clamp tuning (needs R2 bots).
 4. Whether quota-miss (Cut) offers a one-time "grace extension" encounter on

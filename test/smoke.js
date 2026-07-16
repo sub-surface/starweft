@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -1881,6 +1881,160 @@ section('New Weave — authored worlds (age / topology / heart / myth / named ad
   const quietWorld = G.newGame({ seed: 'qy-run', difficulty: 'standard', threat: 'dormant', conditions: ['quietYear'] });
   for (let i = 0; i < 40; i++) G.tick(quietWorld);
   assert((quietWorld.contracts || []).length === 0, 'Quiet Year spawns no world contracts in the opening 40 ticks');
+}
+
+section('PLEDGE — the core verb, scored (WEAVE = TONNAGE x THREAD)');
+{
+  const st = G.newGame({ seed: 'smoke-pledge', difficulty: 'relaxed' });
+  // fresh state carries the pledge substrate
+  assert(Array.isArray(st.pledges) && Array.isArray(st.board), 'pledge + board state initialized');
+  assert(st.weave === 0 && st.pledgeStreak === 0, 'WEAVE and streak start at zero');
+
+  // discover a couple of populated destinations so the board has somewhere to send
+  const pops = st.systems.filter(function (s) { return s.pop > 0 && s.id !== st.homeId && s.scourge !== 2; });
+  assert(pops.length >= 2, 'at least two populated systems to pledge toward');
+  pops.slice(0, 4).forEach(function (s) { s.discovered = true; });
+
+  // board generation is deterministic on the dedicated sub-stream and does NOT
+  // touch the main RNG (so old seeded assertions stay put)
+  const rngBefore = st.rngState;
+  SW.pledges.refreshBoard(st);
+  assert(st.rngState === rngBefore, 'board generation leaves the main RNG untouched');
+  assert(st.board.length > 0, 'the board offers pledges (' + st.board.length + ')');
+  const offer = st.board[0];
+  assert(offer.chips > 0 && offer.fare > 0 && offer.bond >= 0, 'offer priced: chips/fare/bond');
+  assert(offer.qty > 0 && D.COMMODITIES[offer.c] && st.systems[offer.to], 'offer well-formed');
+
+  // determinism: same seed => same first offer
+  const st2 = G.newGame({ seed: 'smoke-pledge', difficulty: 'relaxed' });
+  st.systems.forEach(function (s, i) { if (s.discovered) st2.systems[i].discovered = true; });
+  SW.pledges.refreshBoard(st2);
+  assert(JSON.stringify(st.board.map(function (o) { return [o.c, o.to, o.qty]; })) ===
+         JSON.stringify(st2.board.map(function (o) { return [o.c, o.to, o.qty]; })),
+         'board is deterministic for a given seed');
+
+  // taking a pledge charges the bond and moves it to the manifest
+  st.credits = 5000;
+  const c0 = st.credits, boardN = st.board.length;
+  const tk = A.takePledge(st, offer.id);
+  assert(tk.ok, 'pledge taken: ' + (tk.msg || ''));
+  assert(st.credits === c0 - offer.bond, 'bond escrowed on take');
+  assert(st.pledges.length === 1 && st.board.length === boardN - 1, 'pledge moved board -> manifest');
+  const je = st.journal[st.journal.length - 1];
+  assert(je.a === 'takePledge', 'take is journaled for replay');
+
+  // completing it via the delivery seam scores WEAVE and pays fare + bond back
+  const p = st.pledges[0];
+  const threadNow = SW.pledges.thread(st, 0);
+  const expectWeave = Math.round(p.chips * threadNow);
+  const cBefore = st.credits;
+  SW.pledges.onDeliver(st, p.to, p.c, p.qty);   // simulate the crate landing
+  assert(st.pledges.length === 0, 'pledge cleared on fulfilment');
+  assert(st.weave === expectWeave, 'WEAVE scored = chips x thread (' + st.weave + ' == ' + expectWeave + ')');
+  assert(st.credits === cBefore + p.fare + p.bond, 'fare paid and bond returned on completion');
+  assert(st.pledgeStreak === 1, 'streak advanced to 1');
+  assert(st.pledgeStats.completed === 1, 'completion counted');
+
+  // partial deliveries persist and stack
+  SW.pledges.refreshBoard(st);
+  const off2 = st.board[0];
+  A.takePledge(st, off2.id);
+  const p2 = st.pledges[0];
+  SW.pledges.onDeliver(st, p2.to, p2.c, Math.floor(p2.qty / 2));
+  assert(st.pledges.length === 1 && p2.progress > 0, 'partial delivery banks progress without completing');
+  SW.pledges.onDeliver(st, p2.to, p2.c, p2.qty);   // finish it
+  assert(st.pledges.length === 0 && st.pledgeStreak === 2, 'stacked delivery completes; streak = 2');
+
+  // THREAD rises with concurrent pledges held
+  SW.pledges.refreshBoard(st);
+  while (st.pledges.length < SW.pledges.maxActive(st) && st.board.length) {
+    A.takePledge(st, st.board[0].id);
+  }
+  assert(st.pledges.length >= 2, 'multiple concurrent pledges held');
+  const multi = SW.pledges.thread(st, 0);
+  assert(multi > 1 + D.TUNE.pledgeConcurrentThread - 1e-9, 'concurrency lifts THREAD above base (' + multi.toFixed(2) + ')');
+
+  // the manifest cap is enforced
+  SW.pledges.refreshBoard(st);
+  if (st.board.length) {
+    const over = A.takePledge(st, st.board[0].id);
+    assert(over.ok === false && /manifest is full/.test(over.msg), 'manifest cap enforced');
+  }
+
+  // busting: a missed deadline forfeits the bond and snaps the streak
+  const stB = G.newGame({ seed: 'smoke-pledge-bust', difficulty: 'relaxed' });
+  stB.credits = 5000;
+  stB.systems.filter(function (s) { return s.pop > 0 && s.id !== stB.homeId; }).slice(0, 3).forEach(function (s) { s.discovered = true; });
+  SW.pledges.refreshBoard(stB);
+  A.takePledge(stB, stB.board[0].id);
+  const pb = stB.pledges[0];
+  pb.deadline = stB.tick + 3;             // force a near miss
+  stB.pledgeStreak = 4;                    // a streak to lose
+  const bustBusted0 = stB.pledgeStats.busted;
+  for (let i = 0; i < 6; i++) G.tick(stB);
+  assert(stB.pledges.length === 0, 'overdue pledge is cleared');
+  assert(stB.pledgeStreak === 0, 'a bust snaps the streak to zero');
+  assert(stB.pledgeStats.busted === bustBusted0 + 1, 'bust counted');
+  assert(SW.pledges.trust(stB) < 1, 'trust dips after a bust');
+
+  invariants(st, 'post-pledge');
+  invariants(stB, 'post-pledge-bust');
+}
+
+section('PLEDGE — full delivery loop through S.sell + determinism/replay');
+{
+  // an actual haul: buy at a source, fly to the pledged destination, sell —
+  // the S.sell seam must fulfil the pledge with no direct onDeliver call.
+  const st = G.newGame({ seed: 'pledge-loop', difficulty: 'relaxed' });
+  st.credits = 8000;
+  // pick a populated destination adjacent to home, and pledge a good it lacks
+  const home = st.systems[st.homeId];
+  const destId = home.links.find(function (id) { return st.systems[id].pop > 0 && st.systems[id].scourge !== 2; });
+  assert(destId !== undefined, 'a populated neighbour of home exists');
+  const dest = st.systems[destId];
+  dest.discovered = true;
+  // craft a deterministic offer we control, then push it onto the board
+  const need = 'FOOD';
+  dest.stocks[need] = 0;                  // make sure they want it
+  home.stocks[need] = Math.max(home.stocks[need] || 0, 40); // and home has some to buy
+  SW.pledges.refreshBoard(st);
+  // take any offer to this destination if present, else synthesize one via take path
+  let off = st.board.find(function (o) { return o.to === destId; });
+  if (!off) {
+    off = { id: 'ofX', c: need, qty: 6, to: destId, toName: dest.name, hops: Math.max(1, dest.hops || 1),
+            chips: SW.pledges.chips(st, need, 6, dest.hops || 1), window: 400, ttl: st.tick + 400 };
+    off.fare = SW.pledges.fareOf(off.chips); off.bond = SW.pledges.bondOf(off.chips);
+    st.board.push(off);
+  }
+  const tk = A.takePledge(st, off.id);
+  assert(tk.ok, 'loop pledge taken');
+  const p = st.pledges[0];
+  const ship = st.ships[0];
+  // buy the pledged good at home, fly to destination, sell it there
+  ship.at = st.homeId; ship.mode = 'idle';
+  const bought = SW.ships.buy(st, ship, p.c, p.qty);
+  assert(bought.ok && (ship.cargo[p.c] || 0) >= p.qty, 'loaded the pledged good at home');
+  const weave0 = st.weave;
+  A.shipSend(st, ship.id, destId, true);   // sell on arrive
+  let guard = 0;
+  while (st.pledges.length && guard++ < 400) G.tick(st);
+  assert(st.pledges.length === 0, 'pledge fulfilled by a real haul through S.sell (' + guard + ' ticks)');
+  assert(st.weave > weave0, 'the haul scored WEAVE via the delivery seam');
+  invariants(st, 'post-pledge-loop');
+
+  // the pledge substrate (board, streak, weave, sub-stream) survives save/load —
+  // seed + serialized pledgeRng keep the board deterministic across a reload
+  SW.pledges.refreshBoard(st);
+  const savedBoard = JSON.stringify(st.board);
+  const savedWeave = st.weave, savedStreak = st.pledgeStreak;
+  const reload = G.loadFromString(JSON.stringify(st));
+  assert(reload.ok, 'run with pledges reloads');
+  assert(JSON.stringify(G.state.board) === savedBoard, 'pledge board survives save/load intact');
+  assert(G.state.weave === savedWeave && G.state.pledgeStreak === savedStreak, 'WEAVE + streak survive save/load');
+  // and the next board refresh is identical after reload (sub-stream serialized)
+  const contA = G.loadFromString(JSON.stringify(st)); SW.pledges.refreshBoard(G.state); const boardA = JSON.stringify(G.state.board);
+  const contB = G.loadFromString(JSON.stringify(st)); SW.pledges.refreshBoard(G.state); const boardB = JSON.stringify(G.state.board);
+  assert(contA.ok && contB.ok && boardA === boardB, 'board refresh is deterministic after reload');
 }
 
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');
