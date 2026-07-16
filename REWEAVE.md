@@ -576,20 +576,208 @@ Tracked as commitments (detail in LOOM §9):
 - **Reroll once:** a per-boundary draft reroll token.
 - **Name your Thread:** it rides into the epitaph, Chronicle, and Successor.
 - **Always new to hear:** cast lines keyed to your Chronicle; true-fact ads.
-- **Kindness opt-in:** stipend, possible first-Cut grace (§14 Q4), an
+- **Kindness opt-in:** stipend, possible first-Cut grace (§15 Q4), an
   escalating-mercy dial — warmth available, honesty default.
 - **Fast wake:** under two minutes from cut to next Thread.
 - **Everything self-explains:** infobox coverage over every new noun
   (Charter/Founder/pledge/lane-state) — a boot-test assertion, not a hope.
 
-## 13. Non-goals
+## 13. UI/UX — the diegetic face (owner-directed, 2026-07-16)
+
+Status: **spec ratified, foundation shipped (F1), F2–F8 not yet built.** The
+sandbox's UX was a control panel bolted beside a map. REWEAVE's frame — mortal
+Threads, a scored core verb, acts with a clock — deserves a face that feels
+like *itself*: an instrument panel a courier would actually fly from, not a
+strategy game's sidebar. This section is the contract for that face. It does
+not replace any subsystem — **same organs, new frame**: every existing
+renderer (`ui_ship.renderFleet`, `ui_routes.renderRoutes/renderOps/renderYou/
+renderLog`, `ui_pledge.renderPledges`, `ui_market`, `ui_tech`, `ui_system`)
+keeps its function signature and DOM target; what changes is how that content
+is *summoned, framed, and anchored*. Zero dependencies, Canvas 2D, hard rules
+(§10) all still apply.
+
+**Governing law:** the map is not a background the UI sits on top of — the
+map *is* the instrument, and every control that can be diegetic (anchored to
+the star, ship, or signal it acts on) must be. Only what genuinely has no
+home in space — settings, the codex, save/load, the full fleet ledger — lives
+in a drawer, and drawers are closed by default, summoned by intent, never
+ambient furniture.
+
+### 13.1 Foundation (F1 — shipped)
+
+AMOLED true-black tokens (`--bg:#000`, hairline `--surface`/`--surface-2`
+compartments, no drop-shadow elevation), mobile viewport + safe-area insets,
+touch-first responsive layout (dock as bottom sheet, `body.dockOpen`,
+`ui.isTouch()` gated on `matchMedia('(pointer:coarse)')`), two-finger
+pinch-zoom/pan on the canvas alongside the existing mouse-drag orbit. This is
+the *material* the rest of this section builds on — the black is real, the
+touch targets are ≥40px, the drawers already know how to be sheets.
+
+### 13.2 One Command Strip (F2)
+
+`#topbar` and `#bottombar` collapse into a single slim strip (one `<div>`,
+one z-layer). Contents, left to right: sigil/menu (☰), the live read-outs
+that matter every second (**WEAVE ◈**, credits ¤, and — only when
+`SW.acts.active(state)` — the act chip: `◈ II 63% ⧗340`, tapping it opens the
+Pledges drawer at the act HUD), speed controls, and a compact "more" glyph
+that opens a slide-down strip for the rarer buttons (Development, Market,
+Codex, mute, music) — these do not need to be one tap away every second, so
+they earn their keep behind one extra tap rather than eating strip width.
+The objective line and ticker fold into the strip's second row on desktop
+(a 2-line strip, still thinner than today's topbar+bottombar combined) and
+collapse to the objective alone on mobile (ticker is a drawer, not ambient).
+**Implementation:** `index.html` merges `#topbar`+`#bottombar` markup into
+`#strip`; `ui.js` keeps `renderTopbar()`'s logic, just retargets selectors.
+No action semantics change — this is a pure chrome consolidation, the
+lowest-risk step, and should land first.
+
+### 13.3 Drawers (F3) — same organs, closed by default
+
+`#sysPanel`, `#dock`, `#exchange`, `#techOverlay` become **edge drawers**:
+off-canvas by default, sliding in on summon, each with one obvious dismiss
+(tap the scrim, `Esc`, or re-tap the opener — the existing `Esc`-walks-back-
+one-level rule from SPEC §7 holds). Desktop: drawers dock left (`#sysPanel`)
+or right (`#dock`) as slim rails that expand on hover-intent *or* pinned open
+via a thumbtack toggle, so a player who wants the old always-visible panels
+can still have them — default is closed, preference is sticky
+(`localStorage` prefs, existing pattern). Mobile: the shipped bottom-sheet
+behavior (§13.1) *is* this drawer model already; no further work needed
+there. **Nothing inside a drawer changes** — `renderFleet`, `renderRoutes`,
+`renderExchange`, etc. render into the same `#dockBody`/`#sysPanel` targets
+exactly as today. The only new code is the open/close/pin state machine
+(`ui.drawer.open(id)` / `close(id)` / `toggle(id)`) and the CSS transform for
+slide-in. `#commandBar` (the selected-ship strip) is the one panel that stays
+*always* visible when a ship is selected — it is the cockpit, not a drawer.
+
+### 13.4 Signal beacons (F4) — the map tells you, not the topbar
+
+Every alert that today lives in `#alerts` (threatened systems, stranded
+ships, expiring contracts, hails) and every new REWEAVE signal (open Guild
+board offers, an act boundary at the Heart) gets a **beacon drawn directly on
+the map**, at the system it concerns, canvas-native (same layer as the
+existing pulsing-threat rendering `render.js` already does for `sys.scourge
+=== 1`). Beacon glyph + behavior by kind:
+
+| Signal | Glyph @ system | Pulse | Tap does |
+|---|---|---|---|
+| Threatened (scourge warning) | △ | urgent, red | centers camera + opens the system drawer |
+| Stranded ship | ▲ | slow, ink-dim | selects the ship, opens `#commandBar` |
+| Hail waiting | ◌ | steady, accent | opens the hail (`A.openHail`) |
+| Guild board offer(s) here | ◈ | gentle, accent | opens the compact board flyout (§13.7) |
+| Act boundary open (at the Heart) | ◈◈ | strong, accent, radiates | opens the Pledges drawer at the act HUD |
+
+Only a genuine crisis (Eaten-risk, i.e. Heart under active corruption)
+pulses fast/red; everything else is a *quiet, steady* light — REWEAVE §12.9
+("juice serves legibility, never noise") and LOOM §3 ("quiet dignity") both
+hold. `#alerts` in the strip shrinks to a single overflow counter ("△2 ◈3")
+for beacons currently off-screen or below a size threshold, which is also
+the seam into §13.6.
+
+### 13.5 The orbital ring (F5) — selection becomes controls, not a panel jump
+
+Selecting a system in galaxy view no longer force-opens `#sysPanel`. Instead
+a ring of 3–6 glyph buttons appears *orbiting the star itself* — a small DOM
+overlay (real `<button>`s for hover/focus/ARIA/touch, not canvas-drawn, so
+accessibility is free) positioned each frame at the system's projected
+screen coordinate. **Implementation:** `render.js` already computes this
+every frame into `pickables` (`{x,y,r,sys}`); expose `R.screenPosOf(sysId)`
+(a lookup into that array, O(1) via a parallel map) and drive the ring's
+`style.transform` from it inside the existing `frame()` loop's post-render
+step — no separate polling interval, so it never desyncs from camera motion.
+Ring contents are contextual (a `data-info`-documented set, same self-
+explaining-element rule as everything else):
+
+- always: **⏵ enter** (dblclick's action, now also one tap), **ⓘ details**
+  (opens the system drawer — the *full* old `sysPanel` content is one tap
+  away, never deleted, just no longer the default reflex)
+- if a ship is selected and can reach it: **➤ send here**
+- if the system is a live pledge destination: **◈ board** (§13.7 flyout)
+- **☆ bookmark** toggle
+- if buildable and in range: **▦ build** (opens the build drawer scoped to
+  this system — reuses the existing construction UI verbatim)
+
+The ring replaces the reflexive "click a star, panel eats the sidebar"
+pattern with "click a star, the star offers you verbs." This is the single
+biggest feel-change in this section and the reason it reads as a new
+interface despite reusing every renderer underneath.
+
+### 13.6 Edge compass (F6) — the vast bubble stays legible off-screen
+
+For any system carrying a beacon (§13.4) that falls outside the current
+viewport, draw a small arrow at the *viewport edge*, clamped to the screen
+bounds, pointing along the direction from camera-center to the system
+(reuse `project()`'s direction math, clip to the rect). Tapping it eases the
+camera toward that system (`R.centerOn`, already exists). This is the answer
+to REWEAVE §3's "far rings are visible the entire time" promise at UI scale:
+a 100 ly bubble with a threatened system four screens away should never
+require the player to remember it exists — the edge itself reminds them,
+diegetically, the way a cockpit RWR does.
+
+### 13.7 The Guild board, on the map (F7) — pledges are read from the galaxy
+
+Per the ratified decision: **open pledge offers glow at their destination
+system**, not in a list. A system with ≥1 open board offer carries the ◈
+beacon (§13.4); tapping it (or the ring's **◈ board** entry, §13.5) opens a
+**compact flyout** — not the full Pledges drawer — anchored near the star:
+offer terms, one **take** button per offer, dismiss on tap-away. This makes
+"where's work to be had" a *visual scan of the lit galaxy*, which is the
+most diegetic possible reading of a trade-logistics board and the entire
+point of putting it on the map rather than behind a tab.
+Your **held manifest** (pledges in flight) is not per-system, so it keeps a
+home in the Pledges drawer — but the drawer's act HUD (quota bar, boundary
+banner) is important enough to also condense into the Command Strip's act
+chip (§13.2), so the two surfaces reinforce rather than duplicate: the strip
+says *where you are in the run*, the map says *what's available right now*,
+the drawer says *what you're already carrying*.
+
+### 13.8 What does not change
+
+Simulation files are untouched — this is presentation only. `js/pledges.js`,
+`js/acts.js`, and every `SW.game.actions.*` call keep their exact signatures;
+the new UI only calls them from new triggers (a ring button, a beacon tap)
+instead of old ones (a dock tab, a panel button). The command grammar
+(SPEC §2.1 — FETCH intents, the queue, the why-line) is untouched and still
+lives in `#commandBar`. No `SAVE_VERSION` bump — this section adds zero new
+save-state (drawer-open/pin preferences are UI prefs in `starweft_prefs`,
+like reduce-motion already is).
+
+### 13.9 Build order (F-track — parallel to the R-track, resume R5 after F8)
+
+This work is orthogonal to REWEAVE §11's R-numbered mechanical build order
+(Founders, Charters, Chronicle) — it re-faces what already exists rather
+than adding a new subsystem, so it is sequenced as its own **F-track** and
+should be finished (or at least F2–F5 landed) before resuming R5, so Founders
+and Charters are designed against the *new* face, not bolted onto the old
+one and re-skinned twice.
+
+| Step | Lands | Risk |
+|---|---|---|
+| **F1** | ✅ AMOLED tokens, mobile viewport, touch pinch/pan, bottom-sheet dock | shipped |
+| **F2** | One Command Strip (topbar+bottombar merge) | low — pure chrome, no new state |
+| **F3** | Drawer state machine (`ui.drawer.*`) for sysPanel/dock/exchange/tech | low — reuses every renderer verbatim |
+| **F4** | Signal beacons on the map (canvas), `#alerts` becomes an overflow counter | medium — new render-layer, needs a boot-test pass for beacon presence |
+| **F5** | Orbital ring (DOM overlay synced to `frame()`) | medium — new interaction surface, most new test surface |
+| **F6** | Edge compass pings | low — pure derived-position rendering |
+| **F7** | Guild board on the map (beacons + flyout) | medium — touches pledge-take flow's entry point, not its logic |
+| **F8** | Mobile parity pass: ring/flyout/compass all confirmed usable at touch scale; screenshot pass at 390×844 and 1280×800 | verification only |
+
+Each step lands green on both suites, same discipline as the R-track. Test
+strategy per SPEC precedent: smoke.js can't see pixels but can assert state
+(`ui.drawer.isOpen('dock')`, beacon list contents, ring's contextual-action
+set for a given selection) the way the pledge/acts sections already do;
+browser_boot's stub DOM can drive `fireClick` on ring/beacon/flyout buttons
+exactly as it does for `takePledge`/`pushThread` today. Visual verification
+(does it actually look right) is a headless-Chromium screenshot pass, not a
+suite assertion — do it at the end of F4, F5, F7, and F8 at minimum.
+
+## 14. Non-goals
 
 No frameworks, no bundlers, no npm, no multiplayer, no 3D, no WebGL. No
 meta-progression that raises numbers. No run longer than the player chose at
 a boundary. No death without an epitaph. No Charter that can't explain
 itself in one infobox line.
 
-## 14. Open questions (small residue, none blocking R1–R2)
+## 15. Open questions (small residue, none blocking R1–R2)
 
 1. ✅ Core verb ratified: PLEDGE (see `docs/DECISIONS.md`, shipped R3).
 2. Naming pass: Thread/Loomship/Charter/WEAVE/fragments — placeholder-final.

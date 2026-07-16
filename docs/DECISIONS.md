@@ -4,6 +4,39 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-07-16 — REWEAVE §13 ratified: the diegetic UI/UX overhaul (F-track)
+
+Before continuing to R5 (Founders), the owner directed a full UI/UX overhaul:
+AMOLED true-black, minimal and compartmentalised, mobile-first, and — the
+structural part — **map-primary with diegetic controls** rather than a
+sidebar bolted beside a map. Four clarifying questions were asked and
+answered (recorded in REWEAVE §13's prose): teardown depth = **"new face,
+same organs"** (every existing renderer survives untouched behind new
+summoning/framing — `ui_ship`, `ui_routes`, `ui_pledge`, `ui_market`,
+`ui_tech`, `ui_system` keep their exact function signatures and DOM targets);
+diegetic elements = **all four** the owner sketched (orbital ring menu around
+a selected star, signal beacons drawn at the systems they concern, edge-of-
+screen compass pings for off-screen signals, one consolidated command strip
+replacing topbar+bottombar); Guild board home = **on the map** (pledge offers
+glow at their destination system; the held manifest keeps a drawer home);
+scope = **land the face fully, then resume climbing** (R5 Founders et al.
+continue after, designed against the new face rather than re-skinned onto it
+twice).
+
+REWEAVE.md §13 is the full technical spec (inserted between §12 and the old
+§13/§14, which shift to §14/§15 — the only renumbering; both external
+references to the old §14 fixed in REWEAVE and LOOM). It defines: the one
+governing law (the map is the instrument, not a background — every control
+diegetic where possible, drawers only for what has no home in space); a
+foundation layer (F1, shipped this session — AMOLED tokens, mobile viewport,
+touch pinch/pan, bottom-sheet dock — see the commit immediately prior to this
+one); and F2–F8, an independent **F-track** (parallel to the mechanical
+**R-track**) covering the command-strip merge, the drawer state machine, map
+beacons, the orbital ring, the edge compass, and the board-on-the-map flyout,
+each scoped with its implementation seam (`render.js`'s `frame()` loop,
+`pickables`, `project()`) and risk level. No code beyond F1 written yet — the
+spec is the deliverable of this pass, ready to execute from any session.
+
 ## 2026-07-16 — R4 shipped: the Act Ladder (focused runs, Commissions, Boons)
 
 `js/acts.js` (DOM-free) turns a run into 1..3 Guild Charter acts, each a WEAVE

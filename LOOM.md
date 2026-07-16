@@ -321,7 +321,7 @@ against REWEAVE §12's QoL list:
 - **Name your Thread.** It appears in the epitaph, the Chronicle, and the
   Successor it spawns. Cheap, enormous for attachment.
 - **Kindness is opt-in, never default.** The broke-Thread stipend
-  (`prologueStipend`), the possible first-cut grace extension (REWEAVE §14 open
+  (`prologueStipend`), the possible first-cut grace extension (REWEAVE §15 open
   Q), an optional escalating-mercy dial (Hades' God Mode) — warmth for those
   who want it, honesty preserved for those who don't.
 - **Fast death, fast wake.** Under two minutes from cut to next attempt
