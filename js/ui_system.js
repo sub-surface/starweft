@@ -33,6 +33,22 @@ SW.uiSystem = (function () {
     return parts.join(' · ');
   }
 
+  // Buildings this system could start right now (tech/type/wonder gates only —
+  // materials/credits are the build button's own affordability check). Shared
+  // by the panel's Construction section and the orbital ring's ▦ build gate.
+  function availableBuilds(s, sys) {
+    return Object.keys(D.BUILDINGS).filter(function (b) {
+      const def = D.BUILDINGS[b];
+      if (sys.buildings.indexOf(b) >= 0) return false;
+      if (def.tech && !SW.tech.has(s, def.tech)) return false;
+      if (def.onlyType === 'producer' && Object.keys(sys.prod).length === 0) return false;
+      if (def.onlyType === 'pop' && !(sys.pop > 0 && sys.type === 'pop')) return false;
+      if (def.onlyWonder && sys.wonder !== def.onlyWonder) return false;
+      return true;
+    });
+  }
+  m.availableBuilds = availableBuilds;
+
   // ============ system panel ============
   function renderSysPanel() {
     const s = st(), panel = $('#sysPanel');
@@ -51,7 +67,8 @@ SW.uiSystem = (function () {
     let html = '<div class="row"><h3 class="grow" data-info="system:' + sys.id + '">' + esc(sys.name) + (sys.id === s.homeId ? ' <span class="tag acc">HOME</span>' : '') + '</h3>' +
       '<button data-act="bookmark" title="Bookmark">' + (marked ? '◈' : '◇') + '</button>' +
       '<button data-act="focusSys" title="Center camera here (F)">◎</button>' +
-      '<button data-act="enterSys" title="Orbital view (double-click on map)">⊙ view</button></div>';
+      '<button data-act="enterSys" title="Orbital view (double-click on map)">⊙ view</button>' +
+      '<button data-act="closeSysPanel" title="Close — the ring around the star still offers its verbs">✕</button></div>';
     html += '<div class="sub">' + esc(sys.spec) + ' · ' + D.SYS_TYPES[sys.type].name +
       (sys.ideology !== 'free' ? ' · <span data-info="faction:' + sys.ideology + '">' + D.IDEOLOGIES[sys.ideology].name + '</span>' : '') +
       (sys.region ? ' · <span data-info="region:' + sys.region + '">' + D.REGIONS[sys.region].name + '</span>' : '') + '</div>';
@@ -154,15 +171,7 @@ SW.uiSystem = (function () {
 
     // construction — hidden in the prologue: the escrow is for the Hydrofarm,
     // and a player who spends it on a Depot has bought themselves a wall
-    const builds = locked ? [] : Object.keys(D.BUILDINGS).filter(function (b) {
-      const def = D.BUILDINGS[b];
-      if (sys.buildings.indexOf(b) >= 0) return false;
-      if (def.tech && !SW.tech.has(s, def.tech)) return false;
-      if (def.onlyType === 'producer' && Object.keys(sys.prod).length === 0) return false;
-      if (def.onlyType === 'pop' && !(sys.pop > 0 && sys.type === 'pop')) return false;
-      if (def.onlyWonder && sys.wonder !== def.onlyWonder) return false;
-      return true;
-    });
+    const builds = locked ? [] : availableBuilds(s, sys);
     if ((!locked && sys.buildings.length) || builds.length) html += '<h4>Construction</h4>';
     if (!locked && sys.buildings.length) {
       html += '<div class="row">' + sys.buildings.map(function (b) {

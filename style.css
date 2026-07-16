@@ -124,6 +124,20 @@ input[type=checkbox] { accent-color: var(--accent); }
 }
 /* In system view the back button occupies the top-left; drop the panel below it. */
 #main.inSystem #sysPanel { top: 46px; max-height: calc(100% - 234px); }
+
+/* ---- orbital ring (REWEAVE §13.5): selection becomes controls, not a panel jump ---- */
+/* One wrapper positioned per frame (render.js post-render step) via
+   style.transform from R.screenPosOf; each button is laid out around it at a
+   fixed angle and self-centers, so only the wrapper moves every frame. */
+#ring { position: absolute; top: 0; left: 0; z-index: 16; pointer-events: none; }
+#ring button {
+  position: absolute; top: 0; left: 0;
+  width: 28px; height: 28px; border-radius: 50%; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; line-height: 1; pointer-events: auto;
+  background: var(--surface); border: 1px solid var(--line-bright); color: var(--ink);
+}
+#ring button:hover, #ring button:focus-visible { border-color: var(--accent); color: var(--accent); }
 #dock {
   position: absolute; top: 8px; right: 8px; width: 326px; max-height: calc(100% - 16px);
   display: flex; flex-direction: column; z-index: 20;
@@ -804,6 +818,7 @@ input:focus-visible {
 @media (pointer: coarse) {
   button, .seg, .commChip, #dockTabs button, .frontBtn { min-height: 40px; }
   #speedCtrls button { min-width: 40px; min-height: 40px; }
+  #ring button { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 15px; }
   select, input { min-height: 38px; }
   .row { gap: 8px; }
   /* the infobox is a hover explainer — there is no hover on touch */

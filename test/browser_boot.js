@@ -184,6 +184,48 @@ step('select home + ship, render system panel', function () {
   pumpFrames(3);
 });
 
+step('orbital ring: selection summons it, not the panel; contextual verbs; frame sync (REWEAVE §13.5)', function () {
+  const s = G.state;
+  const home = s.systems[s.homeId];
+  const away = s.systems.find(function (x) { return x.id !== s.homeId && x.discovered; }) ||
+    s.systems.find(function (x) { return x.id !== s.homeId; });
+  // dismiss the panel first: selecting a system must not force it back open
+  SW.ui.drawer.close('sys');
+  SW.render.selectedSys = home.id;
+  SW.ui.mapClick(home);
+  if (SW.ui.drawer.isOpen('sys')) throw new Error('selecting a system should not force the panel open (the ring is the reflex now)');
+  SW.render.centerOn(home.id);
+  SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
+  pumpFrames(3);
+  const ringHtml = (elCache['#ring'] && elCache['#ring'].innerHTML) || '';
+  if (ringHtml.indexOf('data-act="ringDetails"') < 0) throw new Error('ring missing the always-on details verb');
+  if (ringHtml.indexOf('data-act="enterSys"') < 0) throw new Error('ring missing enter for a discovered system');
+  if (ringHtml.indexOf('data-act="bookmark"') < 0) throw new Error('ring missing the bookmark toggle');
+  // ⓘ opens the panel back up without needing a fresh selection
+  fireClick('ringDetails');
+  if (!SW.ui.drawer.isOpen('sys')) throw new Error('ringDetails did not reopen the panel');
+  SW.ui.drawer.close('sys');
+  // a selected, reachable ship adds the send verb; sending it dispatches for real
+  if (away) {
+    const ship = s.ships.find(function (sh) { return sh.mode === 'idle' && sh.at !== null; });
+    if (ship) {
+      SW.render.selectedShip = ship.id;
+      SW.render.selectedSys = away.id;
+      SW.ui.refresh();
+      const html2 = (elCache['#ring'] && elCache['#ring'].innerHTML) || '';
+      if (ship.at !== away.id && html2.indexOf('data-act="ringSend"') >= 0) {
+        fireClick('ringSend');
+        if (ship.mode !== 'travel' && !ship.stranded) throw new Error('ringSend did not dispatch the ship');
+      }
+    }
+  }
+  // off-screen / no selection: the ring hides without throwing
+  SW.render.selectedSys = null;
+  pumpFrames(2);
+  const hidden = (elCache['#ring'] && elCache['#ring'].classList.contains('hidden'));
+  if (!hidden) throw new Error('ring should hide with no selection');
+});
+
 step('map hover + click on every system type', function () {
   for (const sys of G.state.systems) SW.ui.mapHover(sys, 100, 100);
   SW.ui.mapHover(null);

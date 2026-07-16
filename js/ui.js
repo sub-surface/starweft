@@ -128,6 +128,13 @@ SW.ui = (function () {
     return out;
   }
   ui.sectionizePanelHtml = sectionizePanelHtml;
+  // Force a panel accordion section open — the ring's ▦ build verb uses this
+  // to land the player straight on Construction instead of a collapsed list.
+  ui.openPanelSection = function (key) {
+    loadPanelSections(st());
+    panelOpenSections[key] = true;
+    savePanelSections(st());
+  };
 
   function onPanelSectionClick(e) {
     const h = e.target.closest && e.target.closest('#sysPanel h4[data-section]');
@@ -204,6 +211,12 @@ SW.ui = (function () {
     weaveHealth: { title: 'WEAVE HEALTH', sub: 'the state of the weave', lines: ['One number for the galaxy you tend: how well known worlds live, whether essentials reach them, whether factories can run, and how much of the map your threads touch.'] },
     more: { title: 'MORE ⋯', sub: 'the quiet controls', lines: ['Development, the Market terminal, the Codex, and sound — one tap away, out of the strip\'s width. Tap again to fold them back.'] },
     pin: { title: 'PIN ▣', sub: 'drawer', lines: ['Keeps this drawer open instead of folding it to its rail. Remembered on this device — pin it once and the old always-visible panel is back.'] },
+    ringEnter: { title: 'ENTER ⏵', sub: 'orbital view', lines: ['Drops into orbit around this star — the same as double-clicking it.'] },
+    ringDetails: { title: 'DETAILS ⓘ', sub: 'the full panel', lines: ['Opens the system panel: market, depot, construction, ships here. Stays closed until you ask for it again.'] },
+    ringSend: { title: 'SEND ➤', sub: 'dispatch', lines: ['Sends your selected ship here — the same commitment as a manual SEND order.'] },
+    ringBoard: { title: 'BOARD ◈', sub: 'Guild offers', lines: ['This system is carrying open pledge offers. Opens the board.'] },
+    ringBookmark: { title: 'BOOKMARK ☆', sub: 'quick recall', lines: ['Marks this system so you can find it again fast — the search box and Journal both surface bookmarks.'] },
+    ringBuild: { title: 'BUILD ▦', sub: 'construction', lines: ['Opens the system panel with Construction expanded — every buildable here, one tap from raising it.'] },
     weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
     pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
     acts: { title: 'THE ACT LADDER ◈', sub: 'a focused run', lines: ['Each act is a Guild Charter: a WEAVE quota and a clock. Its Commission tints the pledge economy — read it, and build to it.', 'Meet the quota and choose: BANK the thread (a clean win) or PUSH — draft a Boon, take a harder Charter, widen your reach. Miss the clock and you are Cut; lose the Loomship and you are Burned; lose the Heart and you are Eaten.'] },
@@ -326,6 +339,7 @@ SW.ui = (function () {
       lastRenderTick = s.tick;
       SW.uiSystem.renderSysPanel();
       SW.uiShip.renderCommandBar();
+      renderRing();
       renderDock(false);
       if (!$('#exchange').classList.contains('hidden')) SW.uiMarket.renderExchange();
       renderInfobox(null);
@@ -336,6 +350,7 @@ SW.ui = (function () {
     renderTopbar();
     SW.uiSystem.renderSysPanel();
     SW.uiShip.renderCommandBar();
+    renderRing();
     // Prologue UI gating: shrink the interface while the map is locked
     const _st = st();
     if (_st && SW.tutorial && SW.tutorial.mapLocked(_st)) {
@@ -442,6 +457,65 @@ SW.ui = (function () {
     },
   };
   ui.syncDrawerDom = syncDrawerDom;
+
+  // ============ the orbital ring (REWEAVE §13.5) ============
+  // Selecting a system no longer force-opens the panel — a ring of glyph
+  // buttons orbits the star itself, contextual to what's actually available.
+  // Content (which buttons) rebuilds on state change (renderRing, called from
+  // ui.refresh/refreshTick); position (the wrapper's transform) syncs every
+  // frame from render.js's post-render hook (ui.onFrame) via R.screenPosOf —
+  // one source of truth, so the ring can never drift off the star.
+  function ringButtons(s, sys) {
+    const btns = [];
+    if (sys.discovered) btns.push({ act: 'enterSys', glyph: '⏵', title: 'Enter — orbital view', info: 'ui:ringEnter' });
+    btns.push({ act: 'ringDetails', glyph: 'ⓘ', title: 'Details — the full system panel', info: 'ui:ringDetails' });
+    const ship = selectedShip();
+    if (ship && ship.at !== null && ship.at !== sys.id && SW.ships.findPath(s, ship.at, sys.id)) {
+      btns.push({ act: 'ringSend', glyph: '➤', title: 'Send ' + ship.name + ' here', info: 'ui:ringSend' });
+    }
+    if (sys.discovered && SW.pledges && SW.pledges.offersAt(s, sys.id).length) {
+      btns.push({ act: 'ringBoard', glyph: '◈', title: 'Guild board — offers here', info: 'ui:ringBoard' });
+    }
+    const marked = (s.bookmarks || []).indexOf(sys.id) >= 0;
+    btns.push({ act: 'bookmark', glyph: marked ? '★' : '☆', title: marked ? 'Remove bookmark' : 'Bookmark', info: 'ui:ringBookmark' });
+    if (sys.discovered && sys.scourge !== 2 && SW.ships.inRange(s, sys) && SW.uiSystem.availableBuilds(s, sys).length) {
+      btns.push({ act: 'ringBuild', glyph: '▦', title: 'Build here', info: 'ui:ringBuild' });
+    }
+    return btns;
+  }
+  function renderRing() {
+    const ring = $('#ring');
+    if (!ring) return;
+    const s = st();
+    const sysId = SW.render.selectedSys;
+    if (SW.render.mode !== 'galaxy' || sysId === null || sysId === undefined || !s || !s.systems[sysId]) {
+      ring.innerHTML = ''; ring.dataset.builtFor = ''; return;
+    }
+    const btns = ringButtons(s, s.systems[sysId]);
+    const orbitR = ui.isTouch() ? 46 : 34;
+    let html = '';
+    for (let i = 0; i < btns.length; i++) {
+      const ang = -Math.PI / 2 + (i * 2 * Math.PI / btns.length);
+      const bx = Math.round(Math.cos(ang) * orbitR), by = Math.round(Math.sin(ang) * orbitR);
+      const b = btns[i];
+      html += '<button data-act="' + b.act + '" title="' + esc(b.title) + '" data-info="' + esc(b.info) + '" style="transform:translate(' + bx + 'px,' + by + 'px) translate(-50%,-50%)">' + b.glyph + '</button>';
+    }
+    ring.innerHTML = html;
+    ring.dataset.builtFor = String(sysId);
+  }
+  ui.renderRing = renderRing;
+  // Called every rAF frame from render.js's post-render step: pure position +
+  // visibility sync, never rebuilds content (that only happens on state change).
+  ui.onFrame = function () {
+    const ring = $('#ring');
+    if (!ring) return;
+    const sysId = SW.render.selectedSys;
+    if (SW.render.mode !== 'galaxy' || sysId === null || sysId === undefined) { ring.classList.add('hidden'); return; }
+    const pos = SW.render.screenPosOf(sysId);
+    if (!pos || !ring.innerHTML) { ring.classList.add('hidden'); return; }
+    ring.classList.remove('hidden');
+    ring.style.transform = 'translate(' + Math.round(pos.x) + 'px,' + Math.round(pos.y) + 'px)';
+  };
 
   // ============ the command strip (REWEAVE §13.2) ============
   // The rarer buttons (Development, Market, Codex, sound) live behind the ⋯
@@ -553,7 +627,6 @@ SW.ui = (function () {
     ui.exitSystem();
     SW.render.centerOn(id);
     SW.render.selectedSys = id;
-    ui.drawer.open('sys');
     $('#searchResults').classList.add('hidden');
     $('#searchBox').value = '';
     ui.refresh();
@@ -593,7 +666,9 @@ SW.ui = (function () {
       pinnedInfo = { kind: 'system', id: sys.id };
       const here = s.ships.filter(function (sh) { return sh.at === sys.id; });
       if (here.length && !selectedShip()) SW.render.selectedShip = here[0].id;
-      ui.drawer.open('sys'); // selecting is a fresh summons even if the drawer was dismissed
+      // Selection now summons the orbital ring (§13.5), not the panel — the
+      // panel stays wherever the player last left it; ✕/Esc-dismiss stays
+      // dismissed across further selections until the ring's ⓘ reopens it.
     } else pinnedInfo = null;
     ui.refresh();
   };
@@ -871,6 +946,18 @@ SW.ui = (function () {
       case 'simAbort': SW.uiModals.closeCombatSim(false); break;
       case 'enterSys': if (sysId !== null) ui.enterSystem(sysId); break;
       case 'bookmark': if (sysId !== null) A().toggleBookmark(s, sysId); break;
+      case 'closeSysPanel': ui.drawer.close('sys'); break;
+      // ring verbs (REWEAVE §13.5) — the ring always concerns SW.render.selectedSys
+      case 'ringDetails': ui.drawer.open('sys'); break;
+      case 'ringSend': {
+        if (ship && sysId !== null) {
+          const r = A().shipSend(s, ship.id, sysId, ui.sendSellOnArrive);
+          toast(r.ok ? { kind: 'info', text: ship.name + ' → ' + s.systems[sysId].name + (ui.sendSellOnArrive ? ' (sell on arrival)' : '') } : { kind: 'bad', text: r.msg });
+        }
+        break;
+      }
+      case 'ringBoard': if (sysId !== null) ui.beaconTap({ kind: 'board', sys: sysId }); break;
+      case 'ringBuild': if (sysId !== null) { ui.drawer.open('sys'); ui.openPanelSection('sys:construction'); } break;
       case 'alignPlane':
         if (SW.render.mode === 'system') {
           SW.render.resetSystemCam();

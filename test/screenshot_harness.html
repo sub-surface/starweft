@@ -49,6 +49,7 @@
   <canvas id="map"></canvas>
   <button id="btnBackGalaxy" class="hidden">← THE BUBBLE</button>
   <div id="sysPanel" class="panel hidden"></div>
+  <div id="ring" class="hidden"></div>
   <div id="dock" class="panel">
     <div id="dockTabs">
       <button data-tab="fleet" class="active">Fleet</button>
@@ -145,6 +146,15 @@
     const sh = st.ships[0]; if (sh) sh.stranded = true;
     SW.render.selectedSys = null;
     SW.render.cam.dist = 260; SW.render.cam.distTarget = 260;
+  }
+  if (location.hash === '#ring') {
+    const st = G.state;
+    st.systems.filter(function (x) { return x.pop > 0 && x.id !== st.homeId; }).slice(0, 4).forEach(function (x) { x.discovered = true; });
+    SW.pledges.refreshBoard(st);
+    SW.render.selectedSys = st.homeId;
+    SW.render.selectedShip = st.ships.length ? st.ships[0].id : null;
+    SW.render.centerOn(st.homeId);
+    SW.render.cam.dist = 60; SW.render.cam.distTarget = 60;
   }
   G.state.paused = true;
   SW.ui.refresh();

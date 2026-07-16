@@ -51,6 +51,7 @@ SW.render = (function () {
   const laneHeat = {};
   let fxLive = [];
   let pickables = [];             // [{x,y,r,sys}] rebuilt per frame
+  let posById = {};               // sys.id -> {x,y,r}, parallel to pickables — O(1) lookup for the orbital ring (F5)
   let bodyPickables = [];
   let shipPickables = [];         // system view: ships at berths / mid-hop
   let orbitGuideUntil = 0;
@@ -265,6 +266,13 @@ SW.render = (function () {
     const s = st.systems[sysId];
     R.cam.tx = s.x; R.cam.ty = s.y; R.cam.tz = s.z;
     if (R.cam.dist > 90) { R.cam.distTarget = 70; if (R.cam.dist > 600) R.cam.dist = 600; }
+  };
+  // Galaxy-view screen position of a system this frame, O(1) via posById —
+  // the seam the orbital ring (F5) and edge compass (F6) sync from every
+  // frame without a separate polling interval. null when off-screen/undrawn.
+  R.screenPosOf = function (sysId) {
+    const e = posById[sysId];
+    return e ? { x: e.x, y: e.y, r: e.r } : null;
   };
   R.enterSystem = function (sysId) {
     R.mode = 'system'; R.systemId = sysId; R.selectedBody = null; R.trackBody = null;
@@ -647,6 +655,10 @@ SW.render = (function () {
     if (SW.audio && SW.audio.setDepth) SW.audio.setDepth(R.mode === 'galaxy' ? deepFade() : 0);
     if (R.showPerf) drawPerf(now);
     ctx.restore();
+    // post-render step: DOM overlays synced to this frame's camera (the
+    // orbital ring F5, the edge compass F6) — never a separate interval,
+    // so they can't desync from camera motion.
+    if (SW.ui && SW.ui.onFrame) SW.ui.onFrame(now);
   }
 
   // F3 budget readout: render fps + frame ms + last sim tick ms
@@ -726,6 +738,7 @@ SW.render = (function () {
 
   function drawGalaxy(st, now) {
     pickables = [];
+    posById = {};
     const dist = R.cam.dist, deep = deepFade();
     // one projection pass shared by lanes + systems
     let proj = null;
@@ -1165,6 +1178,7 @@ SW.render = (function () {
     const f = fog(p.depth);
     const radius = Math.max(1.6, (1.6 + Math.min(6, Math.sqrt(Math.max(0, sys.pop)) * 1.1)) * p.s * 0.16);
     pickables.push({ x: p.x, y: p.y, r: radius, sys: sys });
+    posById[sys.id] = { x: p.x, y: p.y, r: radius };
 
     if (!sys.discovered) {
       ctx.strokeStyle = 'rgba(110,118,129,' + 0.35 * f + ')';
