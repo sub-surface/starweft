@@ -439,6 +439,7 @@ SW.render = (function () {
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', function (e) {
+      if (R._pinching) { drag = null; return; } // two fingers down: the touch handler owns the gesture
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       if (drag) {
@@ -495,6 +496,43 @@ SW.render = (function () {
         R.cam.distTarget = U.clamp(cur * factor, DIST_MIN, DIST_MAX);
       }
     }, { passive: false });
+    // ---- Touch: two-finger pinch-zoom + two-finger pan (single-finger drag
+    // stays orbit/rotate via the pointer handlers). Zero-dependency, and gated
+    // so it never fights the mouse. Guarded so the stub-DOM boot test is inert.
+    let pinch = null; // { d, cx, cy }
+    function touchXY(t) { const rect = canvas.getBoundingClientRect(); return { x: t.clientX - rect.left, y: t.clientY - rect.top, cx: t.clientX, cy: t.clientY }; }
+    function pinchState(e) {
+      const a = touchXY(e.touches[0]), b = touchXY(e.touches[1]);
+      return { d: Math.hypot(a.cx - b.cx, a.cy - b.cy), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, gcx: (a.cx + b.cx) / 2, gcy: (a.cy + b.cy) / 2 };
+    }
+    canvas.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) { R._pinching = true; drag = null; canvas.classList.remove('dragging'); pinch = pinchState(e); e.preventDefault(); }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', function (e) {
+      if (R._pinching && e.touches.length === 2) {
+        e.preventDefault();
+        const now = pinchState(e);
+        // zoom on the pinch centre by the distance ratio
+        const ratio = now.d / Math.max(1, pinch.d);
+        if (R.mode === 'system') {
+          R.zoomSystemView(ratio, now.cx, now.cy);
+          const pdx = now.cx - pinch.cx, pdy = now.cy - pinch.cy;
+          if (pdx || pdy) R.panSystemView(pdx, pdy, false);
+        } else {
+          const cur = R.cam.distTarget == null ? R.cam.dist : R.cam.distTarget;
+          R.cam.distTarget = U.clamp(cur / ratio, DIST_MIN, DIST_MAX);
+          const pdx = now.gcx - (pinch.gcx || now.gcx), pdy = now.gcy - (pinch.gcy || now.gcy);
+          if (pdx || pdy) R.panGalaxyView(pdx, pdy, false);
+        }
+        pinch = now;
+      }
+    }, { passive: false });
+    function endTouch(e) {
+      if (!e.touches || e.touches.length < 2) { R._pinching = false; pinch = null; }
+    }
+    canvas.addEventListener('touchend', endTouch);
+    canvas.addEventListener('touchcancel', endTouch);
+
     canvas.addEventListener('dblclick', function (e) {
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;

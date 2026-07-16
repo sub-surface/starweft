@@ -267,12 +267,13 @@ SW.ui = (function () {
     $('#spd10').addEventListener('click', function () { A().setSpeed(st(), 10); syncSpeedButtons(); });
     $('#btnMute').addEventListener('click', function () { SW.audio.toggleMute(); syncAudioButtons(); });
     $('#btnMusic').addEventListener('click', function () { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); });
-    $('#btnMenu').addEventListener('click', function () { SW.uiModals.showMenu(); });
-    $('#btnCodex').addEventListener('click', function () { ui.openLeaf(SW.uiModals.showCodex); });
+    $('#btnMenu').addEventListener('click', function () { ui.closeSheet(); SW.uiModals.showMenu(); });
+    $('#btnCodex').addEventListener('click', function () { ui.closeSheet(); ui.openLeaf(SW.uiModals.showCodex); });
     $('#btnTech').addEventListener('click', function () {
+      ui.closeSheet();
       if (SW.uiTech.isOpen()) SW.uiTech.close(); else SW.uiTech.open();
     });
-    $('#btnExchange').addEventListener('click', function () { SW.uiMarket.toggleExchange(); });
+    $('#btnExchange').addEventListener('click', function () { ui.closeSheet(); SW.uiMarket.toggleExchange(); });
     $('#btnBackGalaxy').addEventListener('click', function () { ui.exitSystem(); });
     syncAudioButtons();
 
@@ -355,9 +356,22 @@ SW.ui = (function () {
     renderDock(true);
     renderInfobox(null);
   };
+  // Touch devices only: the dock is a bottom sheet. Tapping a tab opens it and
+  // switches; tapping the *active* tab again closes it, so the map stays primary.
+  ui.isTouch = function () {
+    try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return false; }
+  };
+  function bodyClass() { return (typeof document !== 'undefined' && document.body && document.body.classList) || null; }
+  ui.closeSheet = function () { const b = bodyClass(); if (b) b.remove('dockOpen'); };
   ui.setTab = function (tab) {
+    const wasActive = activeTab === tab;
     activeTab = tab;
     document.querySelectorAll('#dockTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === tab); });
+    const b = bodyClass();
+    if (b && ui.isTouch()) {
+      if (wasActive && b.contains('dockOpen')) b.remove('dockOpen');
+      else b.add('dockOpen');
+    }
     renderDock(true);
   };
 

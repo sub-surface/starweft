@@ -1,24 +1,34 @@
-/* STARWEFT — sharp monochrome. Ink on void. One accent (yours), one red (theirs). */
+/* STARWEFT — sharp monochrome, AMOLED true-black. Ink on void. One accent
+   (yours), one red (theirs). Elevation is drawn with hairlines, never shadow,
+   so black stays black and OLED pixels stay dark. */
 :root {
-  --bg: #040507;
-  --panel: rgba(8, 10, 13, 0.92);
-  --line: #23272e;
-  --line-bright: #3a4048;
-  --ink: #c9d1d9;
-  --ink-dim: #6e7681;
-  --ink-faint: #3d434b;
-  --accent: hsl(195, 55%, 72%);
-  --accent-dim: hsla(195, 55%, 72%, 0.16);
-  --danger: #ff4d57;
+  --bg: #000000;             /* true black — the void, and the AMOLED win */
+  --surface: #08090c;        /* panels: a whisper above black, clearly a compartment */
+  --surface-2: #101318;      /* elevated: cards, inputs, list rows */
+  --panel: var(--surface);   /* legacy alias — panels are solid now, not translucent */
+  --line: #1b1f26;           /* hairline dividers */
+  --line-bright: #2b313b;    /* control borders, stronger seams */
+  --ink: #d2d9e1;            /* body text (a touch brighter for true-black contrast) */
+  --ink-dim: #7b8491;        /* secondary */
+  --ink-faint: #454b55;      /* tertiary / disabled */
+  --accent: hsl(195, 60%, 70%);            /* set live from identity hue */
+  --accent-dim: hsla(195, 60%, 70%, 0.15);
+  --danger: #ff5561;
   --font: 'Segoe UI', system-ui, sans-serif;
   --mono: Consolas, 'Cascadia Mono', monospace;
+  --radius: 3px;             /* crisp, not rounded — the sharp monochrome soul */
+  --tap: 44px;               /* minimum comfortable touch target */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 13.5px; }
 button {
   font-family: var(--font); font-size: 12.5px;
   background: transparent; color: var(--ink);
-  border: 1px solid var(--line-bright); border-radius: 2px;
+  border: 1px solid var(--line-bright); border-radius: var(--radius);
   padding: 3px 10px; cursor: pointer;
   transition: background .12s, border-color .12s;
   letter-spacing: 0.02em;
@@ -31,8 +41,8 @@ button.primary:hover { background: var(--accent-dim); }
 button.danger { border-color: rgba(255,77,87,0.5); color: var(--danger); }
 button.danger:hover { background: rgba(255,77,87,0.1); }
 select, input {
-  background: #0a0c0f; color: var(--ink);
-  border: 1px solid var(--line-bright); border-radius: 2px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--line-bright); border-radius: var(--radius);
   padding: 3px 6px; font-family: var(--font); font-size: 12.5px;
 }
 input:focus, select:focus { outline: none; border-color: var(--ink-dim); }
@@ -86,7 +96,7 @@ input[type=checkbox] { accent-color: var(--accent); }
 #alerts .alert.hailChip.grim { color: var(--danger); border-color: rgba(255,77,87,0.4); }
 
 #main { position: fixed; top: 42px; bottom: 30px; left: 0; right: 0; }
-#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #map.dragging { cursor: grabbing; }
 #map.picking { cursor: crosshair; }
 
@@ -101,7 +111,7 @@ input[type=checkbox] { accent-color: var(--accent); }
 #ticker { flex: 1; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
 
 /* ---- panels ---- */
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .hidden { display: none !important; }
 
 #sysPanel {
@@ -169,7 +179,7 @@ input[type=checkbox] { accent-color: var(--accent); }
   position: absolute; top: 8px; left: 8px; z-index: 26;
   background: var(--panel); border: 1px solid var(--line-bright);
   padding: 5px 11px; font-size: 12px; letter-spacing: 0.04em;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 #btnBackGalaxy:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -233,7 +243,7 @@ hr.thin { border: none; border-top: 1px solid var(--line); margin: 8px 0; }
   display: flex; align-items: center; justify-content: center;
 }
 .modal {
-  background: #0a0c10;
+  background: var(--surface-2);
   border: 1px solid var(--line-bright);
   width: 500px; max-width: 94vw; max-height: 88vh; overflow-y: auto;
   padding: 24px 28px;
@@ -324,7 +334,7 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 /* tech-node hover tooltip — light-up card matching the infobox/menu language */
 .techTip {
   position: fixed; z-index: 60; max-width: 260px;
-  background: #0a0c0f; border: 1px solid var(--accent);
+  background: var(--surface-2); border: 1px solid var(--accent);
   box-shadow: 0 4px 18px rgba(0,0,0,0.55), 0 0 0 1px var(--accent-dim);
   border-radius: 3px; padding: 8px 10px; pointer-events: none;
   font-size: 11.5px; line-height: 1.45;
@@ -368,7 +378,7 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 .msBody { padding: 16px 20px; }
 .msIntro { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
 .msIntro .sub { max-width: 60ch; }
-.msTally { font-size: 12px; color: var(--ink-dim); white-space: nowrap; padding: 6px 10px; border: 1px solid var(--line-bright); border-radius: 2px; }
+.msTally { font-size: 12px; color: var(--ink-dim); white-space: nowrap; padding: 6px 10px; border: 1px solid var(--line-bright); border-radius: var(--radius); }
 .msGroups {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 18px 22px; align-items: start;
@@ -379,7 +389,7 @@ canvas.spark { background: rgba(255,255,255,0.02); }
   font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim);
 }
 .msCard {
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--line); border-radius: var(--radius);
   padding: 8px 10px; margin-bottom: 7px;
   background: rgba(201,209,217,0.015);
 }
@@ -391,7 +401,7 @@ canvas.spark { background: rgba(255,255,255,0.02); }
 .msAt { font-size: 10px; color: var(--accent); white-space: nowrap; font-family: var(--mono); }
 .msCount { font-size: 11px; white-space: nowrap; }
 .msCard:not(.done) .msCount.num { color: var(--accent); }
-.msBar { height: 3px; background: var(--line); border-radius: 2px; margin: 7px 0 5px; overflow: hidden; }
+.msBar { height: 3px; background: var(--line); border-radius: var(--radius); margin: 7px 0 5px; overflow: hidden; }
 .msBarFill { height: 100%; background: var(--accent); opacity: 0.7; }
 .msHint { font-size: 10px; color: var(--ink-dim); line-height: 1.4; }
 
@@ -624,8 +634,8 @@ input:focus-visible {
 /* import textarea */
 .importBox {
   width: 100%; min-height: 130px; resize: vertical;
-  background: #0a0c0f; color: var(--ink); border: 1px solid var(--line-bright);
-  border-radius: 2px; padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--line-bright);
+  border-radius: var(--radius); padding: 8px 10px; font-family: var(--mono); font-size: 11px;
   line-height: 1.4; white-space: pre; overflow: auto;
 }
 .importBox:focus { outline: none; border-color: var(--accent); }
@@ -655,7 +665,7 @@ input:focus-visible {
   flex: 0 0 auto;
   margin: 0 -28px; padding: 10px 28px 16px;
   border-top: 1px solid var(--line);
-  background: #0a0c10;
+  background: var(--surface-2);
 }
 .setupActions { display: flex; gap: 8px; margin-top: 9px; }
 
@@ -716,7 +726,7 @@ input:focus-visible {
 .originCard.rich { flex-direction: column; align-items: stretch; gap: 3px; }
 .originCard.rich .oKit { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); margin-top: 3px; }
 .originCard.rich .oHooks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.oHook { font-size: 9.5px; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 2px; padding: 1px 5px; }
+.oHook { font-size: 9.5px; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-dim); border-radius: var(--radius); padding: 1px 5px; }
 .originCard.rich.lock { opacity: 0.5; }
 .lockTag { font-size: 9.5px; color: var(--ink-faint); font-weight: 400; letter-spacing: 0.06em; }
 .originCard.rich.lock .sub { color: var(--accent); opacity: 0.8; }
@@ -758,4 +768,141 @@ input:focus-visible {
 }
 @media (max-width: 520px) {
   .condGrid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   AMOLED + MINIMAL + MOBILE OVERHAUL
+   True black, hairline compartments, thumb-friendly touch. The desktop layout
+   is untouched above ~760px; below it the floating panels become bottom sheets
+   and the dock tabs become a fixed bottom nav.
+   ============================================================================ */
+
+/* --- AMOLED polish: solid compartments, calmer elevation --- */
+.panel { background: var(--surface); }
+#topbar, #bottombar, #dock, #sysPanel, #commandBar, #infobox { background: var(--surface); }
+/* elevated list rows read as their own quiet cards on true black */
+.listItem { background: var(--surface-2); border-color: var(--line); }
+.perkCard, .msCard, .condCard, .dailySpec, .originCard { background: var(--surface-2); }
+.modal { background: var(--surface-2); }
+/* a hairline top-accent on the active dock tab reads cleanly on black */
+#dockTabs button { transition: color .12s, box-shadow .12s; }
+
+/* --- coarse-pointer ergonomics (any touch device, any size) --- */
+@media (pointer: coarse) {
+  button, .seg, .commChip, #dockTabs button, .frontBtn { min-height: 40px; }
+  #speedCtrls button { min-width: 40px; min-height: 40px; }
+  select, input { min-height: 38px; }
+  .row { gap: 8px; }
+  /* the infobox is a hover explainer — there is no hover on touch */
+  #infobox { display: none; }
+}
+
+/* --- phones & narrow windows: the real mobile layout --- */
+@media (max-width: 760px) {
+  :root { font-size: 13px; }
+
+  /* compact topbar: keep the vital read-outs + speed + menu; the rest moves
+     into the ☰ menu and the bottom nav so nothing overflows */
+  #topbar {
+    height: auto; min-height: 46px; gap: 8px; padding: calc(4px + var(--safe-t)) 8px 4px;
+    padding-left: calc(8px + var(--safe-l)); padding-right: calc(8px + var(--safe-r));
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  #topbar::-webkit-scrollbar { display: none; }
+  #topbar .logo, #searchWrap { display: none; }   /* the map IS the navigator; search + wordmark fold away */
+  /* the overlay buttons stay reachable — the strip scrolls if it must */
+  #btnTech, #btnExchange, #btnCodex { flex: 0 0 auto; padding: 3px 9px; }
+  #topbar .spacer { flex: 0 0 2px; }
+  #topbar .stat { font-size: 12px; flex: 0 0 auto; }
+  #alerts { flex: 0 0 auto; }
+
+  /* the map owns the screen; chrome reserves only the two bars */
+  #main {
+    top: calc(46px + var(--safe-t)); bottom: calc(52px + var(--safe-b));
+    left: var(--safe-l); right: var(--safe-r);
+  }
+  #commandBar { display: none; }
+
+  /* objective stays as a slim strip pinned above the bottom nav */
+  #bottombar {
+    height: 26px; bottom: calc(52px + var(--safe-b));
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 0 10px; z-index: 44;
+  }
+  #objective { max-width: 100%; }
+  #ticker { display: none; }
+
+  /* selected-system panel = a bottom sheet that rises when something's picked */
+  #sysPanel, #main.inSystem #sysPanel {
+    position: fixed; left: 0; right: 0; top: auto;
+    bottom: calc(78px + var(--safe-b));
+    width: auto; max-width: 100%; max-height: 56vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    box-shadow: 0 -1px 0 var(--line-bright); z-index: 43;
+  }
+
+  /* the dock becomes a fixed bottom nav (tabs) + a slide-up body sheet */
+  #dock {
+    position: fixed; left: 0; right: 0; top: auto; bottom: 0;
+    width: auto; max-height: none; display: block; border: none; background: transparent;
+    z-index: 45;
+  }
+  #dockTabs {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(52px + var(--safe-b)); padding-bottom: var(--safe-b);
+    background: var(--surface); border-top: 1px solid var(--line-bright);
+    overflow-x: auto; z-index: 46;
+  }
+  #dockTabs::-webkit-scrollbar { display: none; }
+  #dockTabs button {
+    flex: 1 0 auto; min-width: 60px; padding: 0 6px; font-size: 9.5px;
+    letter-spacing: 0.06em;
+  }
+  #dockTabs button.active { box-shadow: inset 0 2px 0 var(--accent); color: var(--ink); }
+
+  #dockBody { display: none; }
+  body.dockOpen #dockBody {
+    display: block; position: fixed; left: 0; right: 0; top: auto;
+    bottom: calc(52px + var(--safe-b)); max-height: 62vh; overflow-y: auto;
+    background: var(--surface); border-top: 1px solid var(--line-bright);
+    padding: 12px 12px calc(12px + var(--safe-b)); z-index: 45;
+  }
+  /* a grab-handle affordance atop the open sheet */
+  body.dockOpen #dockBody::before {
+    content: ''; display: block; width: 34px; height: 3px; border-radius: 2px;
+    background: var(--line-bright); margin: -4px auto 10px;
+  }
+
+  #btnBackGalaxy { top: calc(6px + var(--safe-t)); min-height: 38px; }
+  #mapHint { top: calc(8px + var(--safe-t)); font-size: 11px; }
+
+  /* modals go full-bleed with safe-area padding */
+  #modalShade { align-items: stretch; }
+  #modalShade { padding: 0; }
+  .modal, .modal.wide, .setupModal {
+    width: 100%; max-width: 100%; max-height: 100%; height: 100%;
+    border: none; border-radius: 0; overflow-x: hidden;
+    padding: calc(18px + var(--safe-t)) calc(16px + var(--safe-r)) calc(18px + var(--safe-b)) calc(16px + var(--safe-l));
+  }
+  .modal * { max-width: 100%; }
+  .titleBlurb, .modal .tagline { max-width: 100%; }
+  .modal .statGrid { grid-template-columns: 1fr auto; }
+  .modal.techWide { width: 100vw; height: 100vh; }
+  .modal .choices button { padding: 12px 14px; }
+  /* the wordmark must never overflow a narrow screen */
+  .modal .titleArt { font-size: clamp(20px, 8vw, 30px); letter-spacing: 5px; overflow: hidden; text-overflow: clip; }
+  .modal .tagline, .titleBlurb { font-size: 11.5px; }
+  .modal h2 { font-size: 13px; letter-spacing: 0.14em; }
+  .setupCols { grid-template-columns: 1fr; }
+
+  /* the market terminal fills the screen too */
+  #exchange { inset: calc(46px + var(--safe-t)) 0 calc(52px + var(--safe-b)) 0; }
+  #exGrid { flex-direction: column; }
+  #exSide { border-left: none; border-top: 1px solid var(--line); padding-left: 0; padding-top: 12px; }
+}
+
+/* very small phones: single-column dials, tighter type */
+@media (max-width: 400px) {
+  #topbar .stat { font-size: 11px; }
+  #dockTabs button { min-width: 54px; font-size: 9px; }
 }
