@@ -655,7 +655,10 @@ section('Scout auto-explore');
   A.toggleAutoExplore(st, s2.id);
   G.tick(st); chooseAny(st);
   if (s1.mode === 'travel' && s2.mode === 'travel') {
-    assert(s1.leg.to !== s2.leg.to, 'auto-explorers diverge (' + st.systems[s1.leg.to].name + ' vs ' + st.systems[s2.leg.to].name + ')');
+    // compare final destinations, not first hops — a cluster with one gateway
+    // lane legitimately funnels both scouts through the same first system
+    const dest = function (s) { return (s.path && s.path.length) ? s.path[s.path.length - 1] : s.leg.to; };
+    assert(dest(s1) !== dest(s2), 'auto-explorers diverge (' + st.systems[dest(s1)].name + ' vs ' + st.systems[dest(s2)].name + ')');
   } else {
     assert(s1.mode === 'travel' || s2.mode === 'travel', 'at least one explorer departed');
   }

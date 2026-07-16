@@ -516,7 +516,12 @@ SW.ships = (function () {
     const claimed = [];
     for (const other of state.ships) {
       if (other.id === ship.id || !other.autoExplore) continue;
-      const tid = (other.mode === 'travel' && other.leg) ? other.leg.to : other.at;
+      // claim the other scout's *final* destination, not its current hop —
+      // multi-hop paths through a shared gateway would otherwise hide the
+      // real target and let two scouts convoy to the same system
+      const tid = (other.mode === 'travel' && other.leg)
+        ? ((other.path && other.path.length) ? other.path[other.path.length - 1] : other.leg.to)
+        : other.at;
       if (tid !== null && tid !== undefined && state.systems[tid]) claimed.push(state.systems[tid]);
     }
     let best = null, bestScore = Infinity;

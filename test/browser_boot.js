@@ -717,6 +717,15 @@ step('supply project dispatches haulers through one action', function () {
   hauler.mode = 'idle'; hauler.at = home.id; hauler.path = []; hauler.leg = null; hauler.mission = null; hauler.queue = []; hauler.cargo = {}; hauler.basis = {};
   home.buildings = home.buildings.filter(function (b) { return b !== 'relay'; });
   if (home.depot) delete home.depot.ALLOY;
+  // hermetic: earlier steps may have left ALLOY on idle ships on-site or
+  // inbound on supply missions — either hides the gap and skips the dispatch.
+  // Home's own market must not stock it either, or the supply mission buys
+  // locally and completes synchronously inside the click (nothing in flight).
+  home.stocks.ALLOY = 0;
+  s.ships.forEach(function (sh) {
+    if (sh.cargo) delete sh.cargo.ALLOY;
+    if (sh.mission && sh.mission.kind === 'supply' && sh.mission.c === 'ALLOY') sh.mission = null;
+  });
   SW.render.selectedSys = home.id;
   fireClick('projectBuild', { b: 'relay' });
   if (!s.projects.length) throw new Error('project was not created');
