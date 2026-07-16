@@ -4,6 +4,20 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-07-16 — LOOM.md is the world bible; the cut-the-weave canon; craft laws
+
+Final coherence pass before implementation. Two commitments logged so content
+stays coherent: (1) `LOOM.md` is the narrative/world bible — wins on tone,
+REWEAVE wins on mechanics. (2) **Canon:** the Sundering was chosen — the
+Loomkeepers cut the weave themselves to starve the Fray, which spread *along
+the lanes*. So "Scourge spreads along lanes" is now the *myth made playable*,
+and the win condition is a "better knot" (connection the rot can't travel), not
+a weapon. This retroactively makes the core mechanics thematic; keep it.
+REWEAVE §12 adds the roguelike-craft guardrails (from the genre-design
+breakdown), with **mechanic-over-stat** named as the spine — enforced by a
+boot-test assertion that no Chronicle unlock mutates a `D.TUNE` base number
+(to be written at R8). No code yet; docs only.
+
 ## 2026-07-16 — REWEAVE ratified: roguelike frame, REWEAVE.md is the contract
 
 The owner ratified the v4 reframe in a clarifying-question session (answers

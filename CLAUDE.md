@@ -5,7 +5,8 @@ Plain HTML/CSS/JS, Canvas 2D, no build step, playable from `file://` by double-c
 
 ## Read these before coding
 
-- `REWEAVE.md` — the v4 roguelike-frame contract (campaign/Threads/acts, PLEDGE scoring, Founders, Charters, Chronicle). **This is the contract.** Check §11 for the migration plan.
+- `REWEAVE.md` — the v4 roguelike-frame contract (campaign/Threads/acts, PLEDGE scoring, Founders, Charters, Chronicle). **This is the contract.** §11 = migration plan, §12 = the roguelike-craft guardrails (the design laws).
+- `LOOM.md` — the narrative & world bible (the cut-the-weave myth, the cast, the voice, refrains, the epitaph). **Wins on tone; REWEAVE wins on mechanics.** Read before writing any player-facing prose, event, Charter, or Founder.
 - `SPEC.md` — the v3 completeness spec, now historical reference + backlog (its ✅ marks describe shipped code; REWEAVE wins on conflict).
 - `DESIGN.md` — original design document (pillars, economy, systems).
 - `docs/reviews/` — twelve audit/spec documents plus `REQUIREMENTS_INDEX.md` (market, onboarding, commands, world sim, presentation, reliability, docs, progression, Scourge response, galaxy scale, supply consolidation). These are **backlog and reference, not contracts**; SPEC.md wins on conflict.

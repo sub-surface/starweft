@@ -15,6 +15,12 @@ several base layers; unlocks widen, never strengthen; every run winnable from
 zero), **FTL** (the run as a story you tell afterwards), **Slay the Spire**
 (the act ladder, draft-don't-configure).
 
+**Companion doc:** `LOOM.md` is the narrative & world bible — the fiction these
+mechanics are secretly about (the cut-the-weave myth, the cast who remember
+your deaths, the voice, the refrains, the epitaph). On *tone* it wins; on
+*mechanics* REWEAVE wins; the two are built to agree. §12 below is the bridge:
+the design guardrails that keep the roguelike craft honest.
+
 ---
 
 ## 0. Decisions locked (2026-07-16, owner-ratified)
@@ -474,14 +480,116 @@ Backlog relationship: SPEC §15 (Living Galaxy), §16 (Living Market), §17
 they slot in as content for this frame (encounters feed Charters, market
 life feeds boards) and none of them block R1–R10.
 
-## 12. Non-goals
+## 12. The roguelike craft checklist — design guardrails
+
+The genre's craft, distilled into laws we can test against. Ordered as the
+canonical roguelike-design breakdown orders them, each mapped to where it
+already lives here so nothing is a new pillar — this is the coherence net.
+Where a law can become a boot-test assertion or a bot metric, it says so.
+
+### 12.1 Uniqueness from the start (→ §6, §8.4)
+No two runs may *open* the same. The opening state is
+`Founder × Founding Myth × Heart × starting board × first draft` — that
+product must vary run-to-run. **Law:** a fresh Thread's first minute presents
+at least one lever the last one didn't. **Test:** bot harness asserts opening
+Founder/board/first-pledge tuples differ across seeded new-Threads.
+
+### 12.2 Risk vs. reward (→ §5.1, §4.2)
+Every risk is legible *before* it is taken and every reward is visible.
+PLEDGE's overcommit wager and the bank-or-push boundary are the two risk
+engines; both show the stake and the upside in-line. **Law (sacred):** loss is
+always a decision the player could have prevented — the Fray telegraphs, the
+clock is visible, a bust is never a surprise tax. No hidden-information deaths.
+
+### 12.3 Diversity (→ §7.4, §8.2)
+Variety is drafted, not configured. **Law:** boundary drafts (Charters +
+aptitudes) must present meaningfully different options run-to-run — target
+<40% option overlap between consecutive runs of the same Founder. **Metric:**
+archetype bots (trader/explorer/warlord/governor) must each reach the summit by
+a *different* build; if one build dominates the bot field, the pool is too flat.
+
+### 12.4 Synergies (→ §7.3)
+The four-layer cross-multiply (Founder law × Charter pipeline × aptitude tempo
+× world board) is the whole point. **Law:** every Charter names ≥1 existing
+system it interacts with (content-review gate, like `data-info` coverage);
+a Charter that combos with nothing is cut. The reward for a *seen* synergy is
+a discovery, not a tutorial — never explain a combo the player could find.
+
+### 12.5 Repeated "level" design (→ §3, §4.1, SPEC §4/§19)
+Our "levels" are the galaxy and its apertures; the freshness problem is
+procedural-generation quality. **Law:** the seed validator (already required)
+gains an **aperture check** — every act ring must hold a viable economy
+(producers + consumers + ≥1 shortage worth pledging) and ≥1 *memorable
+landmark* (a void, a tight cluster, a named feature, a wonder). No two
+apertures should feel like the same corridor. Voids/clusters (SPEC §4) are the
+"rooms"; landmarks are the anchors that make a map recountable afterward.
+
+### 12.6 Enemy design — the Fray as a player, not weather (→ §2.2, §18.5, LOOM §2)
+The Scourge is the game's one antagonist and must *read* like one. **Laws:**
+(a) it has **tells** — the warning interval before a take is inviolable;
+(b) it has **patterns** — it attacks slack lanes and overreached frontier
+(it plays the tension board, §5.2), which the player can learn and exploit;
+(c) it has **personality** — the seeded name + temperament (patient / ravenous
+/ capricious) so a campaign's Fray feels like *someone*; (d) it is
+**counterable** by weaving, not just walls — the cure is a *better knot*
+(LOOM §2), connection the rot can't travel. Never a random tax; always a
+legible opponent making legible moves.
+
+### 12.7 Secrets & unique encounters (→ LOOM §10, SPEC §8/§15.4)
+The Noita promise: the world is deeper than it shows. **Law:** every campaign
+seeds ≥1 thing the player *discovers*, on no menu — the Loom-shard's arc, a
+Charter in a wreck's black box, the numbers-station fragments, a wonder worth
+the detour. A secret that appears in a menu is not one. Each bears a Chronicle
+fragment so discovery pays into the meta.
+
+### 12.8 Mechanic changes over stat changes — THE SPINE (→ pillars 8/9, §6, §7.2)
+This is the genre's deepest lesson and this game's whole thesis: **power comes
+from rules bending, not numbers rising.** It is already pillars 8 (wider never
+stronger) and 9 (synergy over stats); named here as the single law every other
+system answers to. **Laws:** (a) a Founder/Charter/aptitude/boon that only adds
+a flat percent is a code smell — rewrite it as a rule-bend or cut it;
+(b) meta-progression *only* widens the pool, never raises a value a run could
+have had at unlock zero (**boot-test assertion:** no Chronicle unlock mutates a
+`D.TUNE` base number); (c) the interesting sentence is always a *conditional*
+("empty holds count as ballast", "the 5th completion doubles"), never a
+multiplier on the same old thing.
+
+### 12.9 Charm & visuals (→ §9? see below, Pillar 4, LOOM §9)
+Juice serves legibility and soul, never noise. Monochrome + one accent holds;
+the accent is the one warm thread. The delivery floater/chime is the game's
+heartbeat and now carries the mult so completions *land*. Death is
+renderer-native and dignified (the epitaph, LOOM §7). **Law:** every juice
+touch must also make something clearer — if it only decorates, it fights
+Pillar 4.
+
+### 12.10 Audio (→ SPEC §17, LOOM §9)
+A generative, zero-asset bed that breathes with the run — region, Fray
+pressure, prosperity, combat. **Law:** mood keys off real sim state so the
+music *means* something (determinism exempt — audio is presentation); silence
+as the Fray nears is a choice, not a gap; degrades gracefully with no
+`AudioContext` (boot-test asserts this already).
+
+### 12.11 Juice & QoL — the elevatory bar (Hades / Noita)
+The cheeky, high-care touches that separate a spec from a game people love.
+Tracked as commitments (detail in LOOM §9):
+- **Fiddle freely:** re-order Charter sockets at any board, no penalty.
+- **Reroll once:** a per-boundary draft reroll token.
+- **Name your Thread:** it rides into the epitaph, Chronicle, and Successor.
+- **Always new to hear:** cast lines keyed to your Chronicle; true-fact ads.
+- **Kindness opt-in:** stipend, possible first-Cut grace (§14 Q4), an
+  escalating-mercy dial — warmth available, honesty default.
+- **Fast wake:** under two minutes from cut to next Thread.
+- **Everything self-explains:** infobox coverage over every new noun
+  (Charter/Founder/pledge/lane-state) — a boot-test assertion, not a hope.
+
+## 13. Non-goals
 
 No frameworks, no bundlers, no npm, no multiplayer, no 3D, no WebGL. No
 meta-progression that raises numbers. No run longer than the player chose at
 a boundary. No death without an epitaph. No Charter that can't explain
 itself in one infobox line.
 
-## 13. Open questions (small residue, none blocking R1–R2)
+## 14. Open questions (small residue, none blocking R1–R2)
 
 1. Ratify the core verb (§5 argues PLEDGE) → `docs/DECISIONS.md`.
 2. Naming pass: Thread/Loomship/Charter/WEAVE/fragments — placeholder-final.
