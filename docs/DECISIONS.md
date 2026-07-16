@@ -4,6 +4,22 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-07-16 — REWEAVE ratified: roguelike frame, REWEAVE.md is the contract
+
+The owner ratified the v4 reframe in a clarifying-question session (answers
+recorded in REWEAVE.md §0): **one persistent campaign galaxy with mortal
+Threads** (permadeath kills the captain-instance, never the world), an **act
+ladder** of ~25–35 min acts with an explicit bank-or-push boundary, a new
+slot-limited **Charter** synergy layer plus an interaction rework of existing
+systems, and **wider-never-stronger** meta (Chronicle unlocks widen the
+possibility space, never raise numbers). Engine stays **Canvas 2D only**.
+`REWEAVE.md` replaces `SPEC.md` as the design contract; SPEC.md is demoted to
+historical reference/backlog (banner added). The current sandbox survives as
+"Long Weave (classic)" during migration and becomes the earned endgame
+(graduation) at R9. Still open: ratifying the core-verb candidate (REWEAVE §5
+presents PLEDGE / TENSION / CAST and argues for PLEDGE) — log that call here
+when made.
+
 ## 2026-06-13 — Tech tree: polish the atlas, don't redesign it
 
 The 2026-06-12 "atlas wins" decision stands. A complaint that the tree

@@ -1,5 +1,9 @@
 # STARWEFT — v3 Completeness Specification
 
+> **Superseded (2026-07-16):** `REWEAVE.md` is now the design contract; this
+> document is historical reference and backlog. On conflict, REWEAVE wins.
+> Everything marked ✅ here remains real, shipped code.
+
 *The worlds drifted apart. You are the thread.*
 
 This is the whole dream in one document: every system shipped, every system

@@ -5,7 +5,8 @@ Plain HTML/CSS/JS, Canvas 2D, no build step, playable from `file://` by double-c
 
 ## Read these before coding
 
-- `SPEC.md` — the v3 completeness spec and migration plan. **This is the contract.** Check §13 for what's done (✅) and what's next.
+- `REWEAVE.md` — the v4 roguelike-frame contract (campaign/Threads/acts, PLEDGE scoring, Founders, Charters, Chronicle). **This is the contract.** Check §11 for the migration plan.
+- `SPEC.md` — the v3 completeness spec, now historical reference + backlog (its ✅ marks describe shipped code; REWEAVE wins on conflict).
 - `DESIGN.md` — original design document (pillars, economy, systems).
 - `docs/reviews/` — twelve audit/spec documents plus `REQUIREMENTS_INDEX.md` (market, onboarding, commands, world sim, presentation, reliability, docs, progression, Scourge response, galaxy scale, supply consolidation). These are **backlog and reference, not contracts**; SPEC.md wins on conflict.
 - `docs/roadmaps/` — dependency roadmaps. `docs/DECISIONS.md` — the decision log; check it before re-opening a settled design (e.g. the tech tree).
