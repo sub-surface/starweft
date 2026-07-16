@@ -256,7 +256,7 @@ SW.data = (function () {
     'cats_aboard', 'crew_hired', 'doctrine_chosen', 'doctrine_prompted',
     'archivist_sys', 'archivist_quest', 'archivist_friend', 'archivist_dead',
     'met_helix', 'met_mariner', 'panic_done', 'stance_chosen',
-    'first_thread', 'heart_drift',
+    'first_thread', 'heart_drift', 'graduated',
   ];
   D.FLAG_PREFIXES = ['met_', 'rival_collapsed_', 'absorbed_', 'mourned_'];
 
@@ -609,6 +609,53 @@ SW.data = (function () {
     pledgeBondFrac: 0.2,            // escrow to seal a pledge, as fraction of fare; forfeit on bust
     pledgeOfferTtl: 150,            // ticks an untaken offer lingers on the board
   };
+
+  // ---- The Act Ladder (REWEAVE §4). A focused run is 1..maxActs Guild Charter
+  // periods, each with a WEAVE quota and a tick clock. Meet quota -> bank or push. ----
+  D.ACTS = {
+    quotaBase: 1600,        // WEAVE to clear act I
+    quotaGrowth: 1.85,      // each act's quota multiplies by this
+    clockBase: 900,         // ticks granted for act I (generous; > any test's tick budget)
+    clockGrowth: 1.12,      // later acts get a little more time as quotas bite
+    maxActs: 3,             // act III is the summit (retire or graduate)
+    apertureGrowth: 1.25,   // command range x this on each push (the reach widens)
+    boundaryPerk: 1,        // aptitude points granted on a push
+    draftSize: 3,           // boons offered at a push boundary
+  };
+
+  // Commissions — the *character* of an act. One is drawn (seeded, no repeats)
+  // when an act begins: a named Guild charter with a flavour and a rule-tint on
+  // the pledge economy. This is the "blind" that makes each act — and each run's
+  // sequence of acts — feel distinct. fx keys are read by SW.acts.mods().
+  D.COMMISSIONS = {
+    open:     { name: 'An Open Loom',        line: 'A quiet charter. Weave as you will.', fx: {} },
+    drought:  { name: 'The Long Drought',    line: 'The starved worlds pay dearest. Carry to the empty.', fx: { shortageChipMult: 1.6 } },
+    tithe:    { name: 'The Tithe of the Front', line: 'Serve the edge, where the Fray leans close, and the Guild pays a tithe.', fx: { frontChipMult: 1.7 } },
+    flood:    { name: 'A Flood of Charters', line: 'The board overflows — more berths, tighter clocks.', fx: { maxActiveBonus: 1, windowMult: 0.8 } },
+    festival: { name: 'The Founders’ Festival', line: 'The old songs are sung; a kept thread sings louder.', fx: { threadBonus: 0.5 } },
+    salt:     { name: 'The Salt Roads',      line: 'Bulk and raw and heavy. The plain hauls pay this season.', fx: { tierChipMult: [1.5, 1.4, 1, 1] } },
+    relics:   { name: 'The Relic Run',       line: 'Only the refined and the rare are wanted now.', fx: { tierChipMult: [1, 1, 1.5, 1.6] } },
+    quiet:    { name: 'The Quiet Commission', line: 'A gentle charter, and time to breathe.', fx: { windowMult: 1.4, chipMult: 0.9 } },
+  };
+  D.COMMISSION_IDS = Object.keys(D.COMMISSIONS);
+
+  // Boons — the boundary draft (REWEAVE §4.2, §8.2). Pushing into the next act
+  // lets you draft ONE of three. Per-run, kept until the run ends; the seed of
+  // the future Charter layer. Every boon bends a *rule*, never a flat number
+  // (REWEAVE §12.8). fx read by SW.acts.mods(); a few carry per-completion state.
+  D.BOONS = {
+    ballast:     { name: 'Ghost Manifest', line: 'Empty holds are ballast: far pledges (5+ hops) score +0.5 THREAD.', fx: { farThreadBonus: 0.5 } },
+    fifthseal:   { name: 'The Fifth Seal', line: 'Every fifth pledge you keep scores twice.', fx: { fifthSeal: true } },
+    widemanifest:{ name: 'Wide Manifest',  line: 'Hold one more pledge at a time.', fx: { maxActiveBonus: 1 } },
+    shortsight:  { name: 'Shortage Sense',  line: 'Deliver a good a world is starved of (<25% stock): +40% TONNAGE.', fx: { shortageChipMult: 1.4 } },
+    firstlight:  { name: 'The Courier’s Habit', line: 'The first pledge you keep each act scores double THREAD.', fx: { firstlightX2: true } },
+    grace:       { name: 'Guild Grace',    line: 'The first pledge you bust each act is forgiven — bond returned, thread intact.', fx: { graceEnabled: true } },
+    taut:        { name: 'Wayleave',       line: 'Deliver again to a world you already served this act: +0.3 THREAD.', fx: { tautThreadBonus: 0.3 } },
+    patient:     { name: 'Slow Weave',     line: 'New pledges grant +25% more time on the clock.', fx: { windowMult: 1.25 } },
+    deepcoffer:  { name: 'Deep Coffers',   line: 'Every pledge bond is halved.', fx: { bondMult: 0.5 } },
+    streakward:  { name: 'Streakward Knot', line: 'Your streak’s THREAD ceiling rises by +1.0.', fx: { streakCapBonus: 1.0 } },
+  };
+  D.BOON_IDS = Object.keys(D.BOONS);
 
   D.RIVAL_DEFS = [
     { id: 'helix',   name: 'Helix Combine',       archetype: 'industrial cartel', color: '#8a8f98', blurb: 'Polished, predatory, punctual. Combine Charter\'s sharpest blade.', preferred: ['TECH', 'ALLOY'], lineTarget: 4, maxShips: 8, qtyMult: 1.2, expand: 'industrial' },

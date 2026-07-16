@@ -81,6 +81,9 @@ SW.game = (function () {
       world: D.resolveWorld(opts.world),
       news: [],
       laneFlow: {},
+      // The Act Ladder (REWEAVE §4): a focused run threads acts with quotas and
+      // clocks. Absent/off => a classic Long-Weave sandbox run (unchanged).
+      acts: opts.acts ? { on: true } : null,
     };
     SW.galaxy.generate(state);
     SW.story.init(state);
@@ -176,6 +179,8 @@ SW.game = (function () {
     if (myth && myth.line) G.news(state, myth.line, startSys);
     // The Sol cold open — only when explicitly requested (never for bots/tests)
     if (opts.tutorial && SW.tutorial) SW.tutorial.init(state);
+    // The Act Ladder seals its first Charter once ships exist (Loomship = flagship).
+    if (state.acts && state.acts.on && SW.acts) SW.acts.init(state);
     G.state = state;
     G.fx.length = 0;
     return state;
@@ -206,6 +211,7 @@ SW.game = (function () {
     SW.scourge.tick(state);
     SW.worldevents.tick(state);
     if (SW.pledges) SW.pledges.tick(state);
+    if (SW.acts && SW.acts.active(state)) SW.acts.tick(state);
     SW.story.tick(state);
     if (SW.tutorial) SW.tutorial.tick(state);
     tickStrandedGuard(state);
@@ -280,6 +286,9 @@ SW.game = (function () {
 
   function checkEnd(state) {
     if (state.gameOver) return;
+    // Focused runs end on the Act Ladder's terms (Cut / Burned / Eaten / bank /
+    // summit). The classic victory/loss paths below are the Long-Weave sandbox.
+    if (SW.acts && SW.acts.active(state)) { SW.acts.checkEnd(state); return; }
     // Victory
     if (state.story.flags.scourge_cured && !state.story.flags.postgame) {
       state.gameOver = { win: true, reason: 'The Panacea took. The Scourge gardens gently now.', tick: state.tick, score: G.score(state) };
@@ -357,6 +366,7 @@ SW.game = (function () {
   A.scrapShip = function (state, shipId) {
     const ship = findShip(state, shipId);
     if (!ship) return err('No such ship.');
+    if (SW.acts && SW.acts.active(state) && shipId === state.loomshipId) return err('The Loomship carries the WEFT core — it cannot be scrapped.');
     if (ship.mode !== 'idle') return err('Recall it first (must be idle).');
     SW.ships.unassign(state, ship);
     const refund = Math.floor(SW.ships.hullCost(state, ship.hull) * 0.5);
@@ -801,6 +811,20 @@ SW.game = (function () {
   A.abandonPledge = function (state, pledgeId) {
     if (!SW.pledges) return err('Pledges unavailable.');
     return SW.pledges.abandon(state, pledgeId);
+  };
+
+  // ---- The Act Ladder (REWEAVE §4): bank / push / graduate at a boundary ----
+  A.bankThread = function (state) {
+    if (!SW.acts) return err('Acts unavailable.');
+    return SW.acts.bank(state);
+  };
+  A.pushThread = function (state, boonId) {
+    if (!SW.acts) return err('Acts unavailable.');
+    return SW.acts.push(state, boonId);
+  };
+  A.graduateThread = function (state) {
+    if (!SW.acts) return err('Acts unavailable.');
+    return SW.acts.graduate(state);
   };
 
   A.supplyMission = function (state, shipId, targetSysId, c, qty) {

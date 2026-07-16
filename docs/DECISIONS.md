@@ -4,6 +4,39 @@ One entry per consequential or hard-to-reverse decision: date, the call,
 why, and what it supersedes. Newest first. Check here before re-opening a
 settled design.
 
+## 2026-07-16 — R4 shipped: the Act Ladder (focused runs, Commissions, Boons)
+
+`js/acts.js` (DOM-free) turns a run into 1..3 Guild Charter acts, each a WEAVE
+quota + a tick clock. Meeting the quota opens the boundary: **BANK** (a clean
+win) or **PUSH** — draft one of three **Boons** and take a harder, richer act.
+Three deaths with epitaphs: **Cut** (clock out, quota unmet), **Burned** (the
+Loomship — the flagship carrying the WEFT core, unscrappable — destroyed),
+**Eaten** (the Heart corrupted). The summit (act III) offers RETIRE or
+GRADUATE into the open Long Weave (acts off, keep everything).
+
+Diversity engine (the replayability ask): **Commissions** are seeded per-act
+themes (Long Drought, Tithe of the Front, Salt Roads, Relic Run, …) that tint
+the pledge economy; **Boons** are per-run rule-benders drafted at each push
+(Ghost Manifest, Fifth Seal, Shortage Sense, Guild Grace, Wayleave, …) — the
+seed of the future Charter layer (R6). Commission × Boons × the base haul
+cross-multiply in `SW.acts.scoreCompletion`, so builds emerge (REWEAVE §12.4).
+All effects bend rules, never flat stats (REWEAVE §12.8).
+
+Structural reframe, done cleanly per the "strip/de-slop with care" latitude:
+the ladder is gated entirely behind `state.acts.on`, so PLEDGE + acts are the
+**focused-run spine** while a bare run stays the classic Long-Weave sandbox
+(untouched — same code, two shapes). `game.checkEnd` now delegates to
+`SW.acts.checkEnd` for focused runs and keeps the classic Scourge/bankruptcy
+paths for the sandbox. New-run menu gains a run-shape toggle (default Focused;
+absent control ⇒ sandbox, so headless tests and the prologue stay classic).
+
+UI: act HUD (quota bar + clock) and the boundary banner (bank / boon cards /
+summit retire-or-graduate) on the Pledges tab; a topbar act chip; the epitaph
+in the gameover modal. Additive state, no SAVE_VERSION bump. Both suites green
+except the same two pre-existing failures (auto-explorer divergence flake in
+smoke — a real minor auto-explore bug, red on clean main, flagged for a
+dedicated fix; supply-mission dispatch in browser_boot).
+
 ## 2026-07-16 — Core verb ratified: PLEDGE. R3 (PLEDGE v1) shipped.
 
 The REWEAVE §5 core-verb question is closed: **PLEDGE** wins over TENSION and

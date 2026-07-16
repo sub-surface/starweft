@@ -105,7 +105,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -229,6 +229,45 @@ step('PLEDGE surface: board + manifest render, take + abandon dispatch', functio
     }
   }
   SW.ui.setTab('fleet');
+});
+
+step('Act Ladder: HUD, boundary banner, push + bank + graduate dispatch', function () {
+  const saved = G.state;                     // isolate: restore the main run after
+  try {
+    const ag = G.newGame({ seed: 'boot-acts', difficulty: 'relaxed', acts: true });
+    ag.systems.filter(function (x) { return x.pop > 0 && x.id !== ag.homeId && x.scourge !== 2; }).slice(0, 5).forEach(function (x) { x.discovered = true; });
+    ag.credits = 99999;
+    if (!SW.acts.active(ag)) throw new Error('acts run not active');
+    SW.pledges.refreshBoard(ag);
+    SW.ui.setTab('pledges'); SW.ui.refresh();
+    let dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+    if (dock.indexOf('Act I') < 0) throw new Error('act HUD missing act line');
+    const alerts = (elCache['#alerts'] && elCache['#alerts'].innerHTML) || '';
+    if (alerts.indexOf('openPledges') < 0) throw new Error('topbar act chip missing');
+    ag.weave = ag.acts.startWeave + ag.acts.quota;
+    G.tick(ag);
+    if (!ag.acts.boundary) throw new Error('boundary did not open at quota');
+    SW.ui.setTab('pledges'); SW.ui.refresh();
+    dock = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
+    if (dock.indexOf('data-act="bankThread"') < 0) throw new Error('boundary missing bank button');
+    if (dock.indexOf('data-act="pushThread"') < 0) throw new Error('boundary missing push/boon cards');
+    fireClick('pushThread', { boon: ag.acts.draft[0] });
+    if (ag.acts.n !== 2) throw new Error('pushThread dispatch did not advance the act');
+    const bg = G.newGame({ seed: 'boot-acts-bank', difficulty: 'relaxed', acts: true });
+    bg.weave = bg.acts.startWeave + bg.acts.quota; G.tick(bg);
+    fireClick('bankThread');
+    if (!bg.gameOver || !bg.gameOver.win) throw new Error('bankThread dispatch did not win');
+    if (!bg.gameOver.epitaph) throw new Error('gameover missing epitaph');
+    SW.uiModals.showGameOver(bg.gameOver);   // epitaph renders without throwing
+    const sg = G.newGame({ seed: 'boot-acts-grad', difficulty: 'relaxed', acts: true });
+    sg.acts.n = SW.data.ACTS.maxActs; sg.weave = sg.acts.startWeave + sg.acts.quota; G.tick(sg);
+    fireClick('graduateThread');
+    if (sg.acts.on || sg.gameOver) throw new Error('graduate did not drop the ladder cleanly');
+  } finally {
+    G.state = saved;                         // hand the main run back
+    SW.ui.setTab('fleet');
+    SW.ui.refresh();
+  }
 });
 
 step('camera alignment action flattens the orbit view', function () {

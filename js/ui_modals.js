@@ -124,6 +124,18 @@ SW.uiModals = (function () {
     if (s.daily && SW.ui.recordDaily) SW.ui.recordDaily(s.daily, go.score || 0);
     let html = '<h2>' + (go.win ? '<i>✦</i> THE WEAVE HOLDS' : '✕ THE WEAVE UNRAVELS') + '</h2>';
     html += '<div class="body">' + esc(go.reason) + '</div>';
+    // The epitaph (focused runs) — the death is a chapter, not an error (LOOM §7).
+    if (go.epitaph) {
+      const e = go.epitaph;
+      html += '<div class="body" style="opacity:.85;font-style:italic">“' + esc(e.line) + '”</div>';
+      html += '<div class="statGrid">' +
+        gr('Thread', esc(e.threadName)) +
+        gr('Reached', 'Act ' + (SW.acts ? SW.acts.roman(e.act) : e.act) + (e.commission ? ' · ' + esc(e.commission) : '')) +
+        gr('WEAVE woven', U.fmt(e.weave)) +
+        gr('Acts kept', e.actsCleared || 0) +
+        (e.boons && e.boons.length ? gr('Boons drafted', e.boons.map(esc).join(' · ')) : '') +
+        '</div>';
+    }
     html += '<div class="statGrid">' +
       gr('Origin · Doctrine', D.ORIGINS[s.origin].name + ' · ' + (SW.tech.doctrine(s) ? D.TECHS[SW.tech.doctrine(s)].name.replace('Doctrine: ', '') : 'none')) +
       gr('Cycles', go.tick) +
@@ -340,6 +352,15 @@ SW.uiModals = (function () {
       '<span class="ptDesc">Wake at home in the Sol system and learn the one verb that runs everything. ' +
       (prologueDone ? 'Replay the guided opening, or skip straight to the open galaxy.' : 'Recommended for your first weave.') +
       '</span></span></label>';
+
+    // Run shape — the roguelike frame. Focused = the Act Ladder (quotas, a
+    // clock, bank-or-push, permadeath). Long Weave = the open sandbox. Default
+    // Focused: the game is a roguelike now, but the sandbox is one click away.
+    html += '<label class="prologueToggle on" id="shapeCard">' +
+      '<input type="checkbox" id="ngShape" checked>' +
+      '<span class="ptMark">◈</span>' +
+      '<span class="ptText"><span class="ptName">Focused run — the Act Ladder</span>' +
+      '<span class="ptDesc">Guild Charters with a WEAVE quota and a clock. Meet it, then bank or push for a harder, richer act. Permadeath: Cut, Burned, or Eaten. Unchecked = the open Long Weave sandbox, no clock.</span></span></label>';
 
     // Two-column body: left = who you are (Identity + Origin), right = the
     // galaxy you're dropped into. Forecast + actions live in a sticky footer.

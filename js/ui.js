@@ -204,6 +204,7 @@ SW.ui = (function () {
     weaveHealth: { title: 'WEAVE HEALTH', sub: 'the state of the weave', lines: ['One number for the galaxy you tend: how well known worlds live, whether essentials reach them, whether factories can run, and how much of the map your threads touch.'] },
     weave: { title: 'WEAVE ◈', sub: 'the score of your thread', lines: ['Earned only by keeping pledges. WEAVE = TONNAGE × THREAD: the size of the haul times a multiplier that rises with every pledge held at once and every completion in a row.', 'Trade earns credits; pledges earn WEAVE. A single missed deadline snaps the THREAD back to nothing.'] },
     pledges: { title: 'PLEDGES ◈', sub: 'the core verb, scored', lines: ['Take a pledge from the Guild board — carry a good to a hungry world before the deadline — and every crate you land on it scores WEAVE.', 'Hold several at once to lift the THREAD on all of them: the wager. Bust one and you forfeit its bond and reset the streak. Warp holds; weft moves.'] },
+    acts: { title: 'THE ACT LADDER ◈', sub: 'a focused run', lines: ['Each act is a Guild Charter: a WEAVE quota and a clock. Its Commission tints the pledge economy — read it, and build to it.', 'Meet the quota and choose: BANK the thread (a clean win) or PUSH — draft a Boon, take a harder Charter, widen your reach. Miss the clock and you are Cut; lose the Loomship and you are Burned; lose the Heart and you are Eaten.'] },
   };
   function uiTopicInfo(id) {
     if (id === 'infamy' && SW.combat && SW.combat.infamyStatus) {
@@ -384,6 +385,16 @@ SW.ui = (function () {
     const stranded = s.ships.filter(function (x) { return x.stranded; });
     const expiring = s.contracts.filter(function (c) { return c.deadline - s.tick < 80; });
     let html = '';
+    if (SW.acts && SW.acts.active(s)) {
+      const a = s.acts;
+      if (a.boundary) {
+        html += '<div class="alert hailChip" data-act="openPledges" title="A Charter boundary is open — bank or push in the Pledges tab">◈ ' + (a.summit ? 'SUMMIT' : 'ACT ' + SW.acts.roman(a.n) + ' MET') + '</div>';
+      } else {
+        const left = SW.acts.ticksLeft(s);
+        const low = left < 120;
+        html += '<div class="alert' + (low ? '' : '') + '" data-act="openPledges" title="Act ' + SW.acts.roman(a.n) + ' quota ' + U.fmt(a.quota) + ' — ' + U.fmt(Math.round(SW.acts.progress(s))) + ' woven, ' + left + ' ticks left">◈ ' + SW.acts.roman(a.n) + ' ' + Math.round(SW.acts.progress(s) / Math.max(1, a.quota) * 100) + '%' + (low ? ' ⧗' + left : '') + '</div>';
+      }
+    }
     if (threatened.length) html += '<div class="alert" data-act="jumpThreat">△ ' + threatened.length + ' THREATENED</div>';
     if (stranded.length) html += '<div class="alert" data-act="jumpStranded">▲ ' + stranded.length + ' STRANDED</div>';
     if (expiring.length) html += '<div class="alert" data-act="openOps">◷ CONTRACT</div>';
@@ -698,6 +709,9 @@ SW.ui = (function () {
       case 'landPax': if (ship) { const r = A().landPax(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'takePledge': { const r = A().takePledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { SW.audio.sfx('click'); renderDock(true); } break; }
       case 'abandonPledge': { const r = A().abandonPledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else renderDock(true); break; }
+      case 'bankThread': { const r = A().bankThread(s); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
+      case 'pushThread': { const r = A().pushThread(s, btn.dataset.boon); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { syncSpeedButtons(); ui.setTab('pledges'); } break; }
+      case 'graduateThread': { const r = A().graduateThread(s); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { syncSpeedButtons(); renderDock(true); } break; }
       case 'buyShip': { const r = A().buyShip(s, btn.dataset.h, sysId); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'selShip': SW.render.selectedShip = btn.dataset.id; break;
       case 'deselShip': SW.render.selectedShip = null; SW.render.followShip = null; break;
@@ -972,6 +986,9 @@ SW.ui = (function () {
           origin: chosenOriginFromModal(),
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
           tutorial: !!($('#ngTut') && $('#ngTut').checked),
+          // Focused run = the Act Ladder. Off during the prologue (the cold open
+          // is a wake-at-home beat, not an act). Absent control => sandbox.
+          acts: !!($('#ngShape') && $('#ngShape').checked) && !($('#ngTut') && $('#ngTut').checked),
           world: {
             density: ($('#ngDen') && $('#ngDen').value) || 'standard',
             wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
@@ -1049,6 +1066,7 @@ SW.ui = (function () {
         break;
       }
       case 'openOps': ui.setTab('ops'); break;
+      case 'openPledges': ui.setTab('pledges'); break;
     }
     ui.refresh();
   }

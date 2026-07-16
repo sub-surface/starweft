@@ -62,7 +62,8 @@ SW.pledges = (function () {
   P.thread = function (state, extraHeld) {
     P.ensure(state);
     const others = Math.max(0, state.pledges.length - 1 + (extraHeld || 0));
-    const streakBonus = Math.min(D.TUNE.pledgeStreakCap, state.pledgeStreak * D.TUNE.pledgeStreakThread);
+    const cap = D.TUNE.pledgeStreakCap + ((SW.acts && SW.acts.active(state)) ? SW.acts.streakCapBonus(state) : 0);
+    const streakBonus = Math.min(cap, state.pledgeStreak * D.TUNE.pledgeStreakThread);
     return 1 + others * D.TUNE.pledgeConcurrentThread + streakBonus;
   };
   P.fareOf = function (chips) { return Math.round(chips * D.TUNE.pledgeFarePerChip); };
@@ -157,14 +158,18 @@ SW.pledges = (function () {
     }
     const sys = state.systems[o.to];
     if (!sys || sys.scourge === 2) return { ok: false, msg: 'The destination is lost.' };
-    if (state.credits < o.bond) return { ok: false, msg: 'The bond is ' + U.fmt(o.bond) + '¤ — you cannot cover it.' };
-    state.credits -= o.bond;
+    // acts bend the terms: boons can stretch the clock or halve the bond
+    const windowMult = (SW.acts && SW.acts.active(state)) ? SW.acts.windowMult(state) : 1;
+    const bondMult = (SW.acts && SW.acts.active(state)) ? SW.acts.bondMult(state) : 1;
+    const charged = Math.round(o.bond * bondMult);
+    if (state.credits < charged) return { ok: false, msg: 'The bond is ' + U.fmt(charged) + '¤ — you cannot cover it.' };
+    state.credits -= charged;
     state.board.splice(i, 1);
     const pledge = {
       id: 'pl' + (state.nextPledgeId++),
       c: o.c, qty: o.qty, to: o.to, toName: o.toName,
-      hops: o.hops, chips: o.chips, fare: o.fare, bond: o.bond,
-      taken: state.tick, deadline: state.tick + o.window,
+      hops: o.hops, chips: o.chips, fare: o.fare, bond: charged,
+      taken: state.tick, deadline: state.tick + Math.round(o.window * windowMult),
       progress: 0,
     };
     state.pledges.push(pledge);
@@ -186,8 +191,10 @@ SW.pledges = (function () {
   };
 
   P.maxActive = function (state) {
-    // Founders/Charters bend this later; a plain cap for now.
-    return (state.pledgeMaxActiveBonus || 0) + D.TUNE.pledgeMaxActive;
+    // Founders/Charters bend this later; Commissions and Boons bend it now.
+    let bonus = state.pledgeMaxActiveBonus || 0;
+    if (SW.acts && SW.acts.active(state)) bonus += SW.acts.maxActiveBonus(state);
+    return bonus + D.TUNE.pledgeMaxActive;
   };
 
   // ---- fulfilment seam (called from S.sell for every delivery) ----
@@ -204,8 +211,16 @@ SW.pledges = (function () {
   };
 
   function complete(state, p, idx) {
-    const thread = P.thread(state, 0);       // reads current held count + streak
-    const weave = Math.round(p.chips * thread);
+    let thread = P.thread(state, 0);         // reads current held count + streak
+    let chips = p.chips;
+    let weave;
+    // acts fold Commission × Boons into the score (the synergy surface)
+    if (SW.acts && SW.acts.active(state)) {
+      const r = SW.acts.scoreCompletion(state, p, thread);
+      chips = r.chips; thread = r.thread; weave = r.weave;
+    } else {
+      weave = Math.round(chips * thread);
+    }
     state.pledges.splice(idx, 1);
     state.credits += p.fare + p.bond;        // fare paid, escrow returned
     state.weave += weave;
@@ -218,13 +233,21 @@ SW.pledges = (function () {
     SW.game.emit('fx', { kind: 'floater', sysId: p.to, text: '+' + U.fmt(weave) + ' WEAVE', good: true });
     SW.game.emit('toast', {
       kind: 'good',
-      text: '◈ Pledge kept: ' + p.toName + ' — +' + U.fmt(weave) + ' WEAVE (' + U.fmt(p.chips) + ' × ' + thread.toFixed(1) + '×), +' + U.fmt(p.fare + p.bond) + '¤. Streak ' + state.pledgeStreak + '.',
+      text: '◈ Pledge kept: ' + p.toName + ' — +' + U.fmt(weave) + ' WEAVE (' + U.fmt(chips) + ' × ' + thread.toFixed(1) + '×), +' + U.fmt(p.fare + p.bond) + '¤. Streak ' + state.pledgeStreak + '.',
     });
     SW.game.emit('sfx', 'chime');
     SW.game.news(state, 'Pledge kept at ' + p.toName + ': ' + p.qty + ' ' + D.COMMODITIES[p.c].name + ' delivered. +' + U.fmt(weave) + ' WEAVE.', p.to);
   }
 
   function bust(state, p, idx, reason) {
+    // Guild Grace (a boon): the first bust each act is forgiven — bond back, thread intact
+    if (SW.acts && SW.acts.active(state) && SW.acts.tryGrace(state)) {
+      state.pledges.splice(idx, 1);
+      state.credits += p.bond;
+      SW.game.emit('toast', { kind: 'info', text: '◈ Guild Grace: the lapse at ' + p.toName + ' is forgiven — bond returned, the thread holds.' });
+      SW.game.news(state, 'Guild Grace absorbs a broken pledge at ' + p.toName + '. Once per act, mercy.', p.to);
+      return;
+    }
     state.pledges.splice(idx, 1);
     state.pledgeStreak = 0;                   // the thread snaps
     state.pledgeStats.busted = (state.pledgeStats.busted || 0) + 1;

@@ -2,7 +2,7 @@
    Run: node test/smoke.js */
 'use strict';
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'pledges', 'acts', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -2035,6 +2035,107 @@ section('PLEDGE — full delivery loop through S.sell + determinism/replay');
   const contA = G.loadFromString(JSON.stringify(st)); SW.pledges.refreshBoard(G.state); const boardA = JSON.stringify(G.state.board);
   const contB = G.loadFromString(JSON.stringify(st)); SW.pledges.refreshBoard(G.state); const boardB = JSON.stringify(G.state.board);
   assert(contA.ok && contB.ok && boardA === boardB, 'board refresh is deterministic after reload');
+}
+
+section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
+{
+  function mk(seed) {
+    const s = G.newGame({ seed: seed, difficulty: 'relaxed', acts: true });
+    s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; }).slice(0, 6).forEach(function (x) { x.discovered = true; });
+    s.credits = 99999;
+    return s;
+  }
+  // opt-in: a bare run stays a classic sandbox (acts absent)
+  const classic = G.newGame({ seed: 'classic', difficulty: 'relaxed' });
+  assert(!classic.acts && !SW.acts.active(classic), 'a bare run has no act ladder (classic sandbox)');
+
+  const s = mk('acts-A');
+  assert(SW.acts.active(s), 'acts run is active');
+  assert(s.acts.n === 1 && s.acts.commission === 'open', 'act I is always the gentle Open Loom');
+  assert(s.acts.quota === SW.acts.quotaOf(1) && s.acts.clock > s.tick, 'act I quota + clock set');
+  assert(s.loomshipId === s.ships[0].id && s.ships[0].loomship, 'the flagship is the Loomship');
+  assert(SW.acts.quotaOf(2) > SW.acts.quotaOf(1), 'quotas scale up per act');
+
+  // drive WEAVE to the quota -> the boundary opens with a boon draft
+  let guard = 0;
+  while (!s.acts.boundary && guard++ < 500) {
+    SW.pledges.refreshBoard(s);
+    while (s.pledges.length < SW.pledges.maxActive(s) && s.board.length) { if (!A.takePledge(s, s.board[0].id).ok) break; }
+    for (const p of s.pledges.slice()) SW.pledges.onDeliver(s, p.to, p.c, p.qty);
+    G.tick(s);
+  }
+  assert(s.acts.boundary && s.paused, 'quota met -> boundary opens and pauses');
+  assert(s.acts.draft.length === D.ACTS.draftSize, 'a boon draft of ' + D.ACTS.draftSize + ' is offered');
+  const je = s.journal[s.journal.length - 1];
+
+  // push: draft a boon, advance to a harder act, widen the reach
+  const boon = s.acts.draft[0];
+  const beforeAperture = s.acts.aperture, beforePerk = s.perkPoints || 0;
+  const pr = A.pushThread(s, boon);
+  assert(pr.ok, 'push accepted: ' + (pr.msg || ''));
+  assert(s.acts.n === 2 && s.acts.boons.indexOf(boon) >= 0, 'advanced to act II with the drafted boon');
+  assert(s.acts.aperture > beforeAperture, 'the reach widened on push');
+  assert((s.perkPoints || 0) === beforePerk + D.ACTS.boundaryPerk, 'push granted an aptitude point');
+  assert(!s.paused, 'push resumes the run');
+  const jp = s.journal[s.journal.length - 1];
+  assert(jp.a === 'pushThread' && jp.args[0] === boon, 'push is journaled for replay');
+
+  // a bad push is rejected loudly
+  assert(A.pushThread(s, 'nonsense').ok === false, 'push with an undrafted boon rejected');
+
+  // Commission × Boon actually bend the score
+  const salt = mk('salt'); salt.acts.commission = 'salt';
+  assert(Math.abs(SW.acts.mods(salt).tierChipMult[0] - 1.5) < 1e-9, 'Salt Roads commission lifts raw-tier chips');
+  const wide = mk('wide'); const cap0 = SW.pledges.maxActive(wide);
+  wide.acts.boons.push('widemanifest');
+  assert(SW.pledges.maxActive(wide) === cap0 + 1, 'Wide Manifest boon raises the manifest cap');
+  const deep = mk('deep'); deep.acts.boons.push('deepcoffer');
+  SW.pledges.refreshBoard(deep);
+  const off = deep.board[0], creditsBefore = deep.credits;
+  A.takePledge(deep, off.id);
+  assert(deep.pledges[0].bond === Math.round(off.bond * 0.5), 'Deep Coffers halves the bond charged');
+
+  // Guild Grace forgives the first bust each act
+  const gr = mk('grace'); gr.acts.boons.push('grace'); gr.acts.graceLeft = 1;
+  SW.pledges.refreshBoard(gr); A.takePledge(gr, gr.board[0].id);
+  gr.pledgeStreak = 3; const p0 = gr.pledges[0]; p0.deadline = gr.tick + 2;
+  for (let i = 0; i < 4; i++) G.tick(gr);
+  assert(gr.pledges.length === 0 && gr.pledgeStreak === 3, 'Guild Grace forgives a bust: streak intact');
+
+  // bank at a boundary is a clean win
+  const bk = mk('bank'); bk.weave = bk.acts.startWeave + bk.acts.quota; G.tick(bk);
+  assert(bk.acts.boundary, 'bank run reaches boundary');
+  const br = A.bankThread(bk);
+  assert(br.ok && bk.gameOver && bk.gameOver.win && bk.gameOver.epitaph.cut === 'banked', 'bank ends the run as a win with a banked epitaph');
+
+  // the three cuts
+  const cut = mk('cut'); cut.acts.clock = cut.tick + 3;
+  for (let i = 0; i < 6; i++) G.tick(cut);
+  assert(cut.gameOver && !cut.gameOver.win && cut.gameOver.epitaph.cut === 'cut', 'Cut: clock out with quota unmet ends the run');
+  const eaten = mk('eaten'); eaten.systems[eaten.homeId].scourge = 2; G.tick(eaten);
+  assert(eaten.gameOver && eaten.gameOver.epitaph.cut === 'eaten', 'Eaten: the Heart corrupted ends the run');
+  const burned = mk('burned'); burned.ships.splice(burned.ships.findIndex(function (x) { return x.id === burned.loomshipId; }), 1); G.tick(burned);
+  assert(burned.gameOver && burned.gameOver.epitaph.cut === 'burned', 'Burned: the Loomship destroyed ends the run');
+  const sc = mk('scrap2');
+  assert(A.scrapShip(sc, sc.loomshipId).ok === false, 'the Loomship cannot be scrapped');
+
+  // graduate at the summit: leave the ladder, keep everything, play on
+  const grad = mk('grad'); grad.acts.n = D.ACTS.maxActs; grad.weave = grad.acts.startWeave + grad.acts.quota; G.tick(grad);
+  assert(grad.acts.boundary && grad.acts.summit, 'summit boundary opens at the final act');
+  const gd = A.graduateThread(grad);
+  assert(gd.ok && !grad.acts.on && !grad.gameOver && !grad.paused, 'graduation drops the ladder and continues the run');
+  assert(grad.story.flags.graduated, 'graduation sets its flag');
+
+  // determinism: same seed -> same act-II commission after an identical push
+  function actTwoCommission(seed) {
+    const st = mk(seed); st.weave = st.acts.startWeave + st.acts.quota; G.tick(st);
+    A.pushThread(st, st.acts.draft[0]);
+    return st.acts.commission;
+  }
+  assert(actTwoCommission('det-acts') === actTwoCommission('det-acts'), 'same seed => same act-II commission (deterministic draws)');
+
+  invariants(s, 'post-acts');
+  invariants(grad, 'post-graduate');
 }
 
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');

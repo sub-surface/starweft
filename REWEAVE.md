@@ -467,7 +467,7 @@ graduation. No flag-day rewrite; the roguelike frame grows alongside.
 | **R1** | Hot/cold sim + aperture plumbing | the enabler (§3.3); SPEC §10.3 promoted to prerequisite; F3 counts prove budget |
 | **R2** | Campaign/Thread state split + death + Interregnum v1 | die → coarse sim → wake; ruins/salvage minimal (derelicts only) |
 | **R3** | ✅ PLEDGE v1 | `js/pledges.js` — Guild board, TONNAGE × THREAD, bonds, busts, streaks, trust; fulfilment at the `S.sell` seam; dedicated serialized RNG sub-stream; `A.takePledge`/`A.abandonPledge`; Pledges dock tab + topbar WEAVE. Remaining for R3+: act quota + clock + Cut death (folds into R4) |
-| **R4** | Act ladder | bank-or-push, aperture growth, Burned/Eaten deaths, epitaphs |
+| **R4** | ✅ Act ladder | `js/acts.js` — acts with WEAVE quota + tick clock; **Commissions** (seeded per-act themes) and **Boons** (boundary draft, seed of the Charter layer) cross-multiply the pledge economy; bank-or-push, aperture growth + reveal, Cut/Burned/Eaten deaths + epitaphs, summit → retire/graduate into the Long Weave. Gated by `state.acts.on` (classic sandbox untouched). Menu run-shape toggle. |
 | **R5** | Founders v1 | the three ● founders + picker screen |
 | **R6** | Charters v1 | 5 sockets, ~16 commons across 3 families, boundary draft + board vendor |
 | **R7** | Interaction pass | aptitude drafts, Archive re-scope of tech, rivals on boards, lane tension terrain (B-salvage), conditions × builds |
