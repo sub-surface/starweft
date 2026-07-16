@@ -584,7 +584,7 @@ Tracked as commitments (detail in LOOM §9):
 
 ## 13. UI/UX — the diegetic face (owner-directed, 2026-07-16)
 
-Status: **spec ratified, foundation shipped (F1), F2–F8 not yet built.** The
+Status: **F-track complete (F1–F8 shipped).** The
 sandbox's UX was a control panel bolted beside a map. REWEAVE's frame — mortal
 Threads, a scored core verb, acts with a clock — deserves a face that feels
 like *itself*: an instrument panel a courier would actually fly from, not a
@@ -745,30 +745,35 @@ like reduce-motion already is).
 
 This work is orthogonal to REWEAVE §11's R-numbered mechanical build order
 (Founders, Charters, Chronicle) — it re-faces what already exists rather
-than adding a new subsystem, so it is sequenced as its own **F-track** and
-should be finished (or at least F2–F5 landed) before resuming R5, so Founders
-and Charters are designed against the *new* face, not bolted onto the old
-one and re-skinned twice.
+than adding a new subsystem, so it is sequenced as its own **F-track**, now
+complete, so Founders and Charters are designed against the *new* face, not
+bolted onto the old one and re-skinned twice.
 
 | Step | Lands | Risk |
 |---|---|---|
 | **F1** | ✅ AMOLED tokens, mobile viewport, touch pinch/pan, bottom-sheet dock | shipped |
-| **F2** | One Command Strip (topbar+bottombar merge) | low — pure chrome, no new state |
-| **F3** | Drawer state machine (`ui.drawer.*`) for sysPanel/dock/exchange/tech | low — reuses every renderer verbatim |
-| **F4** | Signal beacons on the map (canvas), `#alerts` becomes an overflow counter | medium — new render-layer, needs a boot-test pass for beacon presence |
-| **F5** | Orbital ring (DOM overlay synced to `frame()`) | medium — new interaction surface, most new test surface |
-| **F6** | Edge compass pings | low — pure derived-position rendering |
-| **F7** | Guild board on the map (beacons + flyout) | medium — touches pledge-take flow's entry point, not its logic |
-| **F8** | Mobile parity pass: ring/flyout/compass all confirmed usable at touch scale; screenshot pass at 390×844 and 1280×800 | verification only |
+| **F2** | ✅ One Command Strip (topbar+bottombar merge into `#strip`, ⋯ more-row) | shipped |
+| **F3** | ✅ Drawer state machine (`ui.drawer.*`) for sysPanel/dock/exchange/tech — dock rails on desktop, sys panel goes sticky-dismiss | shipped |
+| **F4** | ✅ Signal beacons on the map (`js/signals.js` model + `render.js` draw layer), `#alerts` is now an overflow counter | shipped |
+| **F5** | ✅ Orbital ring (`#ring`, DOM overlay synced to `frame()` via `R.screenPosOf`/`ui.onFrame`) — selection no longer force-opens the panel | shipped |
+| **F6** | ✅ Edge compass pings (`drawEdgePing`, clamped to the viewport, tap centers camera) | shipped |
+| **F7** | ✅ Guild board on the map (`#boardFlyout`, beacon/ring-triggered, tap-away + Esc dismiss) | shipped |
+| **F8** | ✅ Mobile parity pass — found and fixed two real bugs: the sys panel's fixed `true` default buried the ring/flyout under its own bottom sheet on touch (now touch-aware sticky default); the flyout's fixed offset could overflow a narrow viewport (now clamped to real layout metrics) | shipped |
 
-Each step lands green on both suites, same discipline as the R-track. Test
-strategy per SPEC precedent: smoke.js can't see pixels but can assert state
-(`ui.drawer.isOpen('dock')`, beacon list contents, ring's contextual-action
-set for a given selection) the way the pledge/acts sections already do;
-browser_boot's stub DOM can drive `fireClick` on ring/beacon/flyout buttons
-exactly as it does for `takePledge`/`pushThread` today. Visual verification
-(does it actually look right) is a headless-Chromium screenshot pass, not a
-suite assertion — do it at the end of F4, F5, F7, and F8 at minimum.
+Each step landed green on both suites. Test strategy per SPEC precedent:
+smoke.js asserts the beacon-model state (`js/signals.js`'s derivation) the
+way the pledge/acts sections already do; browser_boot's stub DOM drives
+`fireClick`/`fireKey` on ring/beacon/flyout/drawer buttons exactly as it does
+for `takePledge`/`pushThread`, plus dedicated coverage for the ring's
+contextual button set, the drawer machine's sticky/pin semantics, the edge
+compass's off-screen geometry, and the flyout's on-screen clamp. Visual
+verification ran as a headless-Chromium screenshot pass (`test/
+screenshot_harness.html`) at the end of F2, F4, F5, F6, F7, and F8 — note for
+future passes: Chrome's headless CLI silently floors `--window-size` below
+~500px width with no flag able to override it (confirmed empirically), so a
+literal 390px capture isn't achievable that way; the F8 mobile checks instead
+used a harness-only `ui.isTouch` override plus the narrowest honestly
+achievable width (500px) to verify touch-specific behavior.
 
 ## 14. Non-goals
 
