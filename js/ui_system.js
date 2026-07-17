@@ -53,7 +53,7 @@ SW.uiSystem = (function () {
   function renderSysPanel() {
     const s = st(), panel = $('#sysPanel');
     const sysId = SW.render.selectedSys;
-    // drawer gate (REWEAVE §13.3): a dismissed sys drawer stays closed until
+    // Drawer gate (SPEC[UI-DRAWERS]): a dismissed sys drawer stays closed until
     // the next summons (a fresh selection, or the ring's details verb in F5)
     const wants = !(SW.ui && SW.ui.drawer) || SW.ui.drawer.wants('sys');
     if (sysId === null || sysId === undefined || !s.systems[sysId] || !wants) { panel.classList.add('hidden'); return; }

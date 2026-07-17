@@ -47,7 +47,7 @@ SW.game = (function () {
     const difficulty = D.DIFFICULTY[opts.difficulty] ? opts.difficulty : 'standard';
     const originId = (D.ORIGINS[opts.origin] && G.originUnlocked(opts.origin)) ? opts.origin : 'courier';
     const origin = D.ORIGINS[originId];
-    // Founder (REWEAVE §6): orthogonal to Origin, chosen only for a Focused
+    // Founder (SPEC[RUN-FOUNDERS]): orthogonal to Origin, chosen only for a Focused
     // (Act Ladder) run — the Long Weave sandbox has no use for a rule-bend
     // with no acts to bend. All three ● founders are unlocked at zero (the
     // other five are Chronicle-gated, R8).
@@ -88,7 +88,7 @@ SW.game = (function () {
       world: D.resolveWorld(opts.world),
       news: [],
       laneFlow: {},
-      // The Act Ladder (REWEAVE §4): a focused run threads acts with quotas and
+      // The Act Ladder (SPEC[RUN-ACTS]): a focused run threads acts with quotas and
       // clocks. Absent/off => a classic Long-Weave sandbox run (unchanged).
       acts: opts.acts ? { on: true } : null,
     };
@@ -823,7 +823,7 @@ SW.game = (function () {
     return { ok: true };
   };
 
-  // ---- PLEDGE: the core verb, scored (REWEAVE §5) ----
+  // ---- PLEDGE foundation (SPEC[RUN-PLEDGE]) ----
   A.takePledge = function (state, offerId) {
     if (!SW.pledges) return err('Pledges unavailable.');
     return SW.pledges.take(state, offerId);
@@ -833,7 +833,7 @@ SW.game = (function () {
     return SW.pledges.abandon(state, pledgeId);
   };
 
-  // ---- The Act Ladder (REWEAVE §4): bank / push / graduate at a boundary ----
+  // ---- The Act Ladder (SPEC[RUN-ACTS]): bank / push / graduate at a boundary ----
   A.bankThread = function (state) {
     if (!SW.acts) return err('Acts unavailable.');
     return SW.acts.bank(state);

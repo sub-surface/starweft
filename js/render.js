@@ -775,7 +775,7 @@ SW.render = (function () {
     drawOrbitGuide(now);
   }
 
-  // ---------- signal beacons (REWEAVE §13.4): the map tells you ----------
+  // ---------- signal beacons (SPEC[UI-SIGNALS]): the map tells you ----------
   // The beacon model lives DOM-free in signals.js; this layer draws it and
   // keeps a pickable list so beacons are tappable. Threats keep their native
   // dashed-ring rendering in drawSystem — here they only gain pickability and
@@ -827,7 +827,7 @@ SW.render = (function () {
   }
   R.debugBeacons = function () { return beaconPickables; };
 
-  // ---------- edge compass (REWEAVE §13.6) ----------
+  // ---------- edge compass (SPEC[UI-EDGE-COMPASS]) ----------
   // A beacon's system fell outside the viewport: point at it from the edge
   // instead of letting it vanish. Reuses the same raw (unclipped) projection
   // drawBeacons already has — clamp the camera-center-to-system ray to an

@@ -125,7 +125,7 @@ SW.uiModals = (function () {
     if (s.daily && SW.ui.recordDaily) SW.ui.recordDaily(s.daily, go.score || 0);
     let html = '<h2>' + (go.win ? '<i>✦</i> THE WEAVE HOLDS' : '✕ THE WEAVE UNRAVELS') + '</h2>';
     html += '<div class="body">' + esc(go.reason) + '</div>';
-    // The epitaph (focused runs) — the death is a chapter, not an error (LOOM §7).
+    // The epitaph (focused runs) — the death is a chapter, not an error (SPEC[NAR-EPITAPH]).
     if (go.epitaph) {
       const e = go.epitaph;
       html += '<div class="body" style="opacity:.85;font-style:italic">“' + esc(e.line) + '”</div>';
@@ -402,7 +402,7 @@ SW.uiModals = (function () {
       }
     }
 
-    // Founder (REWEAVE §6) — who the Guild seats at the Loomship's helm for a
+    // Founder (SPEC[RUN-FOUNDERS]) — who the Guild seats at the Loomship's helm for a
     // Focused run. Orthogonal to Origin: one rule-bend, one liability, one
     // lore line. Only matters if the Focused toggle above is checked; shown
     // unconditionally (like Origin) rather than wired to that toggle live —

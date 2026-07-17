@@ -1,6 +1,6 @@
 /* STARWEFT pledges.js — the core verb, scored. DOM-free.
 
-   PLEDGE (REWEAVE §5, ratified 2026-07-16): a delivery is a *commitment*.
+   PLEDGE (SPEC[RUN-PLEDGE]): a delivery is a *commitment*.
    You take a pledge from a Guild board — carry commodity C to system B before a
    deadline — and completing it scores WEAVE = TONNAGE x THREAD:
 

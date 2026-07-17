@@ -394,7 +394,7 @@ SW.ui = (function () {
       if (wasActive && b.contains('dockOpen')) b.remove('dockOpen');
       else b.add('dockOpen');
     } else {
-      // desktop drawer semantics (REWEAVE §13.3): a tab is a summons; re-tapping
+      // Desktop drawer semantics (SPEC[UI-DRAWERS]): a tab is a summons; re-tapping
       // the active tab dismisses; the thumbtack keeps it ambient
       if (wasActive && ui.drawer.isOpen('dock') && !ui.drawer.isPinned('dock')) ui.drawer.close('dock');
       else ui.drawer.open('dock');
@@ -402,7 +402,7 @@ SW.ui = (function () {
     renderDock(true);
   };
 
-  // ============ drawers (REWEAVE §13.3) ============
+  // ============ drawers (SPEC[UI-DRAWERS]) ============
   // Same organs, closed by default: the four big surfaces are edge drawers.
   // The machine owns only open/pin state — every renderer keeps its DOM target
   // and signature. On touch the dock keeps the F1 bottom-sheet behavior
@@ -468,7 +468,7 @@ SW.ui = (function () {
   };
   ui.syncDrawerDom = syncDrawerDom;
 
-  // ============ the orbital ring (REWEAVE §13.5) ============
+  // ============ the orbital ring (SPEC[UI-ORBITAL-RING]) ============
   // Selecting a system no longer force-opens the panel — a ring of glyph
   // buttons orbits the star itself, contextual to what's actually available.
   // Content (which buttons) rebuilds on state change (renderRing, called from
@@ -515,7 +515,7 @@ SW.ui = (function () {
   }
   ui.renderRing = renderRing;
 
-  // ============ the Guild board flyout (REWEAVE §13.7) ============
+  // ============ the Guild board flyout (SPEC[UI-GUILD-BOARD]) ============
   // Open pledge offers glow at their destination system, not in a list. A
   // beacon tap (or the ring's ◈ board verb) opens this compact flyout —
   // terms + one take button per offer, anchored near the star. The held
@@ -596,7 +596,7 @@ SW.ui = (function () {
     }
   };
 
-  // ============ the command strip (REWEAVE §13.2) ============
+  // ============ the command strip (SPEC[UI-COMMAND-STRIP]) ============
   // The rarer buttons (Development, Market, Codex, sound) live behind the ⋯
   // glyph in a slide-down row: one tap away, never eating strip width.
   ui.toggleMore = function (force) {
@@ -641,7 +641,7 @@ SW.ui = (function () {
         html += '<div class="alert' + (low ? '' : '') + '" data-act="openPledges" title="Act ' + SW.acts.roman(a.n) + ' quota ' + U.fmt(a.quota) + ' — ' + U.fmt(Math.round(SW.acts.progress(s))) + ' woven, ' + left + ' ticks left">◈ ' + SW.acts.roman(a.n) + ' ' + Math.round(SW.acts.progress(s) / Math.max(1, a.quota) * 100) + '%' + (low ? ' ⧗' + left : '') + '</div>';
       }
     }
-    // Beacons live on the map (REWEAVE §13.4); the strip keeps one compact
+    // Beacons live on the map (SPEC[UI-SIGNALS]); the strip keeps one compact
     // overflow counter — a summary, not a second alert surface.
     const counts = SW.signals ? SW.signals.counts(s) : {};
     const parts = [];
@@ -749,7 +749,7 @@ SW.ui = (function () {
       // panel stays wherever the player last left it; ✕/Esc-dismiss stays
       // dismissed across further selections until the ring's ⓘ reopens it.
     } else pinnedInfo = null;
-    // tap-away (REWEAVE §13.7): clicking elsewhere on the map dismisses a
+    // Tap-away (SPEC[UI-GUILD-BOARD]): clicking elsewhere on the map dismisses a
     // flyout anchored to a different system (or empty space)
     if (ui.boardFlyoutOpen() && (!sys || sys.id !== ui.boardFlyoutSysId())) ui.closeBoardFlyout();
     ui.refresh();
@@ -757,7 +757,7 @@ SW.ui = (function () {
   ui.mapHover = function (sys) {
     renderInfobox(sys ? { kind: 'system', id: sys.id } : null);
   };
-  // A beacon tap does what the signal asks (REWEAVE §13.4's table), not what
+  // A beacon tap does what the signal asks (SPEC[UI-SIGNALS]), not what
   // a generic system click would do.
   ui.beaconTap = function (b) {
     const s = st();
@@ -1029,7 +1029,7 @@ SW.ui = (function () {
       case 'enterSys': if (sysId !== null) ui.enterSystem(sysId); break;
       case 'bookmark': if (sysId !== null) A().toggleBookmark(s, sysId); break;
       case 'closeSysPanel': ui.drawer.close('sys'); break;
-      // ring verbs (REWEAVE §13.5) — the ring always concerns SW.render.selectedSys
+      // Ring verbs (SPEC[UI-ORBITAL-RING]) — the ring always concerns SW.render.selectedSys
       case 'ringDetails': ui.drawer.open('sys'); break;
       case 'ringSend': {
         if (ship && sysId !== null) {

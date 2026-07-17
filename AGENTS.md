@@ -1,14 +1,12 @@
-# Starweft Agent Notes
+# Starweft agent notes
 
-Canonical onboarding lives in [CLAUDE.md](CLAUDE.md) — read that first.
-It covers hard rules, file map, test commands and workflow.
+Read [CLAUDE.md](CLAUDE.md) completely before changing the repository. It is the
+sole engineering, verification, workflow, and deployment guide.
 
-Quick essentials:
+Read [SPEC.md](SPEC.md) before making product, mechanic, narrative, UX, status, or
+roadmap decisions. It is the sole product contract and progress ledger.
 
-- Zero-dependency browser game; classic scripts on the `SW` namespace; no build step.
-- Sim files never touch the DOM; only render.js / ui.js / audio.js / main.js do.
-- Mutations go through `SW.game.actions.*`; determinism via seeded RNG in util.js.
-- Verify with BOTH: `"C:\Program Files
-odejs
-ode.exe" test\smoke.js` and `... testrowser_boot.js`.
-- `SPEC.md` is the contract; `docs/reviews/` is backlog/reference.
+Do not treat `README.md`, research sources, Git history, commit messages, or old
+review links as authority. If either canonical document conflicts with the code,
+investigate the discrepancy and update the appropriate authority as part of the
+same scoped change.

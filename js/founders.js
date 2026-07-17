@@ -1,4 +1,4 @@
-/* STARWEFT founders.js — the Founder's rule-bends (REWEAVE §6). DOM-free.
+/* STARWEFT founders.js — the Founder's rule-bends (SPEC[RUN-FOUNDERS]). DOM-free.
 
    A Founder is chosen once, at a Focused run's start, and stored as the
    plain id `state.founder`. Effects that fit SW.acts.mods()'s existing
@@ -25,7 +25,7 @@ SW.founders = (function () {
     return baseTier;
   };
 
-  // Rockhopper: the board runs one offer thinner (REWEAVE §6's liability;
+  // Rockhopper: the board runs one offer thinner (SPEC[RUN-FOUNDERS] liability;
   // under the current pledge model every destination is already a
   // population center by definition — see eligibleDest — so this reads as
   // a flat board-wide reduction rather than a per-system slot count).

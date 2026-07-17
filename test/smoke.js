@@ -1,6 +1,7 @@
 /* STARWEFT smoke test v2 — headless simulation runs + invariant checks.
    Run: node test/smoke.js */
 'use strict';
+const fs = require('fs');
 const path = require('path');
 const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'founders', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
@@ -2141,7 +2142,7 @@ section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
   invariants(grad, 'post-graduate');
 }
 
-// ---------- Founders (REWEAVE §6) ----------
+// ---------- Founders (SPEC[RUN-FOUNDERS]) ----------
 section('Founders — one rule-bend, one liability each');
 {
   function mkf(seed, founder) {
@@ -2236,7 +2237,7 @@ section('Founders — one rule-bend, one liability each');
   invariants(rh, 'post-founder-rockhopper');
 }
 
-// ---------- signal beacons (REWEAVE §13.4) ----------
+// ---------- signal beacons (SPEC[UI-SIGNALS]) ----------
 section('Signal beacons (the map tells you)');
 {
   const st = G.newGame({ seed: 'smoke-signals', difficulty: 'relaxed' });
@@ -2293,6 +2294,91 @@ section('Signal beacons (the map tells you)');
   const bd = SW.signals.list(ag).find(function (b) { return b.kind === 'boundary'; });
   assert(bd && bd.sys === ag.homeId && bd.glyph === '◈◈', 'open boundary casts its beacon at the Heart');
   assert(SW.signals.counts(ag).boundary === undefined, 'boundary stays out of the overflow counter (the act chip owns it)');
+}
+
+// ---------- documentation authority ----------
+section('Documentation authority and stable SPEC references');
+{
+  const root = path.join(__dirname, '..');
+  const expectedRootDocs = ['AGENTS.md', 'CLAUDE.md', 'README.md', 'SPEC.md'];
+  const rootDocs = fs.readdirSync(root).filter(function (name) {
+    return /\.md$/i.test(name) && fs.statSync(path.join(root, name)).isFile();
+  }).sort();
+  assert(JSON.stringify(rootDocs) === JSON.stringify(expectedRootDocs),
+    'root Markdown is the four-file authority/public set (' + rootDocs.join(', ') + ')');
+
+  const retired = [
+    'REWEAVE.md', 'LOOM.md', 'DESIGN.md',
+    'docs/DECISIONS.md', 'docs/DEPLOY.md', 'docs/deep-research-report.md',
+    'docs/roadmaps/LIVING_BUBBLE_DEPENDENCY_ROADMAP.md',
+  ];
+  for (const rel of retired) {
+    assert(!fs.existsSync(path.join(root, rel)), 'retired authority absent: ' + rel);
+  }
+
+  function filesBelow(dir) {
+    if (!fs.existsSync(dir)) return [];
+    const out = [];
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) out.push.apply(out, filesBelow(p));
+      else out.push(p);
+    }
+    return out;
+  }
+
+  const lingeringDocs = filesBelow(path.join(root, 'docs')).filter(function (p) { return /\.md$/i.test(p); });
+  assert(lingeringDocs.length === 0, 'retired docs tree contains no live Markdown (' + lingeringDocs.join(', ') + ')');
+
+  const spec = fs.readFileSync(path.join(root, 'SPEC.md'), 'utf8');
+  const checkboxIds = {};
+  const duplicateIds = [];
+  const checkboxRe = /^- \[[ x]\] \*\*([A-Z0-9-]+)\*\*/gm;
+  let match;
+  while ((match = checkboxRe.exec(spec))) {
+    if (checkboxIds[match[1]]) duplicateIds.push(match[1]);
+    checkboxIds[match[1]] = true;
+  }
+  assert(Object.keys(checkboxIds).length >= 100, 'SPEC exposes a substantial machine-readable progress ledger');
+  assert(duplicateIds.length === 0, 'SPEC checkbox IDs are unique (' + duplicateIds.join(', ') + ')');
+
+  const liveReferenceFiles = []
+    .concat(filesBelow(path.join(root, 'js')))
+    // Exclude this file because it necessarily contains the retired names in the
+    // regression pattern and retirement-path assertions below.
+    .concat(filesBelow(path.join(root, 'test')).filter(function (p) { return p !== __filename; }))
+    .concat([path.join(root, 'style.css'), path.join(root, 'CLAUDE.md'), path.join(root, 'AGENTS.md'), path.join(root, 'README.md')]);
+  const retiredReference = /REWEAVE(?:\.md|\s*(?:Â)?§)|LOOM(?:\.md|\s*(?:Â)?§)|DESIGN\.md|docs[\\/](?:reviews|roadmaps|DECISIONS|DEPLOY)|SPEC\s*(?:Â)?§/;
+  const dangling = [];
+  const stale = [];
+  for (const file of liveReferenceFiles) {
+    const text = fs.readFileSync(file, 'utf8');
+    if (retiredReference.test(text)) stale.push(path.relative(root, file));
+    const refRe = /SPEC\[([A-Z0-9-]+)\]/g;
+    while ((match = refRe.exec(text))) {
+      if (!checkboxIds[match[1]]) dangling.push(path.relative(root, file) + ':' + match[1]);
+    }
+  }
+  assert(stale.length === 0, 'live code/docs contain no retired authority references (' + stale.join(', ') + ')');
+  assert(dangling.length === 0, 'all SPEC[ID] references resolve to checkbox anchors (' + dangling.join(', ') + ')');
+
+  const activeDocs = expectedRootDocs.map(function (name) { return path.join(root, name); })
+    .concat([path.join(root, 'research', 'README.md')]);
+  const brokenLinks = [];
+  for (const file of activeDocs) {
+    const text = fs.readFileSync(file, 'utf8');
+    const linkRe = /\[[^\]]*\]\(([^)]+)\)/g;
+    while ((match = linkRe.exec(text))) {
+      let target = match[1].trim();
+      if (/^(?:https?:|mailto:|#)/i.test(target)) continue;
+      if (target[0] === '<' && target[target.length - 1] === '>') target = target.slice(1, -1);
+      target = target.split('#')[0].split('?')[0];
+      if (!target) continue;
+      const resolved = path.resolve(path.dirname(file), target.replace(/\//g, path.sep));
+      if (!fs.existsSync(resolved)) brokenLinks.push(path.relative(root, file) + ' -> ' + target);
+    }
+  }
+  assert(brokenLinks.length === 0, 'active Markdown links resolve locally (' + brokenLinks.join(', ') + ')');
 }
 
 console.log('\n' + checks + ' checks, ' + failures + ' failures.');

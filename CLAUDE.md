@@ -1,99 +1,301 @@
-# STARWEFT — Agent Onboarding
+# STARWEFT engineering guide
 
-Zero-dependency browser space-logistics game. *"The worlds drifted apart. You are the thread."*
-Plain HTML/CSS/JS, Canvas 2D, no build step, playable from `file://` by double-clicking `index.html`.
+STARWEFT is a zero-dependency browser logistics game: plain HTML, CSS, and
+classic JavaScript, rendered with Canvas 2D, with no build step. It runs from
+`file://` by opening `index.html` and is hosted as static assets.
 
-## Read these before coding
+Read this file completely before changing the repository. Read [SPEC.md](SPEC.md)
+before making a product, mechanic, narrative, UX, or roadmap decision.
 
-- `REWEAVE.md` — the v4 roguelike-frame contract (campaign/Threads/acts, PLEDGE scoring, Founders, Charters, Chronicle). **This is the contract.** §11 = migration plan (R-track — **resume here, R5 Founders next**), §12 = the roguelike-craft guardrails (the design laws), §13 = the diegetic UI/UX overhaul (F-track — orbital ring, signal beacons, edge compass, Guild board on the map; **F1–F8 shipped**, see §13.9 build order).
-- `LOOM.md` — the narrative & world bible (the cut-the-weave myth, the cast, the voice, refrains, the epitaph). **Wins on tone; REWEAVE wins on mechanics.** Read before writing any player-facing prose, event, Charter, or Founder.
-- `SPEC.md` — the v3 completeness spec, now historical reference + backlog (its ✅ marks describe shipped code; REWEAVE wins on conflict).
-- `DESIGN.md` — original design document (pillars, economy, systems).
-- `docs/reviews/` — twelve audit/spec documents plus `REQUIREMENTS_INDEX.md` (market, onboarding, commands, world sim, presentation, reliability, docs, progression, Scourge response, galaxy scale, supply consolidation). These are **backlog and reference, not contracts**; SPEC.md wins on conflict.
-- `docs/roadmaps/` — dependency roadmaps. `docs/DECISIONS.md` — the decision log; check it before re-opening a settled design (e.g. the tech tree).
+## Authority
 
-## Hard rules (violate for nothing)
+There are exactly two living authorities:
 
-1. **Zero dependencies, zero build.** No npm, no frameworks, no bundlers, no modules — classic scripts sharing the `SW` namespace on `globalThis`.
-2. **Simulation files never touch the DOM.** Only `render.js`, `ui.js`, `audio.js`, `main.js` may. Everything else must run headless under Node.
-3. **All gameplay mutations go through `SW.game.actions.*`** (journaled). Never mutate state directly from UI code.
-4. **State is one JSON-serializable object** — ids, not object references. Seed + action journal = the run (deterministic replay).
-5. **Determinism:** all randomness through the seeded RNG in `util.js` (`U.rand(state)`, `U.pick(state, ...)`). Never `Math.random()`, never `Date.now()` in sim code.
-6. Use ASCII in source unless a file already uses Unicode glyphs deliberately (UI label strings do; beware mojibake — `Â·` is a bug, `·` is intended).
+- `SPEC.md` owns the product: overhaul vision, game rules, world/narrative bible,
+  acceptance criteria, progress checkboxes, research synthesis, and roadmap.
+- `CLAUDE.md` owns engineering: architecture, file manifests, verification,
+  workflow, and deployment operations.
 
-## Verification (run both before claiming done)
+`README.md` is a public introduction. `AGENTS.md` is a pointer to this guide.
+Files under `research/` are evidence, not product authority. Git history preserves
+retired proposals and reviews; do not recreate a third live contract.
 
-Node is NOT on PATH. Use the full path:
+Requirement comments cite stable identifiers such as `SPEC[RUN-PLEDGE]` or
+`SPEC[SW-PLG-004]`, never section numbers. A checked SPEC item requires the
+evidence defined in `SPEC.md`; do not check work merely because a UI exists.
 
+## Hard rules
+
+1. **Zero dependencies and zero build.** Do not add npm, packages, frameworks,
+   bundlers, transpilers, modules, or generated bundles. Runtime files are classic
+   scripts sharing `SW` on `globalThis`.
+2. **The simulation is headless.** Domain behavior must run without `window`,
+   `document`, canvas, audio, or browser storage. Browser/storage access in
+   `game.js` is guarded so the same file boots under Node.
+3. **Presentation owns browser APIs.** `audio.js`, `portraits.js`, `codex.js`,
+   `render.js`, every `ui*.js`, `boot.js`, and `main.js` may use browser or canvas
+   APIs. Do not move game rules into them.
+4. **Player mutations go through `SW.game.actions.*`.** UI code may inspect state
+   freely but may not mutate gameplay state directly. Actions validate, invoke the
+   owning domain function, return `{ok, msg?}`, and are journaled where applicable.
+5. **State is JSON-serializable.** Store IDs rather than object references. No DOM
+   nodes, functions, canvas objects, audio handles, or formatted HTML in canonical
+   state.
+6. **The simulation is deterministic.** All gameplay randomness uses the seeded
+   helpers in `util.js`, such as `U.rand(state)`, `U.pick(state, ...)`, and
+   `U.weightedPick(...)`. Never use `Math.random()` in simulation. Wall-clock and
+   performance time may measure presentation/performance only and may not change a
+   seeded outcome.
+7. **Preserve load order.** Classic scripts have implicit dependencies. Any runtime
+   file addition or move must update every applicable manifest in the same order.
+8. **Keep source text healthy.** Use ASCII unless an existing UI string deliberately
+   needs a real Unicode glyph. Never paste mojibake. Tests scan for common encoding
+   corruption.
+
+## Verification
+
+Node is not on PATH on the primary Windows development machine. Run both suites
+before claiming work complete:
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' 'test\smoke.js'
+& 'C:\Program Files\nodejs\node.exe' 'test\browser_boot.js'
 ```
-"C:\Program Files\nodejs\node.exe" test\smoke.js          # headless sim invariants, ~110k checks
-"C:\Program Files\nodejs\node.exe" test\browser_boot.js   # stub-DOM boot, panels, save/load
+
+- `test/smoke.js` boots the headless-safe stack and checks multi-seed simulation,
+  deterministic behavior, domain invariants, migrations, and documentation.
+- `test/browser_boot.js` boots the full stack against a stub DOM/storage/canvas and
+  exercises panels, modals, save/load, and the frame loop.
+
+The browser harness is structural, not a real-browser replacement. UI, canvas,
+input, timing, or accessibility changes also require an interactive browser check.
+Add tests with new behavior; the repository uses its own `assert()` and `section()`
+helpers rather than a framework.
+
+## Runtime manifest
+
+`index.html` and `test/browser_boot.js` load all runtime scripts in this exact
+dependency order:
+
+```text
+ 1 util.js              11 ships.js              21 founders.js
+ 2 data.js              12 combat.js             22 pledges.js
+ 3 perks.js             13 rivals.js             23 acts.js
+ 4 starcat.js           14 scourge.js            24 signals.js
+ 5 lore.js              15 tech.js               25 game.js
+ 6 events_data.js       16 story.js              26 audio.js
+ 7 planets.js           17 worldevents.js        27 portraits.js
+ 8 sites.js             18 tutorial.js           28 codex.js
+ 9 galaxy.js            19 quests.js             29 render.js
+10 economy.js           20 civics.js             30 market_analytics.js
+31 ui_market.js         35 ui_pledge.js           39 boot.js
+32 ui_ship.js           36 ui_tech.js             40 main.js
+33 ui_system.js         37 ui_modals.js
+34 ui_routes.js         38 ui.js
 ```
 
-In bash: `"/c/Program Files/nodejs/node.exe" test/smoke.js`. Both must pass. If you touch UI or rendering, rerun both. Add assertions for new behavior — the suites are plain `assert()`/`section()` patterns, no framework.
+`test/smoke.js` loads the headless-safe domain stack in the same relative order:
+scripts 1-25 plus `market_analytics.js`. It deliberately excludes audio, canvas
+helpers, render, UI, boot, and main.
 
-## File map
+When adding a script:
+
+- all runtime scripts go in `index.html` and `test/browser_boot.js`;
+- a headless-safe script also goes in `test/smoke.js`;
+- domain scripts load before `game.js`; presentation surface modules load before
+  their orchestrator (`ui.js` or `main.js`);
+- add a manifest parity assertion when introducing a new category.
+
+## File ownership
+
+### Foundations and content
 
 | File | Owns |
 |---|---|
-| `js/util.js` | seeded RNG (mulberry32), name gen, math, fmt |
-| `js/data.js` | commodities, hulls, buildings, techs, `D.TUNE` tuning constants, `D.SAVE_VERSION` |
-| `js/galaxy.js` | map generation (Gabriel graph lanes, planets, sites) |
-| `js/economy.js` | prices, production, consumption, prosperity, `marketIndex`, `cheapestSource` |
-| `js/ships.js` | ships, routes, directives, **command grammar**: atomic queue (`move/buy/sell/drop/sellData/wait`), `S.intent` compiler (FETCH, GO-SELL-DATA), `S.tick` dispatching to `tickRouteShip`/`tickDirectiveShip`/`tickQueueShip`/`tickAutoExplore`, BFS `S.findPath` |
-| `js/rivals.js` | competitor trade-line sim |
-| `js/scourge.js` | spread, bastions, cure, win/lose |
-| `js/tech.js` / `js/perks.js` | research tree, aptitudes |
-| `js/story.js` / `js/events_data.js` | event engine (pure data content) |
-| `js/game.js` | state, `SW.game.actions.*`, tick pipeline, journal, save/load, `G.validate()` |
-| `js/render.js` | canvas map, LOD bands, perf overlay (F3), cached background layer |
-| `js/ui.js` | panels, modals, command bar, market terminal, event delegation via `data-act` switch |
-| `test/smoke.js` | multi-seed long-run invariants |
-| `test/browser_boot.js` | stub DOM/localStorage/canvas boot test |
-| `test/debug_bot.js` | scripted bot for pacing runs |
+| `js/util.js` | seeded RNG, path/math/format helpers, name generation |
+| `js/data.js` | registries and tuning: commodities, hulls, buildings, technologies, flags, `D.TUNE`, save version |
+| `js/perks.js` | aptitude/perk state and effects; migration input for SPEC Charters |
+| `js/starcat.js` | real-star catalog data |
+| `js/lore.js` | lore/codex data and helpers |
+| `js/events_data.js` | event content definitions |
+| `js/planets.js` | planet generation and planet state |
+| `js/sites.js` | orbital/site definitions, projects, and local facilities |
 
-Tick pipeline (game.js): economy → factories → ships → rivals → scourge → story → research → win/lose → autosave. Whole tick wrapped in try/catch → pauses with a toast instead of crashing.
+### Headless simulation
 
-## Style
+| File | Owns |
+|---|---|
+| `js/galaxy.js` | galaxy/system generation, topology, and lanes |
+| `js/economy.js` | production, consumption, prices, prosperity, market queries |
+| `js/ships.js` | ships, cargo, travel, routes, directives, command queue, pathing |
+| `js/combat.js` | seeded encounter/combat resolution foundation |
+| `js/rivals.js` | rival movement and trade behavior |
+| `js/scourge.js` | Scourge spread/response foundation; migration input for Fray |
+| `js/tech.js` | technology state and research |
+| `js/story.js` | pending event/story engine |
+| `js/worldevents.js` | simulated world events |
+| `js/tutorial.js` | current prologue/tutorial state and predicates |
+| `js/quests.js` | quest state and resolution |
+| `js/civics.js` | factions, ideology, presence, and civic state |
+| `js/founders.js` | current Founder packages; migration input for archetypes |
+| `js/pledges.js` | Pledge construction, constraints, progress, completion/failure |
+| `js/acts.js` | current Act shell and transitions; target shape is in SPEC |
+| `js/signals.js` | signal data/selection helpers used by presentation |
+| `js/game.js` | canonical state, action boundary, journal, tick orchestration, validation, save/load, browser loop |
+| `js/market_analytics.js` | headless market analysis used by UI and tests |
 
-- Prefer existing patterns over new abstractions. Read neighboring code first.
-- Keep the map primary: panels serve the map, never replace it (Pillar 3).
-- Monochrome ink + one accent; red only for harm, green/orange only for deals.
-- Every interactive element must explain itself via the `data-info` infobox.
-- Small functions on the existing namespace objects (`E.foo`, `S.bar`), no classes.
+### Browser presentation
 
-## Adding a feature — the playbook
+| File | Owns |
+|---|---|
+| `js/audio.js` | browser audio, music, and sound preferences |
+| `js/portraits.js` | canvas portrait drawing helpers |
+| `js/codex.js` | canvas codex/ship drawing helpers |
+| `js/render.js` | map canvas, camera, layers, selection marks, LOD, render caches |
+| `js/ui_market.js` | market surface |
+| `js/ui_ship.js` | fleet/ship surface |
+| `js/ui_system.js` | system/object lens and system drawers |
+| `js/ui_routes.js` | route/automation surface |
+| `js/ui_pledge.js` | Pledge surface |
+| `js/ui_tech.js` | research/technology surface |
+| `js/ui_modals.js` | title, setup, event, death, and other modal surfaces |
+| `js/ui.js` | UI orchestration, command strip, input/event delegation, shared information |
+| `js/boot.js` | browser power-on presentation and preference guard |
+| `js/main.js` | browser-only wiring, initialization, loop start, and title handoff |
 
-Features slot into fixed layers. Work top to bottom; most features touch 3-4 of them.
+### Shell and verification
 
-| Layer | Where | Pattern to copy |
-|---|---|---|
-| 1. Data | `data.js` tables: `D.TUNE` (every magic number), `D.COMMODITIES/HULLS/BUILDINGS/FACILITIES/TECHS/PERKS/IDEOLOGIES/RIVAL_DEFS` | nearest existing row |
-| 2. Sim | the owning subsystem file, or a new DOM-free file. Hook into `G.tick` pipeline (game.js ~line 110: economy → ships → combat → rivals → laneFlow decay → scourge → story → tutorial → research → win/lose → autosave) | `js/tutorial.js` is the model new-module shape: IIFE on `SW.*`, init/tick/predicates |
-| 3. Actions | `game.js` `A.*` — every player-initiated mutation, returns `{ok, msg?}`, auto-journaled | `A.buildSite` (thin wrapper) or `A.shipSend` (guards first) |
-| 4. Content | `events_data.js` events `{id, title, weight, when(s), text ≤50 words, choices[{label, req?, fx}]}` | `ev_first_thread` |
-| 5. UI | the owning `ui_*.js` surface module; wire buttons via `data-act` + a case in ui.js's dispatch switch that CALLS the module; hover docs via `data-info` (`ui:topic` entries live in `UI_TOPICS`, ui.js ~line 166) | any `data-act` case |
-| 6. Render | `render.js`; per-tick caches keyed off `st.tick` (see `laneStyleCache`), never per-frame recompute | `drawBodySites` |
-| 7. Tests | smoke.js section (headless, drive via `A.*` exactly as a player would) + browser_boot.js step if UI-facing | `section('Sol prologue (tutorial)')` |
+| File | Owns |
+|---|---|
+| `index.html` | DOM shell and authoritative browser script order |
+| `style.css` | all visual layout and styles |
+| `test/smoke.js` | headless simulation, invariant, determinism, and doc-integrity checks |
+| `test/browser_boot.js` | full-stack stub-browser boot and interaction checks |
+| `test/debug_bot.js` | scripted pacing/diagnostic runs; not a release suite |
+| `wrangler.jsonc` | Cloudflare Worker static-asset service configuration |
 
-**State rules (the contract that makes everything composable):**
-- New state = additive, JSON-serializable, ids not references. Init defensively at every read (`state.foo || (state.foo = {})`) so old saves load; never bump SAVE_VERSION for additive fields.
-- Randomness only via `U.rand(state)` / `U.pick` / `U.weightedPick` (seeded). `Math.random`/`Date.now` in sim code breaks replay and will fail review.
-- Sim files never touch the DOM. UI reads state freely but mutates only through `A.*`.
+## Tick pipeline
 
-**Registries that bite if forgotten (tests enforce all of these):**
-- New story flag → add to `D.FLAGS` (data.js ~line 208) or the flag-registry test fails.
-- New js file → THREE lists: index.html script tags (sim files before game.js; ui_*.js before ui.js), smoke.js FILES, browser_boot.js FILES.
-- Unicode glyphs: paste real glyphs (▦ ✕ ◎ ·). The integrity scan fails on mojibake telltales (Â Ã â– etc.).
-- New interactive element → `data-info` hover entry; new TUNE constant for any number you'd otherwise inline.
+`G.tick(state)` currently executes in this order:
 
-**Useful hooks already in place:** `G.news(state, text, sysId)` (ticker feed), `G.emit('toast'|'sfx'|...)` (headless-safe), `sys.presence` (faction trade influence), `sys.ideology` (D.IDEOLOGIES), `state.laneFlow` (Living Weave, key `minId-maxId`), `SW.market.weaveHealth`, `U.findPath(state, a, b, opts)` (lane BFS).
+```text
+guard state/gameOver
+increment tick
+economy
+ships
+projects
+combat
+rivals
+civics
+lane-flow decay
+scourge
+world events
+pledges
+acts (only while active)
+story
+tutorial
+stranded guard
+perks
+infamy legacy flag
+end-state check
+periodic autosave
+performance measurement
+```
 
-## Workflow for dispatched agents
+`G.tick` itself is not wrapped in a catch. The browser loop in `game.js` catches a
+tick failure, pauses, and emits a visible simulation-error toast. Tests should see
+uncaught domain failures. Preserve order intentionally: a change can alter every
+seeded run and must receive regression coverage and a SPEC rationale.
 
-- Your dispatch prompt + this file carry the context you need. Read ONLY the specific files/regions your task names — resist exploratory sweeps; the playbook table above tells you where things live.
-- Do NOT invoke superpowers skills, write plan files, or create scratch documents.
-- Do NOT run the test suites unless your prompt says to — the orchestrator verifies at the end. Quick `node -e` syntax checks on files you edited are fine.
-- Do NOT commit unless told to.
-- If the spec you were given contradicts what you find in the code, stop and report the contradiction instead of guessing.
-- Final message = file:line summary of changes + anything you're unsure survives a test run. Raw data, not prose.
+## State, actions, and hooks
+
+- Initialize additive old-save-safe state defensively at the owning boundary.
+  Structural lifetime changes require a versioned migration; do not pretend they
+  are harmless additive fields.
+- `G.validate(state)` owns cross-domain invariant diagnostics. It never runs inside
+  the normal tick and never repairs state.
+- `G.emit(type, payload)` is the headless-safe presentation boundary. Browser-only
+  handlers are wired in `main.js`.
+- Useful state includes `sys.presence`, `sys.ideology`, `state.laneFlow`, and entity
+  IDs. Prefer the owning domain query over duplicating derived state.
+- New story flags must be registered in `D.FLAGS`.
+- New tuning values belong in `D.TUNE` unless they are a true local structural
+  constant.
+- Interactive UI actions use `data-act` dispatch and call a domain action. New
+  controls need a keyboard path, visible focus, and an explanation (`data-info` or
+  a clearer persistent label).
+- Render calculations that depend on state use caches keyed by relevant state/tick;
+  do not move simulation into the frame loop.
+
+## Feature workflow
+
+1. Find the requirement and acceptance criteria in `SPEC.md`. Add or refine a
+   stable ID before implementing ambiguous product behavior.
+2. Read the owning data, simulation, action, presentation, and test neighbors.
+3. Add data/registries and tuning first.
+4. Implement domain behavior headlessly with seeded decisions.
+5. Expose player mutation through `SW.game.actions.*`.
+6. Add state-aware content through shared domain functions rather than special-case
+   UI mutation.
+7. Add the smallest map-first presentation and full command feedback.
+8. Add smoke assertions; add browser-boot coverage for presentation; perform a real
+   browser check when interaction or rendering changes.
+9. Run both mandatory suites.
+10. Update the SPEC checkbox only if all exit criteria in `SW-TEST-008` are met and
+    attach evidence below the item.
+
+Prefer existing namespace functions (`E.foo`, `S.bar`) and small explicit
+functions over classes or framework-like abstraction. Reuse patterns where their
+behavior is still correct; the overhaul explicitly authorizes replacing old product
+shape that contradicts the SPEC.
+
+## Worktree and Git safety
+
+- Inspect `git status --short` before and after work.
+- Existing changes belong to the user unless this task created them. Do not discard,
+  rewrite, stage, or commit unrelated work.
+- Stage explicit paths; do not use `git add -A` in a mixed worktree.
+- Do not use destructive reset/checkout commands.
+- Do not commit, push, merge, deploy, or open a PR unless the user authorizes that
+  operation. Authorization to edit does not imply authorization to publish.
+- Keep commits scoped and explain migrations or intentional retirements in the body.
+- Preserve research and retired design through Git history before deleting the live
+  copies.
+
+## Deployment operations
+
+Recorded production is [star.subsurfaces.net](https://star.subsurfaces.net), hosted
+on Cloudflare as a Worker with static assets. The service name is `starweft`; it is
+not a classic Pages project. The Git remote is `sub-surface/starweft`, and `main` is
+configured as the production auto-deploy branch.
+
+The `digital-garden-v2` Worker serving the broader `subsurfaces.net` garden is a
+separate service. Never change, deploy, or reconfigure it while working on
+STARWEFT.
+
+Before an authorized production push:
+
+1. run both mandatory suites;
+2. inspect and stage only intended paths;
+3. commit on the intended branch and review the diff;
+4. use a Cloudflare branch preview when the change benefits from visual review;
+5. push `main` only with explicit publishing authority;
+6. wait for the Git-connected deployment and verify the changed asset plus the live
+   page rather than assuming the push shipped.
+
+Wrangler is recorded at
+`C:\Users\Leon\AppData\Roaming\npm\wrangler.cmd`. Authentication uses a scoped
+Cloudflare token. Confirm account and service before any mutation. Read-only
+diagnostics include `wrangler whoami`, `wrangler deployments list`, and
+`wrangler tail starweft`; exact CLI syntax may change, so consult current official
+Cloudflare documentation before operational use.
+
+Rollback is either promoting a known-good `starweft` deployment in Cloudflare or an
+authorized `git revert` followed by the normal production push. Never "fix" a
+STARWEFT rollback by touching `digital-garden-v2`.
+
+## Current work
+
+The overhaul sequence and current truth live only in `SPEC.md`, section 26. Begin at
+the first unchecked Gate requirement whose prerequisites are complete. Do not add a
+volatile "resume at R5" instruction here.

@@ -123,7 +123,7 @@ SW.data = (function () {
   // Settled outposts (Mars): hungry mouths far from the vats.
   D.BERTH_SETTLED = { FOOD: 1.3, MEDS: 1.25, BIO: 1.2 };
 
-  // ---- Aptitude perks (the captain, not the network; SPEC §character) ----
+  // ---- Aptitude perks (the captain, not the network; SPEC[PROG-APTITUDES]) ----
   // Earned via milestones, one point each. Chains within four disciplines.
   D.PERKS = {
     silver:   { name: 'Silver Tongue',    icon: '✦', cat: 'Brokerage',   req: null,       desc: 'Sell prices +4% everywhere your name is known.' },
@@ -245,7 +245,7 @@ SW.data = (function () {
   };
   D.LEGACY_HINTS = { won: 'Win a run', wonder: 'Survey a galactic wonder', infamy: 'Reach infamy 5' };
 
-  // ---- Founders (REWEAVE §6): who the Guild seats at the Loomship's helm ----
+  // ---- Founders (SPEC[RUN-FOUNDERS]): who the Guild seats at the Loomship's helm ----
   // Orthogonal to Origin (which still sets ships/credits/rep flavor): a Founder
   // is chosen for a *focused* (Act Ladder) run and layers one rule-bend, one
   // liability, and a lore line on top. `fx` reuses the exact bag SW.acts.mods()
@@ -253,7 +253,7 @@ SW.data = (function () {
   // Boon can literally be the same rule — see 'firstlight' below); fields that
   // fx has no shape for (tier bump, board-slot penalty, bust-forfeit) are read
   // directly by SW.founders' small pure helpers. No founder touches a D.TUNE
-  // base number (REWEAVE §12.8) — every effect is a conditional, not a percent
+  // Base number (SPEC[DESIGN-RULEBENDS]) — every effect is conditional, not a percent.
   // stacked on the same old thing. All three ship unlocked (Chronicle gating
   // for the other five is R8).
   D.FOUNDERS = {
@@ -340,7 +340,7 @@ SW.data = (function () {
     vigil:   { deepFieldMap: 1.2 },
   };
 
-  // ---- World setup presets (run parameters; SPEC §3.5) ----
+  // ---- World setup presets (run parameters; SPEC[SETUP-ADVANCED]) ----
   D.WORLD = {
     // Distances doubled again (see D.TUNE SCALE NOTE). Mean lane length is a real
     // commitment; the sky reads as vast and uncrowded even at catalogue scale.
@@ -631,7 +631,7 @@ SW.data = (function () {
     // afford the cheapest hull at home, a salvage advance tops them up so a lost
     // last ship is never a dead end. Throttled so it can't be farmed.
     strandedAidEvery: 80,           // ticks between salvage advances
-    // ---- PLEDGE: the core verb, scored (REWEAVE §5). WEAVE = TONNAGE x THREAD.
+    // ---- PLEDGE foundation (SPEC[RUN-PLEDGE]). WEAVE = TONNAGE x THREAD.
     pledgeBoardEvery: 30,           // ticks between board refreshes
     pledgeBoardMax: 4,              // open offers on a full-trust board
     pledgeMaxActive: 3,             // concurrent pledges held (Founders bend this)
@@ -649,7 +649,7 @@ SW.data = (function () {
     pledgeOfferTtl: 150,            // ticks an untaken offer lingers on the board
   };
 
-  // ---- The Act Ladder (REWEAVE §4). A focused run is 1..maxActs Guild Charter
+  // ---- The Act Ladder (SPEC[RUN-ACTS]). A focused run is 1..maxActs Guild Charter
   // periods, each with a WEAVE quota and a tick clock. Meet quota -> bank or push. ----
   D.ACTS = {
     quotaBase: 1600,        // WEAVE to clear act I
@@ -678,10 +678,10 @@ SW.data = (function () {
   };
   D.COMMISSION_IDS = Object.keys(D.COMMISSIONS);
 
-  // Boons — the boundary draft (REWEAVE §4.2, §8.2). Pushing into the next act
+  // Boons — the boundary draft (SPEC[RUN-BOONS]). Pushing into the next act
   // lets you draft ONE of three. Per-run, kept until the run ends; the seed of
   // the future Charter layer. Every boon bends a *rule*, never a flat number
-  // (REWEAVE §12.8). fx read by SW.acts.mods(); a few carry per-completion state.
+  // (SPEC[DESIGN-RULEBENDS]). fx read by SW.acts.mods(); a few carry per-completion state.
   D.BOONS = {
     ballast:     { name: 'Ghost Manifest', line: 'Empty holds are ballast: far pledges (5+ hops) score +0.5 THREAD.', fx: { farThreadBonus: 0.5 } },
     fifthseal:   { name: 'The Fifth Seal', line: 'Every fifth pledge you keep scores twice.', fx: { fifthSeal: true } },

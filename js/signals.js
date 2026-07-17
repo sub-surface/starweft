@@ -1,4 +1,4 @@
-/* STARWEFT signals.js — the beacon model (REWEAVE §13.4). DOM-free.
+/* STARWEFT signals.js — the beacon model (SPEC[UI-SIGNALS]). DOM-free.
 
    One derivation shared by three consumers: render.js draws beacons at the
    systems they concern (the map tells you, not the topbar), ui.js folds the

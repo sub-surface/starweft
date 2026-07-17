@@ -1,4 +1,4 @@
-/* STARWEFT acts.js — the Act Ladder (REWEAVE §4). DOM-free.
+/* STARWEFT acts.js — the Act Ladder (SPEC[RUN-ACTS]). DOM-free.
 
    A *focused run* is 1..maxActs Guild Charter periods. Each act has a WEAVE
    quota and a tick clock, and a seeded Commission (its character). Meet the
@@ -6,7 +6,7 @@
    standing (a clean win), or PUSH — draft one of three Boons, take a harder
    quota, and widen your reach. Miss the clock and you are Cut. Lose the
    Loomship and you are Burned; lose the Heart and you are Eaten. Every ending
-   gets an epitaph (LOOM §7).
+   gets an epitaph (SPEC[NAR-EPITAPH]).
 
    This whole subsystem is gated behind state.acts.on, so a classic / Long-Weave
    sandbox run (acts off) is completely untouched — the same code, two shapes.
@@ -287,7 +287,7 @@ SW.acts = (function () {
     }
   };
 
-  // epitaph one-liners (LOOM §7), keyed to the cut
+  // Epitaph one-liners (SPEC[NAR-EPITAPH]), keyed to the cut.
   const EPITAPH = {
     cut: 'A thread cut is a thread remembered.',
     burned: 'It burned bright, and briefly, and far from home.',

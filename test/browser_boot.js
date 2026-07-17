@@ -188,7 +188,7 @@ step('select home + ship, render system panel', function () {
   pumpFrames(3);
 });
 
-step('orbital ring: selection summons it, not the panel; contextual verbs; frame sync (REWEAVE §13.5)', function () {
+step('orbital ring: selection summons it, not the panel; contextual verbs; frame sync (SPEC[UI-ORBITAL-RING])', function () {
   const s = G.state;
   const home = s.systems[s.homeId];
   const away = s.systems.find(function (x) { return x.id !== s.homeId && x.discovered; }) ||
@@ -279,7 +279,7 @@ step('PLEDGE surface: board + manifest render, take + abandon dispatch', functio
 });
 
 step('command strip: more-row toggles, objective renders in the strip', function () {
-  // F2 (REWEAVE §13.2): topbar+bottombar merged into #strip; the rarer
+  // SPEC[UI-COMMAND-STRIP]: topbar+bottombar merged into #strip; the rarer
   // buttons live behind the ⋯ glyph. Assert the state machine, not pixels.
   // The stub DOM doesn't parse index.html — seed the markup's initial class.
   document.querySelector('#stripMore').classList.add('hidden');
@@ -293,7 +293,7 @@ step('command strip: more-row toggles, objective renders in the strip', function
   if (!obj || typeof obj.textContent !== 'string' || !obj.textContent.length) throw new Error('objective line missing from the strip');
 });
 
-step('signal beacons: drawn on the map, counted in the strip (REWEAVE §13.4)', function () {
+step('signal beacons: drawn on the map, counted in the strip (SPEC[UI-SIGNALS])', function () {
   const s = G.state;
   // stage a threat and point the camera at it so it projects on-screen
   const sys = s.systems[s.homeId];
@@ -319,7 +319,7 @@ step('signal beacons: drawn on the map, counted in the strip (REWEAVE §13.4)', 
   SW.ui.refresh();
 });
 
-step('Guild board flyout: opens from a beacon tap, terms + take, tap-away and Esc dismiss (REWEAVE §13.7)', function () {
+step('Guild board flyout: opens from a beacon tap, terms + take, tap-away and Esc dismiss (SPEC[UI-GUILD-BOARD])', function () {
   const s = G.state;
   s.credits = 8000;
   s.systems.filter(function (x) { return x.pop > 0 && x.id !== s.homeId && x.scourge !== 2; })
@@ -397,7 +397,7 @@ step('mobile parity (F8): flyout stays clamped on-screen at the viewport edge', 
   SW.ui.closeBoardFlyout();
 });
 
-step('edge compass: off-screen beacons ping the viewport edge, tap centers camera (REWEAVE §13.6)', function () {
+step('edge compass: off-screen beacons ping the viewport edge, tap centers camera (SPEC[UI-EDGE-COMPASS])', function () {
   const s = G.state;
   const home = s.systems[s.homeId];
   // the farthest system from home, guaranteed off-screen: pick the yaw that
@@ -434,7 +434,7 @@ step('edge compass: off-screen beacons ping the viewport edge, tap centers camer
   SW.render.centerOn(s.homeId); // restore for later steps
 });
 
-step('drawers: state machine, pin pref, delegation (REWEAVE §13.3)', function () {
+step('drawers: state machine, pin pref, delegation (SPEC[UI-DRAWERS])', function () {
   const d = SW.ui.drawer;
   const body = document.body;
   // start from a known state (no pin, closed): the desktop rail
@@ -1127,7 +1127,7 @@ step('front-door title shows the menu verbs, new-run setup omits dead selectors'
   SW.uiModals.surpriseWeave();
 });
 
-step('Founder picker (REWEAVE §6): cards render; begin resolves a founder only for a Focused run', function () {
+step('Founder picker (SPEC[RUN-FOUNDERS]): cards render; begin resolves a founder only for a Focused run', function () {
   // The stub DOM's querySelector/querySelectorAll don't parse innerHTML (they
   // key a memoized stub by selector string — see elCache above), so neither
   // per-card click wiring nor chosenFounderFromModal's live .sel lookup can be

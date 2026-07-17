@@ -52,7 +52,7 @@ input[type=checkbox] { accent-color: var(--accent); }
 ::-webkit-scrollbar-thumb { background: var(--line-bright); border-radius: 0; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ---- chrome: the One Command Strip (REWEAVE §13.2) ---- */
+/* ---- chrome: the One Command Strip (SPEC[UI-COMMAND-STRIP]) ---- */
 /* #topbar + #bottombar collapsed into a single slim strip: one div, one
    z-layer. Row 1 = live read-outs + speed + more; row 2 = objective/ticker;
    the "more" row slides down for the rarer buttons. */
@@ -125,7 +125,7 @@ input[type=checkbox] { accent-color: var(--accent); }
 /* In system view the back button occupies the top-left; drop the panel below it. */
 #main.inSystem #sysPanel { top: 46px; max-height: calc(100% - 234px); }
 
-/* ---- orbital ring (REWEAVE §13.5): selection becomes controls, not a panel jump ---- */
+/* ---- orbital ring (SPEC[UI-ORBITAL-RING]): selection becomes controls, not a panel jump ---- */
 /* One wrapper positioned per frame (render.js post-render step) via
    style.transform from R.screenPosOf; each button is laid out around it at a
    fixed angle and self-centers, so only the wrapper moves every frame. */
@@ -139,7 +139,7 @@ input[type=checkbox] { accent-color: var(--accent); }
 }
 #ring button:hover, #ring button:focus-visible { border-color: var(--accent); color: var(--accent); }
 
-/* ---- Guild board flyout (REWEAVE §13.7): offers glow at their system, not a list ---- */
+/* ---- Guild board flyout (SPEC[UI-GUILD-BOARD]): offers glow at their system, not a list ---- */
 #boardFlyout {
   position: absolute; top: 0; left: 0; z-index: 17;
   width: 250px; max-width: 72vw; padding: 10px 10px 6px;
@@ -149,7 +149,7 @@ input[type=checkbox] { accent-color: var(--accent); }
   position: absolute; top: 8px; right: 8px; width: 326px; max-height: calc(100% - 16px);
   display: flex; flex-direction: column; z-index: 20;
 }
-/* dock rail (REWEAVE §13.3): closed by default on desktop — only the tab
+/* dock rail (SPEC[UI-DRAWERS]): closed by default on desktop — only the tab
    strip remains; hovering it peeks the body, the ▣ thumbtack pins it open */
 body.dockRail #dockBody { display: none; }
 body.dockRail #dock:hover #dockBody { display: block; }
