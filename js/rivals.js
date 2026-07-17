@@ -77,13 +77,16 @@ SW.rivals = (function () {
       // Persistent trade lines: rivals run recurring routes the player can
       // learn, undercut (trade the same pair until the margin dies), or raid.
       rival.lines = rival.lines || [];
-      // prune lines whose endpoints fell or whose margin has collapsed
+      // Revalidate on the authored trade cadence, including the full lane so a
+      // newly severed midpoint cannot dispatch an impossible shipment.
       rival.lines = rival.lines.filter(function (L) {
         const a = state.systems[L.a], b = state.systems[L.b];
         if (a.scourge === 2 || b.scourge === 2) return false;
+        if (!U.findPath(state.systems, a.id, b.id, function (s) { return s.scourge !== 2; })) return false;
         const margin = E().sellPrice(state, b, L.c, rival.id) - E().buyPrice(state, a, L.c, rival.id);
         return margin > 1;
       });
+
       // establish new lines from the best margins in their zone
       if (rival.lines.length < rival.lineTarget && (state.tick - (rival.lastLinePick || 0)) > 40) {
         rival.lastLinePick = state.tick;

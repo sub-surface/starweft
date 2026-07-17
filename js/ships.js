@@ -216,6 +216,9 @@ SW.ships = (function () {
     state.credits += t.revenue;
     state.stats.creditsEarned = (state.stats.creditsEarned || 0) + t.revenue;
     const profit = t.revenue - (ship.basis[c] || 0) * t.qty;
+    if (state.tutorial && state.tutorial.active && sys.id === state.homeId && ship.body === 'Earth' && c === 'ORE' && profit > 0) {
+      state.tutorial.profitableOreSale = true;
+    }
     SW.worldevents.onPlayerSell(state, sys.id, c, t.qty);
     // PLEDGE fulfilment seam: every delivery route (manual, route, queue,
     // mission, directive) lands here, so pledge progress is checked in one place.

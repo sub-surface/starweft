@@ -68,7 +68,7 @@ SW.tutorial = (function () {
         setBeat(s, '4) Click EARTH, FLY HERE, then sell the Ore. The spread between berths is the wage.');
       },
       complete: function (s) {
-        return (s.stats.creditsEarned || 0) >= SW.data.TUNE.prologueProfitBeat;
+        return !!s.tutorial.profitableOreSale;
       },
     },
     {
@@ -127,6 +127,9 @@ SW.tutorial = (function () {
     // The prologue needs buyable alloy and ore at sane prices; everything else is stock Sol.
     h.stocks.ALLOY = Math.max(h.stocks.ALLOY || 0, 45);
     h.stocks.ORE = Math.max(h.stocks.ORE || 0, 25);
+    // The Belt lesson must remain completable even after a player waits while
+    // Sol's ore trickle fills the ordinary market buffer.
+    h.capacity.ORE = Math.max(h.capacity.ORE || 0, 200);
     state.credits += SW.data.TUNE.prologueEscrow; // the Guild escrow — the prologue's budget
   };
 

@@ -1,17 +1,16 @@
 /* STARWEFT aperture.js - deterministic Hot/Warm/Cold fidelity ownership.
-   The Gate 1 compatibility engine still simulates every system every tick.
-   Aperture records therefore describe and audit fidelity without changing
-   outcomes; reduced-cadence execution is only enabled after equivalence tests.
-   Headless. SPEC[SW-SIM-001]. */
+   Cold v1 batches only causally inert, unknown, zero-population local economies;
+   every interactive or globally coupled system stays Warm/Hot. Promotion and
+   save flush pending work before the system can be observed. Headless.
+   SPEC[SW-SIM-001], SPEC[SW-SIM-002], SPEC[SW-SIM-007]. */
 var SW = globalThis.SW = globalThis.SW || {};
 
 SW.aperture = (function () {
   'use strict';
   const A = {};
   A.VERSION = 1;
-  // Compatibility snapshots are diagnostic: the legacy simulator remains the
-  // authority, so a slow cadence avoids spending interaction frames cloning
-  // hundreds of systems before the real Cold engine is enabled.
+  A.ENGINE = 'economy-cold-v1';
+  A.COLD_CADENCE = 12;
   A.COLD_REFRESH_EVERY = 120;
   A.MAX_TRANSITIONS = 64;
 
@@ -160,6 +159,13 @@ SW.aperture = (function () {
         add(index, state, shipment.to, 'rivals', { rival: rival.id, shipment: shipment }, 'rival:shipment');
       }
     }
+    for (const sys of state.systems) {
+      for (const rival of (state.rivals || [])) {
+        if (!((sys.presence && sys.presence[rival.id]) > 0.3)) continue;
+        add(index, state, sys.id, 'rivals', { rival: rival.id, presence: sys.presence[rival.id] }, 'rival:presence');
+        for (const neighbor of (sys.links || [])) add(index, state, neighbor, null, null, 'rival:expansion-neighbor');
+      }
+    }
 
     const ops = state.ops || {};
     if (ops.blitz) add(index, state, ops.blitz.sys, 'operations', ops.blitz, 'operation:blitz');
@@ -167,6 +173,11 @@ SW.aperture = (function () {
 
     // Threat and Scourge changes affect both the frontier system and its
     // immediate escape/supply neighbours.
+    if (state.scourge && state.scourge.phase === 'dormant' && Number.isInteger(state.scourge.originId)) {
+      add(index, state, state.scourge.originId, null, null, 'threat:origin-scheduled');
+      const origin = state.systems[state.scourge.originId];
+      for (const neighbor of ((origin && origin.links) || [])) add(index, state, neighbor, null, null, 'threat:frontier-neighbor');
+    }
     for (const sys of state.systems) {
       if (sys.scourge > 0 || (sys.threatAt && sys.threatAt >= state.tick)) {
         add(index, state, sys.id, null, null, sys.scourge > 0 ? 'threat:scourge' : 'threat:scheduled');
@@ -228,6 +239,14 @@ SW.aperture = (function () {
     return { discovered: !!sys.discovered, surveyed: !!sys.surveyed };
   }
 
+  function coldEconomySafe(state, sys, row) {
+    return !sys.discovered && !sys.surveyed && !(sys.pop > 0) && sys.scourge === 0 &&
+      !sys.threatAt && !sys.prodBoostUntil && (!sys.slots || sys.slots.length === 0) &&
+      (!sys.sites || sys.sites.length === 0) && (!sys.buildings || sys.buildings.length === 0) &&
+      (!sys.presence || Object.keys(sys.presence).length === 0) && SW.data.specClass(sys.spec) !== 'M' &&
+      row.reasons.length === 0;
+  }
+
   function desired(state, focus, index) {
     const rows = {};
     const focusSys = state.systems[focus];
@@ -235,10 +254,13 @@ SW.aperture = (function () {
       const reasons = index[sys.id].reasons.slice();
       if (focusSys && focusSys.links.indexOf(sys.id) >= 0 && reasons.indexOf('focus:neighbor') < 0) reasons.push('focus:neighbor');
       if (sys.id === focus) reasons.push('focus:active');
+      const safe = coldEconomySafe(state, sys, index[sys.id]);
+      if (!safe && reasons.length === 0) reasons.push('economy:interactive');
       reasons.sort();
       rows[sys.id] = {
         band: sys.id === focus ? 'hot' : (reasons.length ? 'warm' : 'cold'),
-        reasons: reasons
+        reasons: reasons,
+        coldSafe: safe
       };
     }
     return rows;
@@ -271,7 +293,7 @@ SW.aperture = (function () {
     focus = validId(state, focus) ? focus : state.homeId;
     const ap = {
       version: A.VERSION,
-      engine: 'compat-full',
+      engine: A.ENGINE,
       focus: focus,
       records: {},
       lastClassifiedTick: state.tick,
@@ -308,20 +330,27 @@ SW.aperture = (function () {
       const old = ap.records[id] || null;
       const plan = target[id];
       const changed = !!old && old.band !== plan.band;
+      if (changed && old.band === 'cold' && (old.pendingEconomy || 0) > 0) A.flushCold(state, id);
       const before = changed ? A.aggregateSystem(state, id, index) : null;
       const beforeKnowledge = changed ? knowledge(sys) : null;
       let aggregate = old ? old.aggregate : null;
       if (plan.band === 'cold' && (!aggregate || refreshCold || changed)) aggregate = A.aggregateSystem(state, id, index);
       if (plan.band !== 'cold') aggregate = null;
+      const economyAsOf = plan.band === 'cold'
+        ? (ap.engine === 'compat-full' ? state.tick : (old && Number.isInteger(old.economyAsOf) ? old.economyAsOf : state.tick))
+        : state.tick;
       next[id] = {
         version: 1,
         sys: id,
         band: plan.band,
         reasons: plan.reasons,
         since: old && old.band === plan.band ? old.since : state.tick,
-        asOf: state.tick,
+        asOf: economyAsOf,
         knowledge: knowledge(sys),
-        aggregate: aggregate
+        aggregate: aggregate,
+        coldSafe: plan.band === 'cold' && plan.coldSafe,
+        economyAsOf: economyAsOf,
+        pendingEconomy: plan.band === 'cold' && ap.engine !== 'compat-full' ? ((old && old.pendingEconomy) || 0) : 0
       };
       if (changed) {
         const after = A.aggregateSystem(state, id, index);
@@ -341,6 +370,7 @@ SW.aperture = (function () {
     A.sync(state, { forceAggregates: true });
     const from = ap.focus;
     const priorBand = A.bandOf(state, id);
+    if (priorBand === 'cold') A.flushCold(state, id);
     const before = A.aggregateSystem(state, id);
     const beforeKnowledge = knowledge(state.systems[id]);
     ap.focus = id;
@@ -365,6 +395,10 @@ SW.aperture = (function () {
     A.sync(state, { forceAggregates: true });
     const record = ap.records[id];
     const from = record.band;
+    if (from === 'cold') {
+      const materialized = A.flushCold(state, id);
+      if (!materialized.ok) return materialized;
+    }
     const before = A.aggregateSystem(state, id);
     const know = knowledge(state.systems[id]);
     record.band = 'cold';
@@ -388,6 +422,10 @@ SW.aperture = (function () {
     A.sync(state, { forceAggregates: true });
     const record = ap.records[id];
     const from = record.band;
+    if (from === 'cold') {
+      const materialized = A.flushCold(state, id);
+      if (!materialized.ok) return materialized;
+    }
     const before = A.aggregateSystem(state, id);
     const know = knowledge(state.systems[id]);
     record.band = band;
@@ -400,7 +438,10 @@ SW.aperture = (function () {
   };
 
   A.beforeTick = function (state) { return A.sync(state); };
-  A.afterTick = function (state) { return A.sync(state); };
+  // The next beforeTick is the causal barrier for simulation. Avoid rebuilding
+  // the global reference index twice in the same tick; direct player focus
+  // actions still synchronize immediately.
+  A.afterTick = function () { return { ok: true, deferred: true }; };
   A.tick = A.afterTick; // compatibility for older callers
 
   A.snapshot = function (state) {
@@ -410,15 +451,71 @@ SW.aperture = (function () {
     return { version: 1, tick: state.tick, systems: systems };
   };
 
+  A.deferEconomy = function (state, id) {
+    const ap = state && state.act && state.act.aperture;
+    const record = ap && ap.records && ap.records[id];
+    if (!record || ap.engine !== A.ENGINE || record.band !== 'cold' || !record.coldSafe) return false;
+    record.pendingEconomy = (record.pendingEconomy || 0) + 1;
+    if (record.pendingEconomy >= A.COLD_CADENCE) A.flushCold(state, id);
+    return true;
+  };
+
+  A.flushCold = function (state, id) {
+    const ap = state && state.act && state.act.aperture;
+    const record = ap && ap.records && ap.records[id];
+    if (!record || record.band !== 'cold') return { ok: true, ticks: 0 };
+    const ticks = record.pendingEconomy || 0;
+    if (ticks > 0) {
+      if (!record.coldSafe || !SW.economy || typeof SW.economy.advanceColdSystem !== 'function') {
+        return { ok: false, msg: 'Cold economy cannot be materialized safely.' };
+      }
+      SW.economy.advanceColdSystem(state, state.systems[id], ticks);
+      record.economyAsOf = (Number.isInteger(record.economyAsOf) ? record.economyAsOf : state.tick - ticks) + ticks;
+      record.pendingEconomy = 0;
+    }
+    if (!record.aggregate) record.aggregate = A.aggregateSystem(state, id, A.index(state));
+    else {
+      record.aggregate.asOf = record.economyAsOf;
+      record.aggregate.system = physicalSystem(state.systems[id]);
+    }
+    record.asOf = record.economyAsOf;
+    return { ok: true, ticks: ticks };
+  };
+
+  A.flushAll = function (state) {
+    const ap = state && state.act && state.act.aperture;
+    if (!ap || !ap.records) return { ok: true, systems: 0, ticks: 0 };
+    let systems = 0, ticks = 0;
+    for (const id of Object.keys(ap.records)) {
+      const record = ap.records[id];
+      if (record.band !== 'cold' || !(record.pendingEconomy > 0)) continue;
+      const result = A.flushCold(state, Number(id));
+      if (!result.ok) return result;
+      systems++; ticks += result.ticks;
+    }
+    return { ok: true, systems: systems, ticks: ticks };
+  };
+
+  A.checkpoint = function (state) {
+    const classified = A.sync(state, { forceAggregates: true });
+    if (!classified.ok) return classified;
+    const materialized = A.flushAll(state);
+    if (!materialized.ok) return materialized;
+    materialized.transitions = classified.transitions;
+    return materialized;
+  };
+
   // Pure validator: it never initializes, normalizes, or writes state.
-  A.validate = function (state) {
+  A.validate = function (state, opts) {
+    opts = opts || {};
     const errors = [];
     const ap = state && state.act && state.act.aperture;
     if (!ap) return ['aperture missing'];
     if (ap.version !== A.VERSION) errors.push('aperture version invalid');
-    if (ap.engine !== 'compat-full') errors.push('unproven aperture engine enabled');
+    if (ap.engine !== A.ENGINE && ap.engine !== 'compat-full') errors.push('unknown aperture engine enabled');
     if (!validId(state, ap.focus)) errors.push('aperture focus invalid');
     if (!ap.records || typeof ap.records !== 'object') return errors.concat(['aperture records missing']);
+    const expected = opts.canonical ? desired(state, ap.focus, A.index(state)) : null;
     const ids = Object.keys(ap.records);
     if (ids.length !== state.systems.length) errors.push('aperture must own one record per system');
     let hot = 0;
@@ -430,7 +527,14 @@ SW.aperture = (function () {
       if (sys.id === ap.focus && record.band !== 'hot') errors.push('aperture focus is not hot');
       if (!Array.isArray(record.reasons)) errors.push('aperture reasons missing: ' + sys.id);
       if (!record.knowledge || typeof record.knowledge.discovered !== 'boolean' || typeof record.knowledge.surveyed !== 'boolean') errors.push('aperture knowledge missing: ' + sys.id);
+      else if (expected && stable(record.knowledge) !== stable(knowledge(sys))) errors.push('aperture knowledge is stale: ' + sys.id);
+      if (expected && record.band === 'cold' && expected[sys.id].band !== 'cold') errors.push('causally active system classified Cold: ' + sys.id);
+      if (expected && !!record.coldSafe !== (record.band === 'cold' && expected[sys.id].coldSafe)) errors.push('cold eligibility is stale: ' + sys.id);
       if (record.band === 'cold' && !record.aggregate) errors.push('cold aggregate missing: ' + sys.id);
+      if (record.band === 'cold' && (!record.coldSafe || !Number.isInteger(record.economyAsOf) ||
+          !Number.isInteger(record.pendingEconomy) || record.pendingEconomy < 0 || record.pendingEconomy >= A.COLD_CADENCE)) {
+        errors.push('cold cadence state invalid: ' + sys.id);
+      }
     }
     if (hot !== 1) errors.push('aperture must have exactly one hot system');
     for (const entry of (ap.conservation || [])) if (!entry.conserved) errors.push('aperture transition failed conservation at system ' + entry.sys);

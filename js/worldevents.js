@@ -87,17 +87,22 @@ SW.worldevents = (function () {
   }
 
   function spawnWorldEvent(state) {
+    // Preserve the authored distribution and single-attempt cadence. A world
+    // that cannot currently host the rolled event simply has a quiet interval.
     const roll = U.rnd(state);
-    if (roll < 0.28) spawnShortage(state);
-    else if (roll < 0.46) spawnBlockade(state);
-    else if (roll < 0.62) spawnFlare(state);
-    else if (roll < 0.78) spawnComet(state);
-    else spawnSurveyContract(state);
+    let spawned;
+    if (roll < 0.28) spawned = spawnShortage(state);
+    else if (roll < 0.46) spawned = spawnBlockade(state);
+    else if (roll < 0.62) spawned = spawnFlare(state);
+    else if (roll < 0.78) spawned = spawnComet(state);
+    else spawned = spawnSurveyContract(state);
+    if (spawned) state.stats.worldEvents = (state.stats.worldEvents || 0) + 1;
+    return !!spawned;
   }
 
   function spawnShortage(state) {
     const pops = state.systems.filter(function (s) { return s.pop > 5 && s.discovered && s.scourge === 0 && s.id !== state.homeId; });
-    if (!pops.length) return;
+    if (!pops.length) return false;
     const sys = U.pick(state, pops);
     const medical = U.chance(state, 0.4);
     const c = medical ? 'MEDS' : 'FOOD';
@@ -112,6 +117,7 @@ SW.worldevents = (function () {
     state.contracts.push(ct);
     SW.game.emit('toast', { kind: 'bad', text: '△ ' + ct.label + ' within ' + (ct.deadline - state.tick) + ' ticks.' });
     SW.game.emit('sfx', 'dread');
+    return true;
   }
 
   function spawnBlockade(state) {
@@ -126,7 +132,7 @@ SW.worldevents = (function () {
         if (!W.laneBlocked(state, sys.id, nb)) cands.push([sys.id, nb]);
       }
     }
-    if (!cands.length) return;
+    if (!cands.length) return false;
     const lane = U.pick(state, cands);
     const bl = { a: lane[0], b: lane[1], until: state.tick + U.ri(state, 220, 380), toll: U.ri(state, 400, 900) };
     state.blockades.push(bl);
@@ -134,6 +140,7 @@ SW.worldevents = (function () {
       SW.game.emit('toast', { kind: 'bad', text: '⊘ Severed blockade: the ' + state.systems[bl.a].name + ' ↔ ' + state.systems[bl.b].name + ' lane is closed. Pay, fight, or reroute.' });
       SW.game.emit('sfx', 'dread');
     }
+    return true;
   }
 
   // pay the toll OR break it with an armed ship at either endpoint
@@ -174,7 +181,7 @@ SW.worldevents = (function () {
     const cands = state.systems.filter(function (s) {
       return D.specClass(s.spec) === 'M' && (s.region === 'flarezone' || U.rnd(state) < 0.1) && s.scourge !== 2;
     });
-    if (!cands.length) return;
+    if (!cands.length) return false;
     const sys = U.pick(state, cands);
     // markets scorched
     sys.stocks.BIO = Math.floor((sys.stocks.BIO || 0) * 0.4);
@@ -189,19 +196,21 @@ SW.worldevents = (function () {
     if (sys.discovered) {
       SW.game.emit('toast', { kind: 'bad', text: '✶ Superflare at ' + sys.name + (hurt ? ' — ' + hurt + ' of your ships riding it out with fried sensors.' : '. Local biostock scorched.') });
     }
+    return true;
   }
 
   function spawnComet(state) {
     const cands = state.systems.filter(function (s) { return (s.prod.ORE || s.prod.GAS || s.prod.CRYSTAL) && s.discovered && s.scourge === 0; });
-    if (!cands.length) return;
+    if (!cands.length) return false;
     const sys = U.pick(state, cands);
     sys.prodBoostUntil = state.tick + 240;
     SW.game.emit('toast', { kind: 'good', text: '⋆ Comet breakup at ' + sys.name + ' — production ×2.5 for 240 ticks. Harvest window open.' });
+    return true;
   }
 
   function spawnSurveyContract(state) {
     const cands = state.systems.filter(function (s) { return s.discovered && !s.surveyed && s.scourge === 0; });
-    if (!cands.length) return;
+    if (!cands.length) return false;
     const sys = U.pick(state, cands);
     const ct = {
       id: 'ct' + (state.nextId++), kind: 'survey', sysId: sys.id, c: null, qty: 0, progress: 0,
@@ -211,6 +220,7 @@ SW.worldevents = (function () {
     };
     state.contracts.push(ct);
     SW.game.emit('toast', { kind: 'info', text: '◈ ' + ct.label + ' — ' + U.fmt(ct.reward.credits) + '¤ + ' + ct.reward.research + '◇ on completion.' });
+    return true;
   }
 
   return W;

@@ -85,6 +85,8 @@ const documentStub = {
   createElement: function (tag) { return stubEl(tag); },
 };
 const storageMap = {};
+let storageFailureKey = null;
+let storageRemoveFailureKey = null;
 const windowStub = {
   addEventListener: function () {},
   devicePixelRatio: 1,
@@ -95,8 +97,14 @@ globalThis.window = windowStub;
 globalThis.document = documentStub;
 globalThis.localStorage = {
   getItem: function (k) { return storageMap[k] !== undefined ? storageMap[k] : null; },
-  setItem: function (k, v) { storageMap[k] = String(v); },
-  removeItem: function (k) { delete storageMap[k]; },
+  setItem: function (k, v) {
+    if (k === storageFailureKey) throw new Error('injected storage failure for ' + k);
+    storageMap[k] = String(v);
+  },
+  removeItem: function (k) {
+    if (k === storageRemoveFailureKey) throw new Error('injected storage cleanup failure for ' + k);
+    delete storageMap[k];
+  },
 };
 globalThis.requestAnimationFrame = function (fn) { rafQueue.push(fn); return rafQueue.length; };
 globalThis.setInterval = function (fn, ms) { intervals.push(fn); return intervals.length; };
@@ -1303,6 +1311,175 @@ step('corrupt account metadata recovers its previous verified generation', funct
   if (recovered.id !== expected.id || recovered.activeCampaignId !== expected.activeCampaignId) throw new Error('account did not recover the previous generation');
   const saved = G.saveAccount();
   if (!saved.ok) throw new Error(saved.msg || 'recovered account could not be rewritten');
+});
+
+step('interrupted multi-record save remains recoverable and preserves the last checkpoint', function () {
+  const transactional = G.newGame({ seed: 'boot-save-transaction', difficulty: 'relaxed' });
+  const first = G.save('manual');
+  if (!first.ok) throw new Error(first.msg || 'initial transaction save failed');
+  const stableTick = transactional.tick;
+  G.tick(transactional);
+  const stagedTick = transactional.tick;
+  storageFailureKey = 'starweft_v3_campaign_index';
+  const interrupted = G.save('manual');
+  if (interrupted.ok || !interrupted.pending || !storageMap.starweft_v3_save_transaction) {
+    throw new Error('interrupted save did not leave a recoverable transaction');
+  }
+  const stable = G.load('manual');
+  if (!stable.ok || !stable.pendingTransaction || G.state.tick !== stableTick) {
+    throw new Error('pending transaction did not preserve the previous checkpoint');
+  }
+  storageFailureKey = null;
+  const recovered = G.load('manual');
+  if (!recovered.ok || !recovered.recoveredTransaction || G.state.tick !== stagedTick) {
+    throw new Error('staged transaction was not completed after storage recovered');
+  }
+  if (storageMap.starweft_v3_save_transaction) throw new Error('completed transaction manifest was not cleared');
+});
+
+step('campaign and account commit interruptions both retain the last verified checkpoint', function () {
+  ['campaign', 'account'].forEach(function (stage) {
+    const transactional = G.newGame({ seed: 'boot-save-stage-' + stage, difficulty: 'relaxed' });
+    const first = G.save('manual');
+    if (!first.ok) throw new Error('initial ' + stage + ' checkpoint failed');
+    const stableTick = transactional.tick;
+    const key = G.campaignSaveKey(transactional.campaign.id, 'manual');
+    G.tick(transactional);
+    const stagedTick = transactional.tick;
+    storageFailureKey = stage === 'campaign' ? key : 'starweft_v3_account';
+    const interrupted = G.save('manual');
+    if (interrupted.ok || !interrupted.pending || !storageMap.starweft_v3_save_transaction) {
+      storageFailureKey = null;
+      throw new Error(stage + ' interruption did not retain a transaction');
+    }
+    const stable = G.load('manual');
+    if (!stable.ok || !stable.pendingTransaction || G.state.tick !== stableTick) {
+      storageFailureKey = null;
+      throw new Error(stage + ' interruption exposed a partial checkpoint');
+    }
+    storageFailureKey = null;
+    const recovered = G.load('manual');
+    if (!recovered.ok || !recovered.recoveredTransaction || G.state.tick !== stagedTick) {
+      throw new Error(stage + ' transaction did not recover');
+    }
+  });
+});
+
+step('manifest interruption cannot mutate a primary checkpoint', function () {
+  const transactional = G.newGame({ seed: 'boot-save-manifest', difficulty: 'relaxed' });
+  if (!G.save('manual').ok) throw new Error('initial manifest checkpoint failed');
+  const key = G.campaignSaveKey(transactional.campaign.id, 'manual');
+  const stableRaw = storageMap[key];
+  G.tick(transactional);
+  storageFailureKey = 'starweft_v3_save_transaction';
+  const interrupted = G.save('manual');
+  storageFailureKey = null;
+  if (interrupted.ok || storageMap[key] !== stableRaw || storageMap.starweft_v3_save_transaction) {
+    throw new Error('manifest failure changed the routed checkpoint');
+  }
+});
+
+step('cleanup interruption leaves a replayable manifest and later clears it safely', function () {
+  const transactional = G.newGame({ seed: 'boot-save-cleanup', difficulty: 'relaxed' });
+  storageRemoveFailureKey = 'starweft_v3_save_transaction';
+  const saved = G.save('manual');
+  storageRemoveFailureKey = null;
+  if (!saved.ok || !storageMap.starweft_v3_save_transaction) throw new Error('cleanup failure lost its recovery manifest');
+  const expectedTick = transactional.tick;
+  const recovered = G.load('manual');
+  if (!recovered.ok || !recovered.recoveredTransaction || G.state.tick !== expectedTick || storageMap.starweft_v3_save_transaction) {
+    throw new Error('cleanup-stage transaction was not idempotently recovered');
+  }
+});
+
+step('a corrupted transaction cannot redirect staged bytes into another campaign key', function () {
+  const protectedRun = G.newGame({ seed: 'boot-save-protected', difficulty: 'relaxed' });
+  if (!G.save('manual').ok) throw new Error('protected checkpoint failed');
+  const protectedKey = G.campaignSaveKey(protectedRun.campaign.id, 'manual');
+  const protectedRaw = storageMap[protectedKey];
+  const sourceRun = G.newGame({ seed: 'boot-save-corrupt-routing', difficulty: 'relaxed' });
+  if (!G.save('manual').ok) throw new Error('source checkpoint failed');
+  const stableTick = sourceRun.tick;
+  G.tick(sourceRun);
+  storageFailureKey = 'starweft_v3_campaign_index';
+  const interrupted = G.save('manual');
+  storageFailureKey = null;
+  if (interrupted.ok || !storageMap.starweft_v3_save_transaction) throw new Error('routing fixture did not interrupt');
+  const tx = JSON.parse(storageMap.starweft_v3_save_transaction);
+  tx.campaignKey = protectedKey;
+  tx.campaignTmp = protectedKey + ':tmp';
+  storageMap.starweft_v3_save_transaction = JSON.stringify(tx);
+  const loaded = G.load('manual');
+  if (!loaded.ok || !loaded.pendingTransaction || G.state.tick !== stableTick) throw new Error('corrupt routing did not fall back safely');
+  if (storageMap[protectedKey] !== protectedRaw) throw new Error('corrupt manifest overwrote a different campaign');
+  delete storageMap.starweft_v3_save_transaction;
+  delete storageMap[protectedKey + ':tmp'];
+});
+
+step('an unparsable transaction manifest cannot expose a partially committed primary', function () {
+  const transactional = G.newGame({ seed: 'boot-save-corrupt-json', difficulty: 'relaxed' });
+  if (!G.save('manual').ok) throw new Error('corrupt-JSON stable checkpoint failed');
+  const stableTick = transactional.tick;
+  G.tick(transactional);
+  storageFailureKey = 'starweft_v3_campaign_index';
+  const interrupted = G.save('manual');
+  storageFailureKey = null;
+  if (interrupted.ok || !storageMap.starweft_v3_save_transaction) throw new Error('corrupt-JSON fixture did not interrupt');
+  storageMap.starweft_v3_save_transaction = '{not-json';
+  const loaded = G.load('manual');
+  if (!loaded.ok || !loaded.pendingTransaction || G.state.tick !== stableTick) {
+    throw new Error('unparsable manifest exposed a partial primary checkpoint');
+  }
+  delete storageMap.starweft_v3_save_transaction;
+});
+
+step('a corrupt first-slot transaction with no previous generation fails closed', function () {
+  const transactional = G.newGame({ seed: 'boot-save-first-slot-corrupt', difficulty: 'relaxed' });
+  if (!G.save('auto').ok) throw new Error('first-slot account routing save failed');
+  const manualKey = G.campaignSaveKey(transactional.campaign.id, 'manual');
+  if (storageMap[manualKey] || storageMap[manualKey + ':previous']) throw new Error('manual slot fixture is not fresh');
+  G.tick(transactional);
+  storageFailureKey = 'starweft_v3_campaign_index';
+  const interrupted = G.save('manual');
+  storageFailureKey = null;
+  if (interrupted.ok || !storageMap[manualKey] || storageMap[manualKey + ':previous']) throw new Error('first-slot fixture did not partially commit as expected');
+  storageMap.starweft_v3_save_transaction = '{not-json';
+  const loaded = G.load('manual');
+  if (loaded.ok || !loaded.pending) throw new Error('first-slot corrupt transaction did not fail closed');
+  delete storageMap.starweft_v3_save_transaction;
+});
+
+step('a non-cadence browser save replays after Cold materialization', function () {
+  const replayable = G.newGame({ seed: 'boot-save-cold-replay', difficulty: 'relaxed' });
+  for (let i = 0; i < 37; i++) G.tick(replayable);
+  const pendingBefore = Object.keys(replayable.act.aperture.records).some(function (id) {
+    return replayable.act.aperture.records[id].band === 'cold' && replayable.act.aperture.records[id].pendingEconomy > 0;
+  });
+  if (!pendingBefore) throw new Error('non-cadence fixture has no deferred Cold work');
+  const saved = G.save('manual');
+  if (!saved.ok) throw new Error(saved.msg || 'non-cadence save failed');
+  const raw = storageMap[saved.key];
+  const loaded = G.load('manual');
+  if (!loaded.ok) throw new Error(loaded.msg || 'non-cadence save did not load');
+  const replayed = G.replay(raw);
+  if (!replayed.ok || G.replayDigest(replayed.state) !== G.replayDigest(JSON.parse(raw))) {
+    throw new Error(replayed.msg || 'materialized browser save did not replay exactly');
+  }
+});
+
+step('failed checkpoint rotation aborts before primary save mutation', function () {
+  const rotational = G.newGame({ seed: 'boot-save-rotation', difficulty: 'relaxed' });
+  const first = G.save('manual');
+  if (!first.ok) throw new Error(first.msg || 'initial rotation save failed');
+  const key = G.campaignSaveKey(rotational.campaign.id, 'manual');
+  const stableRaw = storageMap[key];
+  G.tick(rotational);
+  storageFailureKey = key + ':previous';
+  const blocked = G.save('manual');
+  storageFailureKey = null;
+  if (blocked.ok || storageMap[key] !== stableRaw || storageMap.starweft_v3_save_transaction) {
+    throw new Error('rotation failure mutated the primary checkpoint');
+  }
 });
 
 step('coexisting v2 play has an explicit adapter route without touching source bytes', function () {

@@ -18,7 +18,9 @@ SW.galaxy = (function () {
     for (const s of SW.starcat.build()) {
       if (s.dist <= W.bubbleR) stars.push(s);
     }
-    fillProcedural(state, stars, W);
+    SW.campaign.withSeedLayer(state, 'galaxy', function () {
+      fillProcedural(state, stars, W);
+    });
 
     state.systems = stars.map(function (s, i) {
       return {
@@ -38,10 +40,12 @@ SW.galaxy = (function () {
     if (state.campaign) state.campaign.solId = 0;
 
     // ---- 2. regions (biomes) ----
-    makeRegions(state, W);
+    SW.campaign.withSeedLayer(state, 'bubble', function () {
+      makeRegions(state, W);
 
-    // ---- 3. wonders: one quiet black hole, one Dyson husk ----
-    placeWonders(state, W);
+      // ---- 3. wonders: one quiet black hole, one Dyson husk ----
+      placeWonders(state, W);
+    });
 
     // ---- 4. lanes: 3D Gabriel graph, patched connected ----
     const edges = gabriel3D(state.systems);
@@ -65,12 +69,14 @@ SW.galaxy = (function () {
     if (!origin.region) origin.region = 'verge';
 
     // ---- 6. types from planets, ideologies, economies ----
-    assignTypes(state);
-    assignIdeologies(state);
-    initEconomies(state, W);
+    SW.campaign.withSeedLayer(state, 'system', function () {
+      assignTypes(state);
+      assignIdeologies(state);
+      initEconomies(state, W);
 
-    // ---- 7. the badlands: a dark shell beyond the bubble (Deep Drives) ----
-    makeBadlands(state, W);
+      // ---- 7. the badlands: a dark shell beyond the bubble (Deep Drives) ----
+      makeBadlands(state, W);
+    });
 
     // ---- 8. reveal & survey home neighborhood ----
     // Galaxy Age sets how many lanes deep the start is charted: a Young galaxy

@@ -1074,7 +1074,7 @@ section('World events');
     st.nextWorldAt = st.tick + 1;
     G.tick(st); chooseAny(st);
   }
-  assert(st.contracts.length + st.blockades.length >= 1, 'world events spawned (contracts=' + st.contracts.length + ', blockades=' + st.blockades.length + ')');
+  assert((st.stats.worldEvents || 0) >= 1, 'world events spawned (' + (st.stats.worldEvents || 0) + ' resolved scheduler events)');
   // manufactured famine: deliver and complete
   const pop = st.systems.find(function (s) { return s.pop > 5 && s.id !== st.homeId; });
   pop.discovered = true;
@@ -1145,7 +1145,7 @@ section('Long run (standard, 3000 ticks, bot)');
     assert(rv.credits >= 0, 'rival ' + rv.name + ' credits never negative (' + rv.credits + ')');
     for (const L of (rv.lines || [])) {
       const lp = U.findPath(st.systems, L.a, L.b, function (s) { return s.scourge !== 2; });
-      assert(!!lp, 'rival line ' + st.systems[L.a].name + '->' + st.systems[L.b].name + ' is lane-connected');
+      assert(!!lp, 'rival line ' + st.systems[L.a].name + '->' + st.systems[L.b].name + ' has a live lane path');
     }
   }
 }
@@ -1190,7 +1190,11 @@ section('Living Weave: laneFlow after long bot run');
   const flowBefore = lf[pickKey];
   // Remove all routes so ships stop moving
   st.routes = [];
-  for (const ship of st.ships) { ship.routeId = null; ship.mission = null; ship.queue = []; }
+  for (const ship of st.ships) {
+    ship.routeId = null; ship.mission = null; ship.queue = [];
+    ship.mode = 'idle'; ship.at = st.homeId; ship.leg = null; ship.path = []; ship.body = null;
+  }
+  for (const rival of st.rivals) { rival.lines = []; rival.ships = []; }
   // Tick 60 more times (decay should clearly reduce the value)
   for (let i = 0; i < 60; i++) G.tick(st);
   const flowAfter = lf[pickKey] !== undefined ? lf[pickKey] : 0;
@@ -1417,6 +1421,18 @@ section('Planet detailing');
 
 section('Sol prologue (tutorial)');
 {
+  const berthGuard = G.newGame({ seed: 'smoke-tutorial-berth', difficulty: 'standard', tutorial: true });
+  const berthShip = berthGuard.ships[0];
+  berthGuard.credits = 100000;
+  berthShip.body = 'Mars';
+  berthShip.cargo.ORE = 2;
+  berthShip.basis.ORE = 0;
+  assert(A.shipSell(berthGuard, berthShip.id, 'ORE', 1).ok && !berthGuard.tutorial.profitableOreSale,
+    'a profitable sale at another Sol berth cannot skip the instructed Earth leg');
+  berthShip.body = 'Earth';
+  assert(A.shipSell(berthGuard, berthShip.id, 'ORE', 1).ok && berthGuard.tutorial.profitableOreSale,
+    'the tutorial sale signal is earned specifically at Earth Anchorage');
+
   // Full prologue, driven exactly as a player would via actions:
   // hop to the Belt, buy cheap ore, haul home, sell, anchor, jump.
   const st = G.newGame({ seed: 'smoke-tutorial', difficulty: 'standard', tutorial: true });
@@ -2318,6 +2334,20 @@ section('Gate 1 — lifetime schemas, migration, continuation, and account isola
   assert(round.ok && !round.migrated && G.replayDigest(round.state) === G.replayDigest(st),
     '100-tick canonical save round-trips exactly');
 
+  const preLayerV3 = JSON.parse(packed.raw);
+  const preLayerSystems = JSON.stringify(preLayerV3.campaign.systems);
+  const preLayerRng = preLayerV3.thread.rngState;
+  delete preLayerV3.campaign.seeds.runtime;
+  delete preLayerV3.campaign.generationStreams;
+  delete preLayerV3.thread.launch.runtimeSeed;
+  const adaptedV3 = SW.campaign.migrate(preLayerV3);
+  assert(adaptedV3.ok && adaptedV3.adapted && adaptedV3.state.thread.replay.complete === false,
+    'pre-layer v3 checkpoint loads through an explicit replay-incomplete adapter');
+  assert(JSON.stringify(adaptedV3.state.systems) === preLayerSystems && adaptedV3.state.rngState === preLayerRng,
+    'pre-layer v3 adaptation preserves saved physical state and runtime RNG');
+  assert(!G.replay(adaptedV3.state).ok && /generation streams|replay is unavailable/.test(adaptedV3.state.thread.replay.reason),
+    'pre-layer v3 checkpoint refuses a false deterministic replay');
+
   const unknownV3 = JSON.parse(packed.raw);
   unknownV3.unowned = { should: 'fail-closed' };
   const unknownBefore = JSON.stringify(unknownV3);
@@ -2455,7 +2485,7 @@ section('Gate 1 — complete action replay and serialized procedural scenes');
     'pending procedural encounter survives save/load with its choices');
 }
 
-section('Gate 1 — aperture causality and compatibility baseline');
+section('Gate 1 — aperture causality, reduced Cold simulation, and equivalence');
 {
   const st = G.newGame({ seed: 'gate1-aperture', difficulty: 'relaxed' });
   assert(SW.aperture.validate(st).length === 0, 'aperture has one valid record per system');
@@ -2483,12 +2513,25 @@ section('Gate 1 — aperture causality and compatibility baseline');
   const baseRaw = SW.campaign.serialize(G.newGame({ seed: 'gate1-equivalence', difficulty: 'relaxed' })).raw;
   const left = SW.campaign.migrate(JSON.parse(baseRaw)).state;
   const right = SW.campaign.migrate(JSON.parse(baseRaw)).state;
+  left.act.aperture.engine = 'compat-full';
   const rightCold = right.systems.find(function (sys) { return SW.aperture.bandOf(right, sys.id) === 'cold'; });
   SW.aperture.promote(right, rightCold.id, 'warm');
   SW.aperture.promote(right, rightCold.id, 'hot');
   SW.aperture.focus(right, right.homeId);
   SW.aperture.sync(right, { forceAggregates: true });
-  for (let i = 0; i < 80; i++) { G.tick(left); G.tick(right); }
+  for (let i = 0; i < 500; i++) {
+    if (i > 0 && i % 53 === 0) {
+      const targetId = (i * 17) % right.systems.length;
+      SW.aperture.focus(right, targetId);
+    } else if (i > 0 && i % 47 === 0) SW.aperture.focus(right, right.homeId);
+    G.tick(left);
+    G.tick(right);
+  }
+  const deferred = Object.keys(right.act.aperture.records).some(function (id) {
+    return right.act.aperture.records[id].band === 'cold' && right.act.aperture.records[id].pendingEconomy > 0;
+  });
+  assert(deferred, 'Cold engine holds real local economy work between bounded batches');
+  assert(SW.aperture.flushAll(right).ok, 'Cold state materializes before equivalence comparison');
   function physicalDigest(state) {
     const value = JSON.parse(JSON.stringify(state));
     delete value.act.aperture;
@@ -2498,8 +2541,58 @@ section('Gate 1 — aperture causality and compatibility baseline');
     delete value.thread.speed;
     return JSON.stringify(value);
   }
-  assert(physicalDigest(left) === physicalDigest(right), 'compat-full focus round trip matches the untouched full-simulation baseline');
+  assert(physicalDigest(left) === physicalDigest(right), '500-tick reduced Cold run with repeated promotion matches Full simulation exactly');
   assert(SW.aperture.validate(right).length === 0, 'round-tripped aperture remains schema-valid');
+
+  const scheduledThreat = G.newGame({ seed: 'audit-origin-0', difficulty: 'brutal' });
+  const origin = scheduledThreat.systems[scheduledThreat.scourge.originId];
+  const originRecord = scheduledThreat.act.aperture.records[origin.id];
+  assert(SW.data.specClass(origin.spec) !== 'M' && scheduledThreat.scourge.phase === 'dormant' && scheduledThreat.tick < scheduledThreat.scourge.startAt,
+    'scheduled-origin fixture is a dormant non-M system');
+  assert(originRecord.band === 'warm' && originRecord.reasons.indexOf('threat:origin-scheduled') >= 0,
+    'dormant Scourge origin remains Warm before its scheduled corruption');
+
+  const promotionRaw = SW.campaign.serialize(G.newGame({ seed: 'gate1-warm-promotion', difficulty: 'relaxed' })).raw;
+  const fullPromotion = SW.campaign.migrate(JSON.parse(promotionRaw)).state;
+  const coldPromotion = SW.campaign.migrate(JSON.parse(promotionRaw)).state;
+  fullPromotion.act.aperture.engine = 'compat-full';
+  for (let i = 0; i < 5; i++) { G.tick(fullPromotion); G.tick(coldPromotion); }
+  const promotionTarget = coldPromotion.systems.find(function (sys) {
+    const record = coldPromotion.act.aperture.records[sys.id];
+    return record.band === 'cold' && record.pendingEconomy > 0;
+  });
+  assert(!!promotionTarget, 'Warm-promotion fixture contains deferred Cold work');
+  const promotedWarm = SW.aperture.promote(coldPromotion, promotionTarget.id, 'warm');
+  assert(promotedWarm.ok && promotedWarm.conserved &&
+    JSON.stringify(coldPromotion.systems[promotionTarget.id]) === JSON.stringify(fullPromotion.systems[promotionTarget.id]),
+    'Cold-to-Warm promotion materializes pending economy before observation');
+
+  const stale = G.newGame({ seed: 'gate1-stale-checkpoint', difficulty: 'relaxed' });
+  for (let i = 0; i < 5; i++) G.tick(stale);
+  const staleTarget = stale.systems.find(function (sys) {
+    const record = stale.act.aperture.records[sys.id];
+    return record.band === 'cold' && record.pendingEconomy > 0;
+  });
+  staleTarget.discovered = true;
+  assert(SW.aperture.validate(stale, { canonical: true }).some(function (error) { return /stale|classified Cold/.test(error); }),
+    'validator rejects same-tick knowledge that invalidates stored Cold eligibility');
+  assert(SW.aperture.checkpoint(stale).ok && SW.aperture.bandOf(stale, staleTarget.id) === 'warm' &&
+    stale.act.aperture.records[staleTarget.id].knowledge.discovered && SW.aperture.validate(stale).length === 0,
+    'checkpoint barrier reclassifies knowledge and materializes before persistence');
+
+  const eventSave = G.newGame({ seed: 'gate1-event-checkpoint', difficulty: 'relaxed' });
+  for (let i = 0; i < 5; i++) G.tick(eventSave);
+  eventSave.credits = 1000;
+  const hiddenBadlands = eventSave.systems.filter(function (sys) { return sys.badlands && !sys.discovered; }).map(function (sys) { return sys.id; });
+  eventSave.story.pending = 'ev_reach_charts';
+  assert(A.chooseEvent(eventSave, 0).ok, 'chart-reveal event mutates knowledge through the action boundary');
+  const revealedBadlands = hiddenBadlands.filter(function (id) { return eventSave.systems[id].discovered; });
+  const eventRaw = G.exportSave();
+  const eventLoaded = eventRaw && G.loadFromString(eventRaw);
+  assert(revealedBadlands.length > 0 && eventLoaded.ok && revealedBadlands.every(function (id) {
+    const record = G.state.act.aperture.records[id];
+    return record.band !== 'cold' && record.knowledge.discovered;
+  }), 'event choice followed by immediate export/load preserves synchronized aperture knowledge');
 }
 
 section('Gate 1 — layered seed and feasibility-validator scaffolds');
@@ -2514,6 +2607,17 @@ section('Gate 1 — layered seed and feasibility-validator scaffolds');
   assert(JSON.stringify(seqA) === JSON.stringify(seqB), 'named seed layers reproduce their own deterministic sequence');
   assert(U.rnd(galaxyStream) !== seqA[0], 'different seed layers are isolated');
   assert(st.rngState === before, 'layer generation leaves runtime RNG untouched');
+  assert(Number.isInteger(st.campaign.seeds.runtime) && st.thread.launch.runtimeSeed === st.campaign.seeds.runtime,
+    'runtime begins from its own named seed after generation');
+  const isolated = G.newGame({ seed: 'gate1-generator-isolation', difficulty: 'relaxed' });
+  const runtimeBeforeRegeneration = isolated.rngState;
+  SW.galaxy.generate(isolated);
+  assert(isolated.rngState === runtimeBeforeRegeneration,
+    'Galaxy, Bubble, and System generation phases restore the runtime stream exactly');
+  assert(['galaxy', 'bubble', 'system'].every(function (layer) {
+    const record = isolated.campaign.generationStreams[layer];
+    return record && Number.isInteger(record.start) && Number.isInteger(record.end);
+  }), 'generation records deterministic start/end state for every physical layer');
   const report = st.campaign.generation;
   assert(report.errors.length === 0 && report.graph.connected && report.opening.loops.length >= 2,
     'opening validator proves connectivity and two bounded, known commodity loops');
@@ -2545,6 +2649,120 @@ section('Gate 1 — layered seed and feasibility-validator scaffolds');
   const repaired = SW.objectives.repairSeed(deadlock, broken);
   assert(repaired.errors.length === 0 && repaired.repairs.length >= 2 && repaired.opening.loops.length >= 2,
     'seeded repair template restores multiple real opening routes and logs every repair');
+
+  function objectiveFixture(seed) {
+    const fixture = G.newGame({ seed: seed, difficulty: 'relaxed' });
+    const target = fixture.systems[fixture.systems[fixture.homeId].links[0]];
+    target.discovered = true;
+    target.surveyed = false;
+    fixture.credits = 100000;
+    SW.ships.create(fixture, 'pathfinder', fixture.homeId, 'Probe Scout');
+    SW.ships.create(fixture, 'courier', fixture.homeId, 'Probe Liner');
+    SW.ships.create(fixture, 'corvette', fixture.homeId, 'Probe Guard');
+    const made = SW.objectives.create(fixture, {
+      family: 'mobilize',
+      sys: target.id,
+      responses: ['delivery', 'survey', 'combat'],
+      deadline: fixture.tick + 500
+    });
+    return { state: fixture, target: target, objective: made.objective };
+  }
+
+  const feasible = objectiveFixture('gate1-feasible-objective');
+  const feasibleReport = SW.objectives.validateSeed(feasible.state).mandatoryObjectives[0];
+  assert(feasibleReport.solutions.length === 3 && feasibleReport.probes.every(function (probe) { return probe.ok; }),
+    'mandatory objective proves three target-specific paths with owned ships, access, credits, knowledge, and time');
+
+  const incapable = objectiveFixture('gate1-incapable-objective');
+  incapable.state.ships = incapable.state.ships.filter(function (ship) { return ship.hull === 'sparrow'; }).slice(0, 1);
+  incapable.state.credits = 0;
+  const incapableReport = SW.objectives.validateSeed(incapable.state);
+  assert(incapableReport.mandatoryObjectives[0].solutions.length === 0 &&
+    incapableReport.errors.some(function (error) { return /fewer than three solutions/.test(error); }),
+    'global hull definitions and action functions cannot fake owned capability or affordability');
+
+  const single = objectiveFixture('gate1-single-solution');
+  single.state.ships = single.state.ships.filter(function (ship) { return ship.hull === 'sparrow'; }).slice(0, 1);
+  single.target.surveyed = true;
+  const singleReport = SW.objectives.validateSeed(single.state).mandatoryObjectives[0];
+  assert(singleReport.solutions.length === 1 && singleReport.solutions[0] === 'delivery',
+    'single-solution mandatory state is detected rather than padded by potential catalog abilities');
+
+  const unknownTarget = objectiveFixture('gate1-unknown-objective');
+  unknownTarget.target.discovered = false;
+  const unknownReport = SW.objectives.validateSeed(unknownTarget.state).mandatoryObjectives[0];
+  assert(!unknownReport.known && unknownReport.solutions.length === 0,
+    'objective feasibility rejects response paths whose target knowledge is unavailable');
+
+  const rushed = objectiveFixture('gate1-rushed-objective');
+  rushed.objective.deadline = rushed.state.tick + 1;
+  const rushedReport = SW.objectives.validateSeed(rushed.state).mandatoryObjectives[0];
+  assert(rushedReport.solutions.length === 0 && rushedReport.probes.every(function (probe) { return !probe.ok; }),
+    'objective feasibility includes travel and service time before its deadline');
+
+  const routeLocked = objectiveFixture('gate1-route-guards');
+  routeLocked.objective.responses = ['delivery', 'survey', 'reroute'];
+  routeLocked.state.story.flags.routes_unlocked = false;
+  let routeProbe = SW.objectives.validateSeed(routeLocked.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'reroute'; });
+  assert(!routeProbe.ok && /not unlocked/.test(routeProbe.reason), 'reroute feasibility respects the actual route unlock');
+  routeLocked.state.story.flags.routes_unlocked = true;
+  routeProbe = SW.objectives.validateSeed(routeLocked.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'reroute'; });
+  assert(routeProbe.ok && routeProbe.stops.length === 2 && routeProbe.stops[0].sys !== routeProbe.stops[1].sys,
+    'reroute feasibility proves a charted, in-range, distinct two-stop route an owned ship can execute');
+
+  const evac = objectiveFixture('gate1-evacuation-guards');
+  evac.objective.responses = ['delivery', 'survey', 'evacuation'];
+  evac.target.pop = Math.max(10, evac.target.pop || 0);
+  evac.state.cohorts = [];
+  let evacProbe = SW.objectives.validateSeed(evac.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'evacuation'; });
+  assert(!evacProbe.ok, 'ordinary population cannot masquerade as a boardable evacuation cohort');
+  evac.state.systems[evac.state.homeId].discovered = true;
+  evac.state.cohorts.push({ id: 'cohort-fixture', from: evac.target.id, haven: evac.state.homeId, n: 1 });
+  evacProbe = SW.objectives.validateSeed(evac.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'evacuation'; });
+  assert(evacProbe.ok && evacProbe.cohort === 'cohort-fixture' && evacProbe.haven === evac.state.homeId,
+    'evacuation feasibility proves the real cohort and its reachable safe haven');
+
+  const corrupted = objectiveFixture('gate1-corrupted-target');
+  corrupted.target.scourge = 2;
+  const corruptedReport = SW.objectives.validateSeed(corrupted.state).mandatoryObjectives[0];
+  assert(corruptedReport.solutions.length === 0, 'final-node corruption cannot bypass the real ship-entry guard');
+
+  const homeCombat = objectiveFixture('gate1-home-combat');
+  homeCombat.objective.sys = homeCombat.state.homeId;
+  const homeCombatProbe = SW.objectives.validateSeed(homeCombat.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'combat'; });
+  assert(!homeCombatProbe.ok && /forbids/.test(homeCombatProbe.reason), 'combat feasibility respects the raid action prohibition at Home');
+
+  const shuttling = objectiveFixture('gate1-shuttle-capability');
+  shuttling.state.ships.forEach(function (ship) { ship.mode = 'shuttle'; ship.at = shuttling.state.homeId; });
+  const shuttlingReport = SW.objectives.validateSeed(shuttling.state).mandatoryObjectives[0];
+  assert(shuttlingReport.solutions.length === 0, 'ships in shuttle motion cannot masquerade as immediately actionable capability');
+
+  const futureStock = objectiveFixture('gate1-future-stock');
+  futureStock.objective.need = 'ORE';
+  futureStock.objective.responses = ['delivery', 'survey', 'combat'];
+  futureStock.state.ships = futureStock.state.ships.filter(function (ship) { return ship.hull === 'sparrow'; }).slice(0, 1);
+  futureStock.state.systems.forEach(function (sys) { sys.stocks.ORE = 0; });
+  futureStock.state.systems[futureStock.state.homeId].prod.ORE = 100;
+  const futureDelivery = SW.objectives.validateSeed(futureStock.state).mandatoryObjectives[0].probes.find(function (probe) { return probe.id === 'delivery'; });
+  assert(!futureDelivery.ok, 'future production without current integral stock is not an immediately purchasable delivery solution');
+
+  const fullHold = objectiveFixture('gate1-full-hold');
+  fullHold.objective.need = 'FOOD';
+  fullHold.objective.responses = ['construction', 'delivery', 'reroute'];
+  fullHold.state.ships = fullHold.state.ships.filter(function (ship) { return ship.hull === 'sparrow'; }).slice(0, 1);
+  const fullShip = fullHold.state.ships[0];
+  fullShip.cargo.ORE = SW.ships.cap(fullHold.state, fullShip);
+  fullHold.state.systems.forEach(function (sys) { sys.stocks.ALLOY = 0; });
+  fullHold.state.systems[fullHold.state.homeId].stocks.ALLOY = 100;
+  fullHold.state.systems[fullHold.state.homeId].stocks.FOOD = 100;
+  fullHold.state.systems[fullHold.state.homeId].discovered = true;
+  fullHold.state.story.flags.routes_unlocked = true;
+  fullHold.target.depot = { ALLOY: 0 };
+  const fullHoldProbes = SW.objectives.validateSeed(fullHold.state).mandatoryObjectives[0].probes;
+  assert(['construction', 'delivery', 'reroute'].every(function (id) {
+    const probe = fullHoldProbes.find(function (item) { return item.id === id; });
+    return probe && !probe.ok;
+  }), 'catalog hull capacity cannot hide a real full hold from construction, delivery, or reroute probes');
 }
 
 section('Gate 1 — manifest parity and measured baseline budgets');
@@ -2570,14 +2788,19 @@ section('Gate 1 — manifest parity and measured baseline budgets');
   }
   samples.sort(function (a, b) { return a - b; });
   const p95 = samples[Math.floor(samples.length * 0.95)];
+  for (let i = 0; i < 5; i++) G.tick(mature);
+  const pendingCold = Object.keys(mature.act.aperture.records).some(function (id) {
+    return mature.act.aperture.records[id].band === 'cold' && mature.act.aperture.records[id].pendingEconomy > 0;
+  });
   const coldStart = performance.now();
-  SW.aperture.sync(mature, { forceAggregates: true });
+  const coldResult = SW.aperture.flushAll(mature);
   const coldMs = performance.now() - coldStart;
   const saveStart = performance.now();
   const saveResult = SW.campaign.serialize(mature);
   const saveMs = performance.now() - saveStart;
   assert(p95 < 12, 'Hot tick p95 meets 12ms budget (' + p95.toFixed(2) + 'ms)');
-  assert(coldMs < 20, 'Cold compatibility batch meets 20ms budget (' + coldMs.toFixed(2) + 'ms)');
+  assert(pendingCold && coldResult.ok && coldResult.ticks > 0 && coldMs < 20,
+    'real Cold materialization batch meets 20ms budget (' + coldMs.toFixed(2) + 'ms, ' + coldResult.ticks + ' deferred ticks)');
   assert(saveResult.ok && saveMs < 100, 'canonical save serialization meets 100ms budget (' + saveMs.toFixed(2) + 'ms)');
 }
 

@@ -10,6 +10,7 @@ SW.game = (function () {
   G.handlers = {};      // UI hooks: toast, fx, event, sfx, objective, gameover
   const ACCOUNT_KEY = 'starweft_v3_account';
   const CAMPAIGN_INDEX_KEY = 'starweft_v3_campaign_index';
+  const SAVE_TXN_KEY = 'starweft_v3_save_transaction';
 
   G.emit = function (type, payload) {
     if (G._replaying) return;
@@ -25,6 +26,8 @@ SW.game = (function () {
     const s = storage();
     let saved = null, legacy = {};
     if (s) {
+      const recovery = recoverSaveTransaction(s);
+      G._saveRecovery = recovery;
       try { saved = JSON.parse(s.getItem(ACCOUNT_KEY) || 'null'); } catch (e) { saved = null; }
       if (!saved || SW.campaign.validateAccount(saved).length) {
         try { saved = JSON.parse(s.getItem(ACCOUNT_KEY + ':previous') || 'null'); } catch (e) { saved = null; }
@@ -132,6 +135,9 @@ SW.game = (function () {
       acts: opts.acts ? { on: true } : null,
     }, { campaignId: campaignId, accountId: account.id });
     SW.galaxy.generate(state);
+    // Generation streams never leak their draw counts into play. Runtime starts
+    // from its own named layer after the physical galaxy has committed.
+    state.rngState = state.campaign.seeds.runtime;
     SW.story.init(state);
     SW.scourge.init(state);
     SW.rivals.init(state);
@@ -258,7 +264,8 @@ SW.game = (function () {
       world: JSON.parse(JSON.stringify(state.world)),
       aptitude: opts.aptitude || null,
       tutorial: !!opts.tutorial,
-      acts: !!opts.acts
+      acts: !!opts.acts,
+      runtimeSeed: state.campaign.seeds.runtime
     };
     G.state = state;
     G.fx.length = 0;
@@ -273,6 +280,7 @@ SW.game = (function () {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     state.tick++;
     state.thread.elapsedTicks = state.tick;
+    SW.aperture.beforeTick(state);
     SW.economy.tick(state);
     SW.ships.tick(state);
     tickProjects(state);
@@ -1183,7 +1191,13 @@ SW.game = (function () {
   }
 
   function replayProjection(state) {
-    const value = JSON.parse(JSON.stringify(state));
+    const parsed = JSON.parse(JSON.stringify(state));
+    const prepared = SW.campaign.migrate(parsed);
+    const value = prepared.ok ? prepared.state : parsed;
+    if (prepared.ok && SW.aperture && typeof SW.aperture.checkpoint === 'function') {
+      const materialized = SW.aperture.checkpoint(value);
+      if (!materialized.ok) throw new Error(materialized.msg || 'Replay projection could not materialize Cold state.');
+    }
     if (value.thread) {
       delete value.thread.journal;
       delete value.thread.replay;
@@ -1294,9 +1308,110 @@ SW.game = (function () {
   function legacyKey(slot) { return 'starweft_' + (slot || 'manual'); }
   G.campaignSaveKey = campaignKey;
 
+  function validateSaveTransaction(tx) {
+    if (!tx || tx.version !== 1 || tx.status !== 'ready') return 'Save transaction schema invalid.';
+    if (tx.accountKey !== ACCOUNT_KEY || tx.accountTmp !== ACCOUNT_KEY + ':tmp' ||
+        tx.indexKey !== CAMPAIGN_INDEX_KEY || tx.indexTmp !== CAMPAIGN_INDEX_KEY + ':tmp') {
+      return 'Save transaction routing invalid.';
+    }
+    if (typeof tx.campaignId !== 'string' || !/^[A-Za-z0-9._-]+$/.test(tx.campaignId) ||
+        typeof tx.slot !== 'string' || !/^[A-Za-z0-9_-]+$/.test(tx.slot) ||
+        (tx.kind !== 'campaign-save' && tx.kind !== 'legacy-weave')) return 'Save transaction identity invalid.';
+    const expectedKey = tx.kind === 'legacy-weave'
+      ? legacyCampaignKey(tx.campaignId, tx.slot)
+      : campaignKey(tx.campaignId, tx.slot);
+    if (tx.campaignKey !== expectedKey || tx.campaignTmp !== expectedKey + ':tmp') {
+      return 'Save transaction campaign target invalid.';
+    }
+    return null;
+  }
+
+  function stagedSave(s, tx) {
+    const schemaError = validateSaveTransaction(tx);
+    if (schemaError) return { ok: false, pending: true, msg: schemaError, tx: tx };
+    try {
+      const campaignRaw = s.getItem(tx.campaignTmp);
+      const accountRaw = s.getItem(tx.accountTmp);
+      const indexRaw = s.getItem(tx.indexTmp);
+      if (!campaignRaw || !accountRaw || !indexRaw) throw new Error('staged save data is incomplete');
+      const campaign = SW.campaign.migrate(JSON.parse(campaignRaw));
+      if (!campaign.ok || campaign.state.campaign.id !== tx.campaignId || campaign.state.kind !== tx.kind) {
+        throw new Error('staged campaign failed verification');
+      }
+      const account = JSON.parse(accountRaw);
+      if (SW.campaign.validateAccount(account).length || account.activeCampaignId !== tx.campaignId || account.activeSaveKind !== tx.kind) {
+        throw new Error('staged account failed verification');
+      }
+      const index = JSON.parse(indexRaw);
+      if (!Array.isArray(index) || !index.some(function (item) { return item && item.id === tx.campaignId && item.kind === tx.kind; })) {
+        throw new Error('staged campaign index failed verification');
+      }
+      return { ok: true, campaignRaw: campaignRaw, accountRaw: accountRaw, indexRaw: indexRaw, account: account };
+    } catch (e) {
+      return { ok: false, pending: true, msg: 'Save transaction staging failed: ' + e.message, tx: tx };
+    }
+  }
+
+  function finishSaveTransaction(s, tx) {
+    const staged = stagedSave(s, tx);
+    if (!staged.ok) return staged;
+    try {
+      // Routing metadata is committed last. Until the account write succeeds,
+      // an interrupted save still points at the last verified checkpoint.
+      s.setItem(tx.campaignKey, staged.campaignRaw);
+      if (s.getItem(tx.campaignKey) !== staged.campaignRaw) throw new Error('campaign commit byte verification failed');
+      const campaignCheck = SW.campaign.migrate(JSON.parse(staged.campaignRaw));
+      if (!campaignCheck.ok) throw new Error('campaign commit schema verification failed');
+      s.setItem(tx.indexKey, staged.indexRaw);
+      if (s.getItem(tx.indexKey) !== staged.indexRaw) throw new Error('campaign index commit verification failed');
+      s.setItem(tx.accountKey, staged.accountRaw);
+      if (s.getItem(tx.accountKey) !== staged.accountRaw) throw new Error('account commit byte verification failed');
+      const accountCheck = JSON.parse(staged.accountRaw);
+      if (SW.campaign.validateAccount(accountCheck).length) throw new Error('account commit verification failed');
+      G._account = staged.account;
+      try {
+        // Clear the routing manifest first. If that removal fails, all staged
+        // bytes remain available for an idempotent recovery attempt. Orphaned
+        // tmp records after a successful manifest removal are harmless.
+        s.removeItem(SAVE_TXN_KEY);
+        s.removeItem(tx.campaignTmp);
+        s.removeItem(tx.indexTmp);
+        s.removeItem(tx.accountTmp);
+      } catch (cleanupError) { /* a complete transaction is safe to replay idempotently */ }
+      return { ok: true, recovered: true, account: staged.account, tx: tx };
+    } catch (e) {
+      return { ok: false, pending: true, msg: 'Save transaction commit interrupted: ' + e.message, tx: tx };
+    }
+  }
+
+  function recoverSaveTransaction(s) {
+    if (!s) return { ok: true, pending: false };
+    const raw = s.getItem(SAVE_TXN_KEY);
+    if (!raw) return { ok: true, pending: false };
+    let tx;
+    try { tx = JSON.parse(raw); }
+    catch (e) { return { ok: false, pending: true, msg: 'Pending save manifest is corrupt.' }; }
+    return finishSaveTransaction(s, tx);
+  }
+
+  function rotateVerified(s, key, previous, validator) {
+    const prior = s.getItem(key);
+    if (prior === null) return;
+    let valid = false;
+    try { valid = validator(prior); }
+    catch (e) { return; }
+    if (!valid) return;
+    s.setItem(previous, prior);
+    if (s.getItem(previous) !== prior) throw new Error('previous-generation rotation failed for ' + key);
+  }
+
   G.save = function (slot) {
     const s = storage();
     if (!s || !G.state) return { ok: false };
+    const pending = recoverSaveTransaction(s);
+    if (!pending.ok) return { ok: false, pending: true, msg: pending.msg };
+    const materialized = SW.aperture.checkpoint(G.state);
+    if (!materialized.ok) return materialized;
     const stateErrors = G.validate(G.state);
     if (stateErrors.length) return { ok: false, msg: stateErrors.join('; '), errors: stateErrors };
     const packed = SW.campaign.serialize(G.state);
@@ -1307,37 +1422,69 @@ SW.game = (function () {
       : campaignKey(state.campaign.id, slot);
     const tmp = key + ':tmp';
     const previous = key + ':previous';
+    const accountTmp = ACCOUNT_KEY + ':tmp';
+    const indexTmp = CAMPAIGN_INDEX_KEY + ':tmp';
     try {
+      const account = JSON.parse(JSON.stringify(G.accountState()));
+      SW.campaign.register(account, state);
+      const accountErrors = SW.campaign.validateAccount(account);
+      if (accountErrors.length) throw new Error(accountErrors.join('; '));
+      const accountRaw = JSON.stringify(account);
+      const indexRaw = JSON.stringify(account.chronicle.campaigns);
       s.setItem(tmp, packed.raw);
+      if (s.getItem(tmp) !== packed.raw) throw new Error('campaign staging byte verification failed');
       const staged = SW.campaign.migrate(JSON.parse(s.getItem(tmp)));
       if (!staged.ok) throw new Error(staged.msg);
-      const prior = s.getItem(key);
-      if (prior !== null) {
-        try {
-          const knownGood = SW.campaign.migrate(JSON.parse(prior));
-          if (knownGood.ok) s.setItem(previous, prior);
-        } catch (e) { /* retain the existing known-good previous generation */ }
-      }
-      s.setItem(key, packed.raw);
-      const verified = SW.campaign.migrate(JSON.parse(s.getItem(key)));
-      if (!verified.ok) throw new Error(verified.msg);
-      s.removeItem(tmp);
-      const account = G.accountState();
-      SW.campaign.register(account, state);
-      s.setItem(CAMPAIGN_INDEX_KEY, JSON.stringify(account.chronicle.campaigns));
-      const accountSave = G.saveAccount();
-      if (!accountSave.ok) return accountSave;
-      return { ok: true, key: key };
+      s.setItem(indexTmp, indexRaw);
+      if (s.getItem(indexTmp) !== indexRaw || !Array.isArray(JSON.parse(s.getItem(indexTmp)))) throw new Error('campaign index staging failed');
+      s.setItem(accountTmp, accountRaw);
+      const stagedAccount = JSON.parse(s.getItem(accountTmp));
+      if (SW.campaign.validateAccount(stagedAccount).length) throw new Error('account staging failed');
+
+      rotateVerified(s, key, previous, function (raw) { return SW.campaign.migrate(JSON.parse(raw)).ok; });
+      rotateVerified(s, CAMPAIGN_INDEX_KEY, CAMPAIGN_INDEX_KEY + ':previous', function (raw) { return Array.isArray(JSON.parse(raw)); });
+      rotateVerified(s, ACCOUNT_KEY, ACCOUNT_KEY + ':previous', function (raw) { return SW.campaign.validateAccount(JSON.parse(raw)).length === 0; });
+
+      const tx = {
+        version: 1,
+        status: 'ready',
+        campaignId: state.campaign.id,
+        kind: state.kind,
+        slot: slot || 'manual',
+        campaignKey: key,
+        campaignTmp: tmp,
+        indexKey: CAMPAIGN_INDEX_KEY,
+        indexTmp: indexTmp,
+        accountKey: ACCOUNT_KEY,
+        accountTmp: accountTmp
+      };
+      const txRaw = JSON.stringify(tx);
+      s.setItem(SAVE_TXN_KEY, txRaw);
+      if (s.getItem(SAVE_TXN_KEY) !== txRaw) throw new Error('save transaction manifest verification failed');
+      const committed = finishSaveTransaction(s, tx);
+      if (!committed.ok) return { ok: false, pending: true, msg: committed.msg, key: key };
+      return { ok: true, key: key, transaction: true };
     } catch (e) { return { ok: false, msg: 'Save failed: ' + e.message }; }
   };
   G.load = function (slot) {
     const s = storage();
     if (!s) return { ok: false, msg: 'No storage available.' };
+    const transactionRecovery = recoverSaveTransaction(s);
+    if (transactionRecovery.ok && transactionRecovery.recovered) G._account = transactionRecovery.account;
     const account = G.accountState();
     const id = account.activeCampaignId;
     const key = id ? (account.activeSaveKind === 'legacy-weave' ? legacyCampaignKey(id, slot) : campaignKey(id, slot)) : null;
     let raw = key ? s.getItem(key) : null;
     let source = key;
+    if (!transactionRecovery.ok && transactionRecovery.pending) {
+      const stable = key ? s.getItem(key + ':previous') : null;
+      if (stable) {
+        raw = stable;
+        source = key + ':previous';
+      } else {
+        return { ok: false, pending: true, msg: transactionRecovery.msg };
+      }
+    }
     if (!raw) { source = legacyKey(slot); raw = s.getItem(source); }
     if (!raw) return { ok: false, msg: 'No save found.' };
     let result = G.loadFromString(raw);
@@ -1353,6 +1500,8 @@ SW.game = (function () {
       }
     }
     if (result.ok && source === legacyKey(slot)) result.legacy = true;
+    if (result.ok && transactionRecovery.ok && transactionRecovery.recovered) result.recoveredTransaction = true;
+    if (result.ok && !transactionRecovery.ok && transactionRecovery.pending) result.pendingTransaction = true;
     return result;
   };
   G.loadFromString = function (raw) {
@@ -1378,6 +1527,8 @@ SW.game = (function () {
   };
   G.exportSave = function () {
     if (!G.state) return null;
+    const materialized = SW.aperture.checkpoint(G.state);
+    if (!materialized.ok) return null;
     const packed = SW.campaign.serialize(G.state);
     return packed.ok ? packed.raw : null;
   };
@@ -1419,7 +1570,7 @@ SW.game = (function () {
     errors.push.apply(errors, validateJournal(st));
     if (!st.stats || !st.tech || !st.story || !st.scourge) errors.push('save is missing core sections');
     errors.push.apply(errors, SW.charters.validate(st));
-    errors.push.apply(errors, SW.aperture.validate(st));
+    errors.push.apply(errors, SW.aperture.validate(st, { canonical: true }));
     const objectives = st && st.thread && st.thread.objectives;
     if (!objectives || objectives.version !== SW.objectives.VERSION || !Array.isArray(objectives.active)) errors.push('objective store invalid');
     else for (const objective of objectives.active) errors.push.apply(errors, SW.objectives.validate(objective, st));

@@ -86,7 +86,8 @@ SW.campaign = (function () {
       galaxy: U.seedFrom(seed + ':galaxy'),
       bubble: U.seedFrom(seed + ':bubble'),
       system: U.seedFrom(seed + ':system'),
-      objectives: U.seedFrom(seed + ':objectives')
+      objectives: U.seedFrom(seed + ':objectives'),
+      runtime: U.seedFrom(seed + ':runtime')
     };
   };
 
@@ -105,6 +106,24 @@ SW.campaign = (function () {
     return stream;
   };
 
+  C.withSeedLayer = function (state, layer, fn) {
+    if (!state || !state.campaign || typeof fn !== 'function') throw new Error('Seed layer requires canonical campaign state.');
+    const original = state.rngState;
+    const stream = C.seedStream(state, layer);
+    state.campaign.generationStreams = state.campaign.generationStreams || { version: 1 };
+    state.rngState = stream.rngState;
+    try {
+      const result = fn(state);
+      state.campaign.generationStreams[layer] = {
+        start: stream.rngState,
+        end: state.rngState >>> 0
+      };
+      return result;
+    } finally {
+      state.rngState = original;
+    }
+  };
+
   function defaultCampaign(seed, id) {
     return {
       version: C.CAMPAIGN_VERSION,
@@ -118,7 +137,8 @@ SW.campaign = (function () {
       capabilities: { reach: 0, resilience: 0, accord: 0 },
       holdings: [],
       scars: [],
-      summit: { version: 1, available: false, resolved: false }
+      summit: { version: 1, available: false, resolved: false },
+      generationStreams: { version: 1 }
     };
   }
 
@@ -217,10 +237,32 @@ SW.campaign = (function () {
     if (!input || typeof input !== 'object') return { ok: false, msg: 'Not a save file.' };
     if (input.version === C.SAVE_VERSION) {
       const state = clone(input);
+      let adapted = false;
+      const replayClaimsComplete = !state.thread || !state.thread.replay || state.thread.replay.complete !== false;
+      const preLayered = !state.campaign || !state.campaign.seeds ||
+        !Number.isInteger(state.campaign.seeds.runtime) ||
+        !state.campaign.generationStreams || state.campaign.generationStreams.version !== 1 ||
+        (replayClaimsComplete && (!state.thread || !state.thread.launch || !Number.isInteger(state.thread.launch.runtimeSeed)));
+      if (preLayered && state.campaign && state.thread) {
+        // v3 checkpoints written before generator/runtime isolation remain
+        // physically authoritative, but cannot recreate their launch world.
+        // Adapt their schema without altering saved matter or runtime RNG and
+        // refuse a replay that would silently construct a different galaxy.
+        const derived = C.deriveSeeds(state.campaign.seed === undefined ? 'unknown' : state.campaign.seed);
+        state.campaign.seeds = Object.assign({}, derived, state.campaign.seeds || {});
+        state.campaign.generationStreams = state.campaign.generationStreams || { version: 1, legacy: true };
+        state.campaign.migration = Object.assign({}, state.campaign.migration || {}, { adapter: 'pre-layer-v3' });
+        state.thread.replay = Object.assign({}, state.thread.replay || {}, {
+          version: 1,
+          complete: false,
+          reason: 'This v3 checkpoint predates isolated generation streams; saved play is intact, but deterministic replay is unavailable.'
+        });
+        adapted = true;
+      }
       const errors = C.validate(state);
       if (errors.length) return { ok: false, msg: errors.join('; '), errors: errors };
       C.attach(state);
-      return { ok: true, state: state, migrated: false, fromVersion: C.SAVE_VERSION };
+      return { ok: true, state: state, migrated: false, adapted: adapted, fromVersion: C.SAVE_VERSION };
     }
     if (input.version === 2) {
       // v2 was one flat run object. Preserve every known field under its explicit
@@ -266,6 +308,10 @@ SW.campaign = (function () {
     if (!state.campaign || state.campaign.version !== C.CAMPAIGN_VERSION || !state.campaign.id) errors.push('campaign schema invalid');
     if (!state.thread || state.thread.version !== C.THREAD_VERSION || !state.thread.id) errors.push('thread schema invalid');
     if (!state.act || state.act.version !== C.ACT_VERSION || !state.act.id) errors.push('act schema invalid');
+    if (!state.campaign || !state.campaign.seeds || !Number.isInteger(state.campaign.seeds.runtime) ||
+        !state.campaign.generationStreams || state.campaign.generationStreams.version !== 1) errors.push('generation stream schema invalid');
+    if (state.thread && state.thread.replay && state.thread.replay.complete &&
+        (!state.thread.launch || !Number.isInteger(state.thread.launch.runtimeSeed))) errors.push('replayable thread lacks a runtime seed');
     if (!state.campaign || !Array.isArray(state.campaign.systems) || !state.campaign.systems.length) errors.push('campaign has no galaxy');
     if (!state.thread || !Array.isArray(state.thread.ships)) errors.push('thread ships missing');
     const allowedRoot = { version: true, kind: true, schema: true, accountId: true, campaign: true, thread: true, act: true };

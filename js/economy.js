@@ -140,6 +140,7 @@ SW.economy = (function () {
     const sampleHistory = state.tick % T.priceHistoryEvery === 0;
     for (const sys of state.systems) {
       if (sys.scourge === 2) continue; // corrupted: the market is ash
+      if (SW.aperture && SW.aperture.deferEconomy(state, sys.id)) continue;
 
       // Production (extractor + comet windows + Penrose taps)
       let prodMult = sys.buildings.indexOf('extractor') >= 0 ? 1.6 : 1.0;
@@ -212,6 +213,35 @@ SW.economy = (function () {
     const condMult = D.condFx ? D.condFx(state, 'research', 1) : 1; // Golden Age etc.
     state.research = U.num(state.research) + research * diff.research * stanceMult * condMult;
     state.stats.researchEarned = U.num(state.stats.researchEarned) + research * diff.research * stanceMult * condMult;
+  };
+
+  // Exact reduced-cadence update for the deliberately narrow Cold v1 class:
+  // unknown, zero-population systems with no sites, factories, buildings,
+  // presence, temporary events, or causal obligations. The aperture owns the
+  // eligibility proof; this function repeats the legacy local equations so
+  // clamping and floating-point order remain identical to Full simulation.
+  E.advanceColdSystem = function (state, sys, ticks) {
+    const T = D.TUNE;
+    for (let step = 0; step < ticks; step++) {
+      for (const c in sys.prod) {
+        sys.stocks[c] = Math.min(sys.capacity[c], (sys.stocks[c] || 0) + sys.prod[c]);
+      }
+      let needSat = 1, needN = 0, wantSat = 0, wantN = 0;
+      for (const c in sys.cons) {
+        const want = sys.cons[c];
+        const got = Math.min(sys.stocks[c] || 0, want);
+        sys.stocks[c] = (sys.stocks[c] || 0) - got;
+        const sat = want > 0 ? got / want : 1;
+        if (c === 'FOOD' || c === 'FUEL') { needSat = needN === 0 ? sat : (needSat * needN + sat) / (needN + 1); needN++; }
+        else { wantSat = (wantSat * wantN + sat) / (wantN + 1); wantN++; }
+      }
+      sys.satNeed = needN ? needSat : 1;
+      sys.satWant = wantN ? wantSat : 0;
+      for (const c of D.COMM_IDS) {
+        sys.stocks[c] = U.clamp(U.num(sys.stocks[c]), 0, sys.capacity[c] || T.capDefault);
+      }
+    }
+    return sys;
   };
 
   function runSlot(state, sys, slot) {

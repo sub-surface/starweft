@@ -17,7 +17,7 @@ SW.objectives = (function () {
   O.SOLUTIONS = {
     delivery:     { actions: ['shipSend', 'order'], requires: 'commodity-loop' },
     construction: { actions: ['build', 'buildSite'], requires: 'buildable-world' },
-    reroute:      { actions: ['createRoute', 'order'], requires: 'lane-path' },
+    reroute:      { actions: ['createRoute', 'assignShip'], requires: 'lane-path' },
     reserve:      { actions: ['depotDrop', 'build'], requires: 'depot-path' },
     survey:       { actions: ['toggleAutoExplore', 'order'], requires: 'survey-path' },
     evacuation:   { actions: ['boardEvac', 'landPax'], requires: 'berth-path' },
@@ -82,7 +82,10 @@ SW.objectives = (function () {
     else {
       const unknown = objective.responses.filter(function (id) { return !O.SOLUTIONS[id]; });
       if (unknown.length) errors.push('objective response is not executable: ' + unknown.join(','));
+      if (new Set(objective.responses).size !== objective.responses.length) errors.push('objective response classes must be distinct');
     }
+    if (objective && objective.deadline !== null && objective.deadline !== undefined &&
+        (!Number.isInteger(objective.deadline) || objective.deadline <= objective.createdAt)) errors.push('objective deadline invalid');
     return errors;
   };
 
@@ -176,31 +179,248 @@ SW.objectives = (function () {
     return !!actions && solution.actions.every(function (id) { return typeof actions[id] === 'function'; });
   }
 
-  function solutionAvailable(state, id, context) {
-    const solution = O.SOLUTIONS[id];
-    if (!solution || !actionsExist(solution)) return false;
-    const scope = context.scope;
-    if (id === 'delivery') return context.loops.length > 0 && state.ships.some(function (ship) { return D.HULLS[ship.hull].cap > 0; });
-    if (id === 'construction') {
-      const alloy = context.loops.some(function (loop) { return loop.commodity === 'ALLOY'; }) ||
-        state.systems.some(function (sys) { return (sys.prod.ALLOY || 0) > 0 || (sys.stocks.ALLOY || 0) >= 5; });
-      return alloy && Object.keys(D.BUILDINGS).length > 0 && Object.keys(D.FACILITIES).length > 0;
+  function deadlineAllows(state, objective, ticks) {
+    return objective.deadline === null || objective.deadline === undefined || state.tick + ticks <= objective.deadline;
+  }
+
+  function canEnter(state, target) {
+    if (!target) return false;
+    if (target.scourge === 2 && !(SW.tech && SW.tech.has(state, 'scourge2'))) return false;
+    if (target.badlands && !(SW.tech && SW.tech.has(state, 'deepdrives'))) return false;
+    return true;
+  }
+
+  function pathBetween(state, fromId, targetId) {
+    const target = state.systems[targetId];
+    if (!canEnter(state, target)) return null;
+    return SW.ships.findPath(state, fromId, targetId);
+  }
+
+  function shipPath(state, ship, targetId) {
+    if (!ship || !Number.isInteger(ship.at) || !state.systems[ship.at]) return null;
+    return pathBetween(state, ship.at, targetId);
+  }
+
+  function pathTicksForShip(state, ship, path) {
+    if (!path) return Infinity;
+    let ticks = 0;
+    const speed = SW.ships.speed(state, ship);
+    for (let i = 1; i < path.length; i++) {
+      ticks += Math.max(2, Math.round(SW.util.dist(state.systems[path[i - 1]], state.systems[path[i]]) / speed));
     }
-    if (id === 'reroute') return context.loops.length > 0 && scope.length >= 2;
-    if (id === 'reserve') return !!D.BUILDINGS.depot && state.ships.some(function (ship) { return D.HULLS[ship.hull].cap > 0; });
-    if (id === 'survey') return Object.keys(D.HULLS).some(function (hull) { return (D.HULLS[hull].survey || 0) > 0; }) &&
-      state.systems.some(function (sys) { return !sys.surveyed && !sys.badlands; });
-    if (id === 'evacuation') return Object.keys(D.HULLS).some(function (hull) { return (D.HULLS[hull].berths || 0) > 0; }) &&
-      state.systems.some(function (sys) { return sys.pop > 0; });
-    if (id === 'combat') return Object.keys(D.HULLS).some(function (hull) { return (D.HULLS[hull].power || 0) >= 3; });
-    return false;
+    return ticks;
+  }
+
+  function upkeepFor(state, ship, target) {
+    const hull = D.HULLS[ship.hull];
+    return (hull.upkeep || 0) * (SW.ships.inRange(state, target) ? 1 : 2);
+  }
+
+  function targetRoom(target, commodity) {
+    const cap = (target.capacity && target.capacity[commodity]) || D.TUNE.capDefault;
+    return Math.max(0, cap - ((target.stocks && target.stocks[commodity]) || 0));
+  }
+
+  function cargoShips(state, predicate) {
+    return (state.ships || []).filter(function (ship) {
+      const hull = D.HULLS[ship.hull];
+      return hull && ship.mode === 'idle' && Number.isInteger(ship.at) &&
+        (predicate ? predicate(ship, hull) : (hull.cap || 0) > 0);
+    });
+  }
+
+  function candidateCommodities(objective) {
+    if (objective.need && D.COMMODITIES[objective.need] && !D.COMMODITIES[objective.need].locked) return [objective.need];
+    return D.COMM_IDS.filter(function (c) { return D.COMMODITIES[c] && !D.COMMODITIES[c].locked; });
+  }
+
+  function deliveryProbe(state, objective, target) {
+    if (!target.discovered || !canEnter(state, target)) return { ok: false, reason: 'target knowledge or access unavailable' };
+    for (const ship of cargoShips(state)) {
+      const free = SW.ships.cap(state, ship) - SW.ships.cargoTotal(ship);
+      for (const commodity of candidateCommodities(objective)) {
+        if (targetRoom(target, commodity) < 1 && !((target.cons && target.cons[commodity]) > 0)) continue;
+        const carried = (ship.cargo && ship.cargo[commodity]) || 0;
+        if (carried > 0) {
+          const path = shipPath(state, ship, target.id);
+          const ticks = pathTicksForShip(state, ship, path) + 1;
+          const cost = path ? upkeepFor(state, ship, target) : Infinity;
+          if (path && state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+            return { ok: true, ship: ship.id, commodity: commodity, source: ship.at, path: path, ticks: ticks, cost: cost };
+          }
+        }
+        if (free < 1) continue;
+        for (const source of state.systems) {
+          if (source.id === target.id || !source.discovered || source.scourge === 2) continue;
+          if (Math.floor((source.stocks && source.stocks[commodity]) || 0) < 1) continue;
+          const toSource = shipPath(state, ship, source.id);
+          const toTarget = pathBetween(state, source.id, target.id);
+          if (!toSource || !toTarget) continue;
+          const path = toSource.concat(toTarget.slice(1));
+          const ticks = pathTicksForShip(state, ship, path) + 2;
+          const unit = SW.economy.buyPrice(state, source, commodity, 'player');
+          const cost = upkeepFor(state, ship, source) + upkeepFor(state, ship, target) + Math.max(0, unit);
+          if (state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+            return { ok: true, ship: ship.id, commodity: commodity, source: source.id, path: path, ticks: ticks, cost: cost };
+          }
+        }
+      }
+    }
+    return { ok: false, reason: 'no affordable owned delivery path' };
+  }
+
+  function constructionProbe(state, objective, target) {
+    const building = D.BUILDINGS.relay;
+    if (!target.discovered || !canEnter(state, target)) return { ok: false, reason: 'target knowledge or access unavailable' };
+    if (target.scourge === 2 || target.buildings.indexOf('relay') >= 0) return { ok: false, reason: 'target is not buildable' };
+    const need = building.mats.ALLOY || 0;
+    let local = (target.depot && target.depot.ALLOY) || 0;
+    for (const ship of state.ships) if (ship.at === target.id && ship.mode === 'idle') local += (ship.cargo.ALLOY || 0);
+    if (local >= need && state.credits >= building.cost && deadlineAllows(state, objective, 1)) {
+      return { ok: true, building: 'relay', ticks: 1, cost: building.cost, localAlloy: local };
+    }
+    const shortage = Math.max(0, need - local);
+    for (const ship of cargoShips(state, function (owned) {
+      return SW.ships.cap(state, owned) - SW.ships.cargoTotal(owned) >= shortage;
+    })) {
+      for (const source of state.systems) {
+        if (!source.discovered || source.scourge === 2 || Math.floor((source.stocks && source.stocks.ALLOY) || 0) < shortage) continue;
+        const toSource = shipPath(state, ship, source.id);
+        const toTarget = pathBetween(state, source.id, target.id);
+        if (!toSource || !toTarget) continue;
+        const path = toSource.concat(toTarget.slice(1));
+        const ticks = pathTicksForShip(state, ship, path) + 3;
+        const materialCost = SW.economy.buyPrice(state, source, 'ALLOY', 'player') * shortage;
+        const cost = building.cost + materialCost + upkeepFor(state, ship, source) + upkeepFor(state, ship, target);
+        if (state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+          return { ok: true, building: 'relay', ship: ship.id, source: source.id, path: path, ticks: ticks, cost: cost };
+        }
+      }
+    }
+    return { ok: false, reason: 'relay materials, access, credits, or time unavailable' };
+  }
+
+  function routeProbe(state, objective, target, filter, extraTicks) {
+    if (!target.discovered || !canEnter(state, target)) return { ok: false, reason: 'target knowledge or access unavailable' };
+    for (const ship of cargoShips(state, filter)) {
+      const path = shipPath(state, ship, target.id);
+      if (!path) continue;
+      const ticks = pathTicksForShip(state, ship, path) + (extraTicks || 0);
+      const cost = upkeepFor(state, ship, target);
+      if (state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+        return { ok: true, ship: ship.id, path: path, ticks: ticks, cost: cost };
+      }
+    }
+    return { ok: false, reason: 'no eligible owned ship can reach target in budget' };
+  }
+
+  function rerouteProbe(state, objective, target) {
+    if (!state.story || !state.story.flags || !state.story.flags.routes_unlocked) {
+      return { ok: false, reason: 'route authoring is not unlocked' };
+    }
+    if (!target.discovered || !canEnter(state, target) || !SW.ships.inRange(state, target)) {
+      return { ok: false, reason: 'target is not a charted command-range route stop' };
+    }
+    for (const ship of cargoShips(state)) {
+      for (const source of state.systems) {
+        if (!source || source.id === target.id || !source.discovered || !canEnter(state, source) || !SW.ships.inRange(state, source)) continue;
+        const toSource = shipPath(state, ship, source.id);
+        const toTarget = pathBetween(state, source.id, target.id);
+        if (!toSource || !toTarget) continue;
+        const commodity = candidateCommodities(objective).find(function (id) {
+          const free = SW.ships.cap(state, ship) - SW.ships.cargoTotal(ship);
+          return (free >= 1 || ((ship.cargo && ship.cargo[id]) || 0) >= 1) &&
+            Math.floor((source.stocks && source.stocks[id]) || 0) >= 1 &&
+            (targetRoom(target, id) >= 1 || ((target.cons && target.cons[id]) || 0) > 0);
+        });
+        if (!commodity) continue;
+        const path = toSource.concat(toTarget.slice(1));
+        const ticks = pathTicksForShip(state, ship, path) + 1;
+        const purchase = ((ship.cargo && ship.cargo[commodity]) || 0) >= 1
+          ? 0 : Math.max(0, SW.economy.buyPrice(state, source, commodity, 'player'));
+        const cost = (toSource.length > 1 ? upkeepFor(state, ship, source) : 0) + upkeepFor(state, ship, target) + purchase;
+        if (state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+          return {
+            ok: true,
+            ship: ship.id,
+            path: path,
+            ticks: ticks,
+            cost: cost,
+            commodity: commodity,
+            stops: [{ sys: source.id, action: 'buy', c: commodity }, { sys: target.id, action: 'sell', c: commodity }]
+          };
+        }
+      }
+    }
+    return { ok: false, reason: 'no executable two-stop route is charted, in range, affordable, and timely' };
+  }
+
+  function evacuationProbe(state, objective, target) {
+    const cohort = (state.cohorts || []).find(function (item) {
+      return item && item.from === target.id && item.n > 0 && Number.isInteger(item.haven);
+    });
+    const haven = cohort && state.systems[cohort.haven];
+    if (!cohort || !haven || haven.id === target.id || !haven.discovered || haven.scourge === 2 || !(haven.pop > 0)) {
+      return { ok: false, reason: 'no waiting cohort with a known safe haven' };
+    }
+    if (!target.discovered || !canEnter(state, target) || !canEnter(state, haven)) {
+      return { ok: false, reason: 'cohort or haven access unavailable' };
+    }
+    for (const ship of cargoShips(state, function (owned, hull) { return (hull.berths || 0) > 0; })) {
+      const toCohort = shipPath(state, ship, target.id);
+      const toHaven = pathBetween(state, target.id, haven.id);
+      if (!toCohort || !toHaven) continue;
+      const path = toCohort.concat(toHaven.slice(1));
+      const ticks = pathTicksForShip(state, ship, path) + 2;
+      const cost = (toCohort.length > 1 ? upkeepFor(state, ship, target) : 0) + upkeepFor(state, ship, haven);
+      if (state.credits >= cost && deadlineAllows(state, objective, ticks)) {
+        return { ok: true, ship: ship.id, cohort: cohort.id, haven: haven.id, path: path, ticks: ticks, cost: cost };
+      }
+    }
+    return { ok: false, reason: 'no berth-equipped ship can complete the cohort journey in budget' };
+  }
+
+  function solutionProbe(state, id, objective, context) {
+    const solution = O.SOLUTIONS[id];
+    const target = state.systems[objective.sys];
+    if (!solution || !actionsExist(solution) || !target) return { id: id, ok: false, reason: 'solution seam unavailable' };
+    let result;
+    if (id === 'delivery') result = deliveryProbe(state, objective, target);
+    else if (id === 'construction') result = constructionProbe(state, objective, target);
+    else if (id === 'reroute') result = rerouteProbe(state, objective, target);
+    else if (id === 'reserve') {
+      result = target.depot ? deliveryProbe(state, objective, target) : { ok: false, reason: 'target has no owned reserve' };
+    } else if (id === 'survey') {
+      if (target.surveyed) result = { ok: false, reason: 'target is already surveyed' };
+      else result = routeProbe(state, objective, target, function (ship, hull) { return (hull.survey || 0) > 0; }, 3);
+    } else if (id === 'evacuation') {
+      result = evacuationProbe(state, objective, target);
+    } else if (id === 'combat') {
+      if (target.id === state.homeId || target.scourge === 2) {
+        result = { ok: false, reason: 'the raid action forbids this target' };
+      } else {
+        result = routeProbe(state, objective, target, function (ship) {
+          return SW.combat && SW.combat.power(state, ship) >= 3;
+        }, 4);
+        if (result.ok) {
+          const combatShip = state.ships.find(function (ship) { return ship.id === result.ship; });
+          const readyAt = Math.max(state.tick + result.ticks, combatShip.raidCooldownUntil || 0);
+          result.ticks = readyAt - state.tick;
+          if (!deadlineAllows(state, objective, result.ticks)) result = { ok: false, reason: 'armed ship cooldown exceeds the deadline' };
+        }
+      }
+    } else result = { ok: false, reason: 'solution probe missing' };
+    result.id = id;
+    return result;
   }
 
   function validateFamilies(state, context) {
     const results = {};
     const errors = [];
     Object.keys(O.FAMILIES).forEach(function (family) {
-      const available = O.FAMILIES[family].responses.filter(function (id) { return solutionAvailable(state, id, context); });
+      const available = O.FAMILIES[family].responses.filter(function (id) {
+        return O.SOLUTIONS[id] && actionsExist(O.SOLUTIONS[id]);
+      });
       results[family] = available;
       if (available.length < 3) errors.push(family + ':' + available.join(','));
     });
@@ -215,8 +435,17 @@ SW.objectives = (function () {
     const families = validateFamilies(state, context);
     const mandatory = state.thread && state.thread.objectives ? state.thread.objectives.active || [] : [];
     const mandatoryReport = mandatory.map(function (objective) {
-      const responses = (objective.responses || []).filter(function (id) { return solutionAvailable(state, id, context); });
-      return { id: objective.id, sys: objective.sys, reachable: !!all[objective.sys], solutions: responses };
+      const probes = (objective.responses || []).map(function (id) { return solutionProbe(state, id, objective, context); });
+      const responses = probes.filter(function (probe) { return probe.ok; }).map(function (probe) { return probe.id; });
+      const reachable = (state.ships || []).some(function (ship) { return !!shipPath(state, ship, objective.sys); });
+      return {
+        id: objective.id,
+        sys: objective.sys,
+        known: !!state.systems[objective.sys].discovered,
+        reachable: reachable,
+        solutions: responses,
+        probes: probes
+      };
     });
     const errors = [];
     if (Object.keys(all).length !== state.systems.length) errors.push('galaxy graph disconnected');
@@ -230,7 +459,8 @@ SW.objectives = (function () {
       if (!objective.reachable) errors.push('mandatory objective unreachable: ' + objective.id);
       if (objective.solutions.length < 3) errors.push('mandatory objective has fewer than three solutions: ' + objective.id);
     });
-    const canRebuild = state.credits >= SW.ships.hullCost(state, 'sparrow') || typeof SW.game.actions.buyShip === 'function';
+    const home = state.systems[state.homeId];
+    const canRebuild = !!home && home.discovered && home.scourge !== 2 && state.credits >= SW.ships.hullCost(state, 'sparrow');
     if (!canRebuild) errors.push('no deterministic recovery path from fleet loss');
     return {
       version: 1,
