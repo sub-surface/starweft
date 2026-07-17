@@ -35,6 +35,7 @@ SW.galaxy = (function () {
       };
     });
     state.homeId = 0;
+    if (state.campaign) state.campaign.solId = 0;
 
     // ---- 2. regions (biomes) ----
     makeRegions(state, W);

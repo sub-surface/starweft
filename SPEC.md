@@ -277,7 +277,9 @@ This is the honest starting point, not the target.
 
 ### 3.2 What the old Reweave did not implement
 
-- [ ] **SW-BASE-011** Campaign, Thread, and account state are partitioned.
+- [x] **SW-BASE-011** Campaign, Thread, and account state are partitioned.
+  Evidence: `js/campaign.js`, `js/game.js`; Gate 1 lifetime/account sections in
+  `test/smoke.js`; 2026-07-17 smoke result: 161,349 checks/0 failures.
 - [ ] **SW-BASE-012** Death wakes a successor in the same campaign galaxy.
 - [ ] **SW-BASE-013** Interregnum advances a persistent world.
 - [ ] **SW-BASE-014** Research is campaign-scoped and survives Thread death.
@@ -354,10 +356,13 @@ the promised scale arc is optional and the opening becomes the whole game.
 
 ### 4.4 State ledger
 
-- [ ] **SW-STATE-001** State is explicitly partitioned into account, campaign,
-  Thread, and act concerns.
+- [x] **SW-STATE-001** State is explicitly partitioned into account, campaign,
+  Thread, and act concerns. Evidence: closed canonical root and versioned ownership
+  in `js/campaign.js`; Gate 1 lifetime-schema smoke result: pass.
 - [ ] **SW-STATE-002** Thread death preserves the campaign galaxy.
-- [ ] **SW-STATE-003** Account state is stored independently from campaign saves.
+- [x] **SW-STATE-003** Account state is stored independently from campaign saves.
+  Evidence: independent account/Chronicle key and schema in `js/game.js` and
+  `js/campaign.js`; account-isolation smoke and browser storage results: pass.
 - [ ] **SW-STATE-004** A successor inherits no fleet, credits, cargo, or Charters.
 - [ ] **SW-STATE-005** Selected physical and historical consequences persist.
 - [ ] **SW-STATE-006** Archive knowledge survives death and resets with a fresh
@@ -1559,21 +1564,38 @@ may establish stricter content caps.
 
 ### 18.9 Simulation ledger
 
-- [ ] **SW-SIM-001** Hot, Warm, and Cold bands have explicit serializable schemas.
+- [x] **SW-SIM-001** Hot, Warm, and Cold bands have explicit serializable schemas.
+  Evidence: authoritative per-system records in `js/aperture.js`; aperture schema
+  and round-trip smoke results: pass.
 - [ ] **SW-SIM-002** Promotion and demotion conserve stocks, people, assets,
-  obligations, damage, and scheduled events.
-- [ ] **SW-SIM-003** Fidelity and player knowledge are independent state.
+  obligations, damage, and scheduled events. Current foundation: the
+  `compat-full` aperture classifies and snapshots this state, but does not yet
+  advance a reduced Cold representation; its transition ledger is diagnostic,
+  not equivalence proof.
+- [x] **SW-SIM-003** Fidelity and player knowledge are independent state.
+  Evidence: physical aggregates and knowledge records are separate in
+  `js/aperture.js`; knowledge-independence smoke result: pass.
 - [ ] **SW-SIM-004** Interregnum runs the galaxy in bounded Cold simulation.
 - [ ] **SW-SIM-005** System, Bubble, and Galaxy generation share a layered seed.
 - [ ] **SW-SIM-006** Seed validation rejects or deterministically repairs deadlocks,
-  unreachable objectives, and single-solution mandatory states.
+  unreachable objectives, and single-solution mandatory states. Current
+  foundation: a deterministic validator/repair seam exists, but solution probes
+  still need target-specific access, ownership, cost, knowledge, and deadline
+  checks before this requirement is satisfied.
 - [ ] **SW-SIM-007** Cold-to-Hot-to-Cold equivalence tests pass within documented
-  tolerance.
-- [ ] **SW-TECH-001** State is separated into account, campaign, Thread, and
-  Act/aperture lifetimes.
-- [ ] **SW-TECH-002** All canonical simulation modules boot headlessly.
-- [ ] **SW-TECH-003** Player mutations are represented as serializable actions.
-- [ ] **SW-TECH-004** Runtime script manifests remain dependency-order identical.
+  tolerance. The existing `compat-full` comparison is a baseline fixture, not a
+  reduced-simulation equivalence test.
+- [x] **SW-TECH-001** State is separated into account, campaign, Thread, and
+  Act/aperture lifetimes. Evidence: `js/campaign.js`; closed-root and 100-tick
+  serialization smoke results: pass.
+- [x] **SW-TECH-002** All canonical simulation modules boot headlessly. Evidence:
+  29-file headless manifest; 2026-07-17 smoke result: 161,349 checks/0 failures.
+- [x] **SW-TECH-003** Player mutations are represented as serializable actions.
+  Evidence: wrapped `SW.game.actions.*` log/replay boundary in `js/game.js`; failed,
+  same-tick, mutable-argument, final-tail, and 2,005-action replay results: pass.
+- [x] **SW-TECH-004** Runtime script manifests remain dependency-order identical.
+  Evidence: manifests in `index.html` and both tests; automated parity smoke result:
+  pass.
 - [ ] **SW-TECH-005** Mature Galaxy performance meets all eight budgets.
 
 ---
@@ -2320,7 +2342,8 @@ A requirement may be checked only when:
 
 - [x] **SW-TEST-001** Headless smoke and structural browser boot suites exist and
   pass on the consolidated overhaul baseline.
-  Evidence: 2026-07-17 run: smoke 161,248 checks/0 failures; browser boot passed.
+  Evidence: 2026-07-17 Gate 1 run: smoke 161,349 checks/0 failures; browser boot
+  passed every step including v2 preservation and corruption recovery.
 - [ ] **SW-TEST-002** Simulation determinism and conservation are covered at all
   three fidelity bands.
 - [ ] **SW-TEST-003** Lifecycle and migration fixtures cover account through Summit.
@@ -2383,18 +2406,36 @@ no live file sends them to a retired authority.
 **Purpose:** create the technical space for Threads, campaigns, and real scale
 before adding more surface UI.
 
-- [ ] **G1-01** Account, campaign, Thread, and Act/aperture schemas are explicit and
-  versioned.
-- [ ] **G1-02** Action log replay reproduces identical seeded state.
-- [ ] **G1-03** Hot, Warm, and Cold schemas plus promotion/demotion exist.
-- [ ] **G1-04** Cold/Hot equivalence and conservation tests pass.
-- [ ] **G1-05** Layered seed generator and deadlock/solution validator exist.
-- [ ] **G1-06** Objective, Charter, and campaign module boundaries are established.
+- [x] **G1-01** Account, campaign, Thread, and Act/aperture schemas are explicit and
+  versioned. Evidence: `js/campaign.js`; closed-root, ownership, account-isolation,
+  and 100-tick round-trip smoke results: pass.
+- [x] **G1-02** Action log replay reproduces identical seeded state. Evidence:
+  `js/game.js`; complete launch/action/final-tail replay and 2,005-entry log smoke
+  results: pass.
+- [x] **G1-03** Hot, Warm, and Cold schemas plus promotion/demotion exist. Evidence:
+  `js/aperture.js`; causal classifier, selection, obligation, and demotion smoke
+  results: pass under the explicitly labeled `compat-full` engine.
+- [ ] **G1-04** Cold/Hot equivalence and conservation tests pass. The serializable
+  aperture and `compat-full` baseline exist; completion requires an actual Cold
+  advance, rehydration, and resumed-state comparison.
+- [ ] **G1-05** Layered seed generator and deadlock/solution validator exist. Named
+  isolated streams and the validator seam exist, but the generator has not fully
+  migrated to those streams and feasibility is not yet access/cost/deadline aware.
+- [x] **G1-06** Objective, Charter, and campaign module boundaries are established.
+  Evidence: `js/objectives.js`, `js/charters.js`, `js/campaign.js`; headless boot,
+  schema validation, and manifest-parity smoke results: pass.
 - [ ] **G1-07** Legacy saves are preserved and migration/recovery fixtures pass.
+  Raw v2 bytes, explicit legacy loading, adapter continuation, and previous-save
+  recovery are implemented. Completion still requires a recoverable atomic route
+  across campaign, index, and account writes.
 - [ ] **G1-08** System-scale baseline remains playable and meets tick budgets.
+  The system-scale browser flow passes and Node timings provide a regression
+  baseline, but completion requires reference-browser performance evidence; the
+  current aperture sync timing is not a real Cold-simulation measurement.
 
-**Gate 1 exit:** one existing run can be serialized into the new Thread lifetime,
-demoted to Cold campaign state, promoted, and resumed without causal drift.
+**Gate 1 exit (open):** one existing run can be serialized into the new Thread
+lifetime, demoted to genuinely reduced Cold campaign state, promoted, and resumed
+without causal drift.
 
 ### Gate 2 — The front door and canonical tutorial
 

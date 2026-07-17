@@ -5,17 +5,43 @@ var SW = globalThis.SW = globalThis.SW || {};
 SW.story = (function () {
   const U = SW.util, D = SW.data;
   const ST = {};
-  const dynamic = {};   // runtime-built encounter events (not saved; rebuilt on demand)
 
   ST.init = function (state) {
     state.story = {
       seen: {}, encSeen: {}, flags: {}, pending: null, ctx: null,
-      queue: [], log: [], hails: [], objective: 'Wake up.', lastDropIn: -999,
+      queue: [], log: [], hails: [], dynamic: {}, objective: 'Wake up.', lastDropIn: -999,
     };
     state.fragments = [];
   };
 
-  function ev(id) { return dynamic[id] || SW.eventsData.byId[id]; }
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
+  function dynamicEvent(recipe) {
+    if (!recipe || recipe.version !== 1 || !Array.isArray(recipe.choices)) return null;
+    return {
+      id: recipe.id,
+      title: recipe.title,
+      text: recipe.text,
+      choices: recipe.choices.map(function (choice) {
+        return {
+          label: choice.label,
+          req: choice.needsPower ? function (state) {
+            const ship = state.story.ctx ? state.ships.find(function (item) { return item.id === state.story.ctx.shipId; }) : null;
+            return ship && SW.combat.power(state, ship) >= choice.needsPower;
+          } : null,
+          fx: function (state) { return encFx(state, choice.fx, recipe.faction); }
+        };
+      }),
+      mood: recipe.mood || null,
+      speaker: clone(recipe.speaker),
+      dynamic: true
+    };
+  }
+  function ev(state, id) {
+    const fixed = SW.eventsData.byId[id];
+    if (fixed) return fixed;
+    const recipes = state && state.story && state.story.dynamic;
+    return recipes ? dynamicEvent(recipes[id]) : null;
+  }
   function prologueOnly(state) {
     return !!(state && state.tutorial && state.tutorial.active);
   }
@@ -28,27 +54,28 @@ SW.story = (function () {
     const st = state.story;
     // hails age out: ignoring is an answer, and the faction notices
     if (st.hail) {
-      if (!ev(st.hail.id)) st.hail = null; // dynamic encounter lost across a load
+      if (!ev(state, st.hail.id)) st.hail = null;
       else if (state.tick - st.hail.at > 60) ST.dismissHail(state);
     }
     if (st.hails && st.hails.length) {
       for (let i = st.hails.length - 1; i >= 0; i--) {
         const h = st.hails[i];
-        if (!ev(h.id)) { st.hails.splice(i, 1); continue; } // dynamic encounter lost across a load
+        if (!ev(state, h.id)) { st.hails.splice(i, 1); continue; }
         if (state.tick - h.at > D.TUNE.hailTtl) {
           st.hails.splice(i, 1);
+          if (st.dynamic && h.id) delete st.dynamic[h.id];
           if (h.fac) { const fd = SW.lore.ENC_FACTIONS[h.fac]; if (fd && fd.rep) rep(state, fd.rep, -0.2); }
         }
       }
     }
     if (st.pending) {
-      if (!ev(st.pending)) st.pending = null; // dynamic event lost across a load: let it go
+      if (!ev(state, st.pending)) st.pending = null;
       else return;
     }
     for (let i = 0; i < st.queue.length; i++) {
       if (state.tick >= st.queue[i].at) {
         const item = st.queue[i];
-        if (!allowedNow(state, ev(item.id))) continue;
+        if (!allowedNow(state, ev(state, item.id))) continue;
         st.queue.splice(i, 1);
         fire(state, item.id, item.ctx); return;
       }
@@ -72,7 +99,7 @@ SW.story = (function () {
   };
 
   function fire(state, id, ctx) {
-    const e = ev(id);
+    const e = ev(state, id);
     if (!e) return;
     state.story.pending = id;
     state.story.ctx = ctx || state.story.ctx;
@@ -88,7 +115,19 @@ SW.story = (function () {
     const st = state.story;
     st.hails = st.hails || [];
     const dupe = st.hails.find(function (x) { return x.key === h.key; });
-    if (dupe) { dupe.count = (dupe.count || 1) + 1; dupe.at = state.tick; dupe.ctx = h.ctx || dupe.ctx; return dupe; }
+    if (dupe) {
+      if (h.id && h.id !== dupe.id) {
+        if (st.dynamic && dupe.id) delete st.dynamic[dupe.id];
+        dupe.id = h.id;
+        dupe.title = h.title || dupe.title;
+        dupe.mood = h.mood || null;
+        dupe.fac = h.fac || dupe.fac;
+      }
+      dupe.count = (dupe.count || 1) + 1;
+      dupe.at = state.tick;
+      dupe.ctx = h.ctx || dupe.ctx;
+      return dupe;
+    }
     h.count = 1;
     st.hails.push(h);
     while (st.hails.length > D.TUNE.hailMax) st.hails.shift();
@@ -97,7 +136,7 @@ SW.story = (function () {
   };
 
   function hailOrFire(state, id, ctx) {
-    const e = ev(id);
+    const e = ev(state, id);
     if (!e) return;
     const rerun = e.repeat && state.story.seen[id] !== undefined && !e.dynamic;
     if (!rerun) { fire(state, id, ctx); return; }
@@ -106,7 +145,7 @@ SW.story = (function () {
   }
 
   ST.pendingEvent = function (state) {
-    return state.story.pending ? ev(state.story.pending) : null;
+    return state.story.pending ? ev(state, state.story.pending) : null;
   };
 
   ST.choose = function (state, idx) {
@@ -122,6 +161,7 @@ SW.story = (function () {
       text: typeof e.text === 'function' ? e.text(state) : e.text,
       choice: choice.label, result: result || null, speaker: e.speaker || null,
     });
+    if (e.dynamic && state.story.dynamic) delete state.story.dynamic[e.id];
     return { ok: true, result: result };
   };
 
@@ -211,24 +251,21 @@ SW.story = (function () {
     const text = (sit.text[fac] || Object.values(sit.text)[0])
       .replace(/\{F\}/g, fdef.name).replace(/\{SYS\}/g, sys.name).replace(/\{SHIP\}/g, ship ? ship.name : 'your ship');
     const id = 'enc_' + sit.id + '_' + fac + '_' + state.tick;
-    const choices = sit.choices.map(function (ch) {
-      return {
-        label: ch.label,
-        req: ch.needsPower ? function (s) {
-          const sh = s.story.ctx ? s.ships.find(function (x) { return x.id === s.story.ctx.shipId; }) : null;
-          return sh && SW.combat.power(s, sh) >= ch.needsPower;
-        } : null,
-        fx: function (s) { return encFx(s, ch.fx, fac); },
-      };
-    });
-    const event = {
-      id: id, title: sit.id.toUpperCase() + ' — ' + fdef.name.toUpperCase(),
-      text: text, choices: choices, mood: fdef.tone === 'menace' ? 'bad' : null,
-      speaker: { kind: 'proc', faction: fac, seed: id },
-      dynamic: true,
+    const recipe = {
+      version: 1,
+      id: id,
+      faction: fac,
+      title: sit.id.toUpperCase() + ' — ' + fdef.name.toUpperCase(),
+      text: text,
+      choices: sit.choices.map(function (choice) {
+        return { label: choice.label, needsPower: choice.needsPower || 0, fx: choice.fx };
+      }),
+      mood: fdef.tone === 'menace' ? 'bad' : null,
+      speaker: { kind: 'proc', faction: fac, seed: id }
     };
-    dynamic[id] = event;
-    return event;
+    state.story.dynamic = state.story.dynamic || {};
+    state.story.dynamic[id] = recipe;
+    return dynamicEvent(recipe);
   };
 
   function ctxShip(state) { return state.story.ctx ? state.ships.find(function (x) { return x.id === state.story.ctx.shipId; }) : null; }
@@ -319,7 +356,7 @@ SW.story = (function () {
   ST.openHail = function (state, key) {
     if (state.story.pending) return { ok: false, msg: 'Another matter holds the line.' };
     const h = takeHail(state, key);
-    if (!h || !ev(h.id)) return { ok: false, msg: 'The channel is dead.' };
+    if (!h || !ev(state, h.id)) return { ok: false, msg: 'The channel is dead.' };
     fire(state, h.id, h.ctx);
     return { ok: true };
   };
@@ -328,6 +365,7 @@ SW.story = (function () {
     if (!h) return { ok: false };
     const fdef = SW.lore.ENC_FACTIONS[h.fac];
     if (fdef && fdef.rep) rep(state, fdef.rep, -0.2); // they remember being left on read
+    if (state.story.dynamic && h.id) delete state.story.dynamic[h.id];
     return { ok: true };
   };
 

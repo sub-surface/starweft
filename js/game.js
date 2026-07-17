@@ -8,29 +8,65 @@ SW.game = (function () {
   G.state = null;
   G.fx = [];            // transient render effects (not saved)
   G.handlers = {};      // UI hooks: toast, fx, event, sfx, objective, gameover
+  const ACCOUNT_KEY = 'starweft_v3_account';
+  const CAMPAIGN_INDEX_KEY = 'starweft_v3_campaign_index';
 
   G.emit = function (type, payload) {
+    if (G._replaying) return;
     if (type === 'fx') { G.fx.push(Object.assign({ at: Date.now ? 0 : 0 }, payload)); if (G.fx.length > 60) G.fx.shift(); }
     const h = G.handlers[type];
     if (h) { try { h(payload); } catch (e) { /* UI hiccups must not kill the sim */ } }
   };
 
-  // ---- Legacy (roguelite meta: persists across runs, not in saves) ----
-  function legacyStore() {
-    try { return (typeof window !== 'undefined' && typeof localStorage !== 'undefined') ? localStorage : null; } catch (e) { return null; }
-  }
+  // ---- Account / Chronicle (stored independently from campaign saves) ----
+  G._account = null;
+  G.accountState = function () {
+    if (G._account) return G._account;
+    const s = storage();
+    let saved = null, legacy = {};
+    if (s) {
+      try { saved = JSON.parse(s.getItem(ACCOUNT_KEY) || 'null'); } catch (e) { saved = null; }
+      if (!saved || SW.campaign.validateAccount(saved).length) {
+        try { saved = JSON.parse(s.getItem(ACCOUNT_KEY + ':previous') || 'null'); } catch (e) { saved = null; }
+      }
+      if (!saved || SW.campaign.validateAccount(saved).length) saved = null;
+      try { legacy = JSON.parse(s.getItem('starweft_legacy') || '{}'); } catch (e) { legacy = {}; }
+    }
+    G._account = SW.campaign.account(saved, legacy);
+    return G._account;
+  };
+  G.saveAccount = function () {
+    const s = storage();
+    const account = G.accountState();
+    const errors = SW.campaign.validateAccount(account);
+    if (errors.length) return { ok: false, msg: errors.join('; ') };
+    if (!s) return { ok: true, memory: true };
+    try {
+      const raw = JSON.stringify(account);
+      s.setItem(ACCOUNT_KEY + ':tmp', raw);
+      JSON.parse(s.getItem(ACCOUNT_KEY + ':tmp'));
+      const prior = s.getItem(ACCOUNT_KEY);
+      if (prior) {
+        try {
+          const parsedPrior = JSON.parse(prior);
+          if (SW.campaign.validateAccount(parsedPrior).length === 0) s.setItem(ACCOUNT_KEY + ':previous', prior);
+        } catch (e) { /* retain the existing known-good previous account */ }
+      }
+      s.setItem(ACCOUNT_KEY, raw);
+      JSON.parse(s.getItem(ACCOUNT_KEY));
+      s.removeItem(ACCOUNT_KEY + ':tmp');
+      return { ok: true };
+    } catch (e) { return { ok: false, msg: 'Account save failed: ' + e.message }; }
+  };
   G.legacy = function () {
-    const s = legacyStore();
-    if (!s) return G._memLegacy || {};
-    try { return JSON.parse(s.getItem('starweft_legacy') || '{}'); } catch (e) { return {}; }
+    return G.accountState().chronicle.flags;
   };
   G.legacySet = function (flag) {
+    if (G._replaying) return;
     const cur = G.legacy();
     if (cur[flag]) return;
     cur[flag] = true;
-    G._memLegacy = cur;
-    const s = legacyStore();
-    if (s) { try { s.setItem('starweft_legacy', JSON.stringify(cur)); } catch (e) {} }
+    G.saveAccount();
     G.emit('toast', { kind: 'good', text: '★ Legacy unlocked: new origins may be available on your next run.' });
   };
   G.originUnlocked = function (originId) {
@@ -45,7 +81,7 @@ SW.game = (function () {
     opts = opts || {};
     const seed = opts.seed !== undefined ? String(opts.seed) : String(Math.floor((typeof performance !== 'undefined' ? performance.now() : 1234) * 1000) % 1e9);
     const difficulty = D.DIFFICULTY[opts.difficulty] ? opts.difficulty : 'standard';
-    const originId = (D.ORIGINS[opts.origin] && G.originUnlocked(opts.origin)) ? opts.origin : 'courier';
+    const originId = (D.ORIGINS[opts.origin] && (G._replaying || G.originUnlocked(opts.origin))) ? opts.origin : 'courier';
     const origin = D.ORIGINS[originId];
     // Founder (SPEC[RUN-FOUNDERS]): orthogonal to Origin, chosen only for a Focused
     // (Act Ladder) run — the Long Weave sandbox has no use for a rule-bend
@@ -63,7 +99,9 @@ SW.game = (function () {
     const startCreditsBonus = conditions.reduce(function (sum, c) {
       const fx = D.CONDITIONS[c] && D.CONDITIONS[c].fx; return sum + ((fx && fx.startCreditsBonus) || 0);
     }, 0);
-    const state = {
+    const account = G.accountState();
+    const campaignId = opts.campaignId || ('weave-' + (U.seedFrom(seed) >>> 0).toString(16).padStart(8, '0') + '-' + (account.nextCampaign || 1));
+    const state = SW.campaign.create({
       version: D.SAVE_VERSION,
       seed: seed,
       rngState: U.seedFrom(seed),
@@ -87,11 +125,12 @@ SW.game = (function () {
       perks: [], perkPoints: 0, milestones: {}, scourgeStance: null,
       world: D.resolveWorld(opts.world),
       news: [],
+      journal: [],
       laneFlow: {},
       // The Act Ladder (SPEC[RUN-ACTS]): a focused run threads acts with quotas and
       // clocks. Absent/off => a classic Long-Weave sandbox run (unchanged).
       acts: opts.acts ? { on: true } : null,
-    };
+    }, { campaignId: campaignId, accountId: account.id });
     SW.galaxy.generate(state);
     SW.story.init(state);
     SW.scourge.init(state);
@@ -159,7 +198,7 @@ SW.game = (function () {
     } else if (heart === 'drift') {
       // an unsettled star, far enough out to feel like the dark — claim it.
       const cands = state.systems.filter(function (s) {
-        return s.id !== state.homeId && !s.wonder && s.type === 'frontier' && s.hops >= 3;
+        return s.id !== state.homeId && !s.wonder && !s.badlands && s.type === 'frontier' && s.hops >= 3;
       });
       if (cands.length) { startSys = cands[Math.floor(U.rnd(state) * cands.length)].id; relocateHome(startSys, true); state.story.flags.heart_drift = true; }
     }
@@ -201,6 +240,26 @@ SW.game = (function () {
     if (opts.tutorial && SW.tutorial) SW.tutorial.init(state);
     // The Act Ladder seals its first Charter once ships exist (Loomship = flagship).
     if (state.acts && state.acts.on && SW.acts) SW.acts.init(state);
+    SW.charters.ensure(state);
+    SW.objectives.initializeGeneration(state);
+    SW.aperture.init(state, startSys);
+    state.thread.launch = {
+      version: 1,
+      campaignId: state.campaign.id,
+      seed: seed,
+      difficulty: difficulty,
+      origin: originId,
+      founder: founderId,
+      threat: threat,
+      conditions: conditions.slice(),
+      doctrineLean: doctrineLean,
+      daily: state.daily,
+      identity: JSON.parse(JSON.stringify(state.identity)),
+      world: JSON.parse(JSON.stringify(state.world)),
+      aptitude: opts.aptitude || null,
+      tutorial: !!opts.tutorial,
+      acts: !!opts.acts
+    };
     G.state = state;
     G.fx.length = 0;
     return state;
@@ -213,6 +272,7 @@ SW.game = (function () {
     if (!state || state.gameOver) return;
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     state.tick++;
+    state.thread.elapsedTicks = state.tick;
     SW.economy.tick(state);
     SW.ships.tick(state);
     tickProjects(state);
@@ -236,15 +296,23 @@ SW.game = (function () {
     if (SW.tutorial) SW.tutorial.tick(state);
     tickStrandedGuard(state);
     SW.perks.tick(state);
+    SW.aperture.afterTick(state);
     if (state.infamy >= 5) G.legacySet('infamy');
     checkEnd(state);
-    if (state.tick % D.TUNE.autosaveEvery === 0) G.save('auto');
+    if (!G._replaying && state.tick % D.TUNE.autosaveEvery === 0) G.save('auto');
     G.lastTickMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
   };
 
   // ---- Invariant validator (tests + dev tooling; never runs in the loop) ----
   G.validate = function (state) {
     const bad = [];
+    bad.push.apply(bad, SW.campaign.validate(state));
+    bad.push.apply(bad, validateJournal(state));
+    bad.push.apply(bad, SW.charters.validate(state));
+    bad.push.apply(bad, SW.aperture.validate(state));
+    const objectiveStore = state && state.thread && state.thread.objectives;
+    if (!objectiveStore) bad.push('objective store missing');
+    else for (const objective of objectiveStore.active) bad.push.apply(bad, SW.objectives.validate(objective, state));
     if (!isFinite(state.credits)) bad.push('credits not finite');
     if (!isFinite(state.research) || state.research < -0.01) bad.push('research invalid: ' + state.research);
     for (const sys of state.systems) {
@@ -882,6 +950,9 @@ SW.game = (function () {
     if (i >= 0) state.bookmarks.splice(i, 1); else state.bookmarks.push(sysId);
     return { ok: true, bookmarked: i < 0 };
   };
+  A.focusAperture = function (state, sysId) {
+    return SW.aperture.focus(state, Number(sysId));
+  };
   A.deliverPanacea = function (state, shipId) {
     const ship = findShip(state, shipId);
     if (!ship || ship.mode !== 'idle') return err('Ship unavailable.');
@@ -961,69 +1032,401 @@ SW.game = (function () {
   };
 
   // ---- Action journal ----
-  // Every action call is recorded into the save: {t: tick, a: name, args, ok}.
+  // Every action call is recorded into the save: {seq, t, a, args, ok}.
   // Seed + journal = a replayable run; a bug report is a save file.
-  const JOURNAL_CAP = 2000;
+  function cloneActionValue(value, stack) {
+    if (value === undefined) return { __swv: 'undefined' };
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+    if (typeof value === 'number') {
+      if (Object.is(value, -0)) return { __swv: 'negative-zero' };
+      if (Number.isNaN(value)) return { __swv: 'nan' };
+      if (value === Infinity) return { __swv: 'infinity' };
+      if (value === -Infinity) return { __swv: 'negative-infinity' };
+      return value;
+    }
+    if (typeof value !== 'object') throw new Error('unsupported value type ' + typeof value);
+    if (stack.indexOf(value) >= 0) throw new Error('cyclic value');
+    const proto = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) throw new Error('non-plain object');
+    if (Object.getOwnPropertySymbols(value).length) throw new Error('symbol-keyed properties are unsupported');
+    stack.push(value);
+    let copy;
+    if (Array.isArray(value)) {
+      const arrayNames = Object.getOwnPropertyNames(value).filter(function (name) { return name !== 'length'; });
+      if (arrayNames.length !== value.length || arrayNames.some(function (name, i) { return name !== String(i); })) {
+        throw new Error('array properties must be dense indexes');
+      }
+      copy = [];
+      for (let i = 0; i < value.length; i++) {
+        if (!Object.prototype.hasOwnProperty.call(value, i)) throw new Error('sparse arrays are unsupported');
+        copy.push(cloneActionValue(value[i], stack));
+      }
+    } else {
+      if (Object.getOwnPropertyNames(value).length !== Object.keys(value).length) throw new Error('non-enumerable properties are unsupported');
+      copy = Object.create(null);
+      Object.keys(value).forEach(function (key) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || descriptor.get || descriptor.set) throw new Error('accessor properties are unsupported');
+        copy[key] = cloneActionValue(value[key], stack);
+      });
+      // Escape the codec's reserved marker if it belongs to player data.
+      if (Object.prototype.hasOwnProperty.call(copy, '__swv')) copy = { __swv: 'object', value: copy };
+    }
+    stack.pop();
+    return copy;
+  }
+
+  function restoreActionValue(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(restoreActionValue);
+    if (Object.prototype.hasOwnProperty.call(value, '__swv')) {
+      if (value.__swv === 'undefined') return undefined;
+      if (value.__swv === 'negative-zero') return -0;
+      if (value.__swv === 'nan') return NaN;
+      if (value.__swv === 'infinity') return Infinity;
+      if (value.__swv === 'negative-infinity') return -Infinity;
+      if (value.__swv === 'object') {
+        if (!value.value || typeof value.value !== 'object' || Array.isArray(value.value)) throw new Error('invalid escaped object');
+        const original = {};
+        Object.keys(value.value).forEach(function (key) {
+          Object.defineProperty(original, key, {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: restoreActionValue(value.value[key])
+          });
+        });
+        return original;
+      }
+      throw new Error('unknown action value encoding');
+    }
+    const restored = {};
+    Object.keys(value).forEach(function (key) {
+      Object.defineProperty(restored, key, {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: restoreActionValue(value[key])
+      });
+    });
+    return restored;
+  }
+
+  function actionJournal(state) {
+    if (!state || typeof state !== 'object' || !state.systems) return null;
+    if (state.journal === undefined || state.journal === null) state.journal = [];
+    if (!Array.isArray(state.journal) || !Object.isExtensible(state.journal)) throw new Error('Action journal is unavailable.');
+    return state.journal;
+  }
+
+  function appendJournal(state, entry, journal) {
+    if (!journal) return;
+    entry.seq = journal.length + 1;
+    entry.t = state.tick;
+    journal.push(entry);
+  }
+
+  function validateJournal(state) {
+    const errors = [];
+    const journal = state && state.journal;
+    if (!Array.isArray(journal)) return ['action journal missing'];
+    if (state.thread && state.thread.replay && state.thread.replay.complete === false) return errors;
+    for (let i = 0; i < journal.length; i++) {
+      const entry = journal[i];
+      if (!entry || entry.seq !== i + 1) errors.push('action journal sequence invalid at entry ' + (i + 1));
+      if (!entry || !Number.isInteger(entry.t) || entry.t < 0) errors.push('action journal tick invalid at entry ' + (i + 1));
+      if (!entry || typeof entry.a !== 'string' || !Array.isArray(entry.args) || typeof entry.ok !== 'boolean') {
+        errors.push('action journal entry invalid at entry ' + (i + 1));
+      }
+    }
+    return errors;
+  }
+
   for (const name of Object.keys(A)) {
     (function (name, fn) {
       A[name] = function (state) {
-        const r = fn.apply(null, arguments);
+        if (G._replaying) return fn.apply(null, arguments);
+        let journal, journalArgs;
+        try { journal = actionJournal(state); }
+        catch (journalError) { return { ok: false, msg: journalError.message }; }
         try {
-          if (state && typeof state === 'object' && state.systems) {
-            const j = state.journal = state.journal || [];
-            j.push({ t: state.tick, a: name, args: Array.prototype.slice.call(arguments, 1), ok: !(r && r.ok === false) });
-            if (j.length > JOURNAL_CAP) j.splice(0, j.length - JOURNAL_CAP);
-          }
-        } catch (e) { /* journaling must never break play */ }
-        return r;
+          journalArgs = cloneActionValue(Array.prototype.slice.call(arguments, 1), []);
+        } catch (serializationError) {
+          appendJournal(state, {
+            a: name,
+            args: [],
+            ok: false,
+            rejected: 'nonserializable-arguments'
+          }, journal);
+          return { ok: false, msg: 'Action arguments are not serializable: ' + serializationError.message };
+        }
+        let result;
+        try {
+          result = fn.apply(null, arguments);
+        } catch (actionError) {
+          appendJournal(state, {
+            a: name,
+            args: journalArgs,
+            ok: false,
+            threw: true,
+            error: {
+              name: actionError && actionError.name ? String(actionError.name) : 'Error',
+              message: actionError && actionError.message ? String(actionError.message) : String(actionError)
+            }
+          }, journal);
+          throw actionError;
+        }
+        appendJournal(state, { a: name, args: journalArgs, ok: !(result && result.ok === false) }, journal);
+        return result;
       };
     })(name, A[name]);
   }
+
+  function replayProjection(state) {
+    const value = JSON.parse(JSON.stringify(state));
+    if (value.thread) {
+      delete value.thread.journal;
+      delete value.thread.replay;
+      delete value.thread.paused;
+      delete value.thread.speed;
+    }
+    return value;
+  }
+
+  G.replayDigest = function (state) {
+    return JSON.stringify(replayProjection(state));
+  };
+
+  G.replay = function (source) {
+    let parsed;
+    try { parsed = typeof source === 'string' ? JSON.parse(source) : JSON.parse(JSON.stringify(source)); }
+    catch (e) { return { ok: false, msg: 'Replay source is not valid JSON.' }; }
+    const prepared = SW.campaign.migrate(parsed);
+    if (!prepared.ok) return prepared;
+    const original = prepared.state;
+    const journalErrors = validateJournal(original);
+    if (journalErrors.length) return { ok: false, msg: journalErrors.join('; '), errors: journalErrors };
+    if (!original.thread.replay || !original.thread.replay.complete || !original.thread.launch) {
+      return { ok: false, msg: (original.thread.replay && original.thread.replay.reason) || 'This save has no complete launch recipe.' };
+    }
+    const log = JSON.parse(JSON.stringify(original.journal || []));
+    const launch = JSON.parse(JSON.stringify(original.thread.launch));
+    const targetTick = original.tick;
+    const previous = G.state;
+    const mismatches = [];
+    G._replaying = true;
+    let replayed;
+    try {
+      replayed = G.newGame(launch);
+      for (let i = 0; i < log.length; i++) {
+        const entry = log[i];
+        if (!entry || entry.seq !== i + 1) {
+          mismatches.push('journal sequence is not contiguous at entry ' + (i + 1));
+          break;
+        }
+        if (!Number.isInteger(entry.t) || entry.t < replayed.tick) {
+          mismatches.push('journal tick out of order at sequence ' + (entry.seq || (i + 1)));
+          break;
+        }
+        if (entry.t > targetTick || !Array.isArray(entry.args)) {
+          mismatches.push('journal entry invalid at sequence ' + entry.seq);
+          break;
+        }
+        while (replayed.tick < entry.t && !replayed.gameOver) G.tick(replayed);
+        const action = A[entry.a];
+        if (!action) { mismatches.push('unknown action ' + entry.a); break; }
+        if (entry.rejected === 'nonserializable-arguments') {
+          if (entry.ok !== false) mismatches.push('rejected action has an invalid outcome at sequence ' + entry.seq);
+          continue;
+        }
+        let result, thrown = null, replayArgs;
+        try { replayArgs = restoreActionValue(entry.args); }
+        catch (e) { mismatches.push('action arguments cannot be decoded at sequence ' + entry.seq); break; }
+        try { result = action.apply(null, [replayed].concat(replayArgs)); }
+        catch (e) { thrown = e; }
+        if (entry.threw) {
+          if (!thrown) mismatches.push('action no longer throws at sequence ' + entry.seq + ': ' + entry.a);
+          else if (entry.error && (String(thrown.name || 'Error') !== entry.error.name || String(thrown.message || thrown) !== entry.error.message)) {
+            mismatches.push('action error changed at sequence ' + entry.seq + ': ' + entry.a);
+          }
+        } else if (thrown) {
+          mismatches.push('action now throws at sequence ' + entry.seq + ': ' + entry.a);
+        } else {
+          const ok = !(result && result.ok === false);
+          if (ok !== entry.ok) mismatches.push('action outcome changed at sequence ' + entry.seq + ': ' + entry.a);
+        }
+      }
+      while (!mismatches.length && replayed.tick < targetTick && !replayed.gameOver) G.tick(replayed);
+      replayed.paused = original.paused;
+      replayed.speed = original.speed;
+      replayed.journal = log;
+      replayed.thread.replay = {
+        version: 1,
+        complete: true,
+        verifiedTick: targetTick,
+        matches: !mismatches.length && G.replayDigest(replayed) === G.replayDigest(original)
+      };
+      if (!replayed.thread.replay.matches && !mismatches.length) mismatches.push('canonical state digest differs after replay');
+    } catch (e) {
+      mismatches.push(e && e.message ? e.message : String(e));
+    } finally {
+      G._replaying = false;
+    }
+    if (mismatches.length) {
+      G.state = previous;
+      return { ok: false, msg: 'Replay diverged: ' + mismatches.join('; '), errors: mismatches, state: replayed };
+    }
+    G.state = replayed;
+    return { ok: true, state: replayed, tick: targetTick, actions: log.length };
+  };
 
   // ---- Save / load ----
   function storage() {
     // browser only — Node 25 exposes a localStorage stub that warns without a backing file
     try { return (typeof window !== 'undefined' && typeof localStorage !== 'undefined') ? localStorage : null; } catch (e) { return null; }
   }
+  function campaignKey(id, slot) {
+    return 'starweft_v3_campaign:' + id + ':' + (slot || 'manual');
+  }
+  function legacyCampaignKey(id, slot) {
+    return 'starweft_v3_legacy:' + id + ':' + (slot || 'manual');
+  }
+  function legacyKey(slot) { return 'starweft_' + (slot || 'manual'); }
+  G.campaignSaveKey = campaignKey;
+
   G.save = function (slot) {
     const s = storage();
     if (!s || !G.state) return { ok: false };
+    const stateErrors = G.validate(G.state);
+    if (stateErrors.length) return { ok: false, msg: stateErrors.join('; '), errors: stateErrors };
+    const packed = SW.campaign.serialize(G.state);
+    if (!packed.ok) return packed;
+    const state = G.state;
+    const key = state.kind === 'legacy-weave'
+      ? legacyCampaignKey(state.campaign.id, slot)
+      : campaignKey(state.campaign.id, slot);
+    const tmp = key + ':tmp';
+    const previous = key + ':previous';
     try {
-      s.setItem('starweft_' + (slot || 'manual'), JSON.stringify(G.state));
-      return { ok: true };
+      s.setItem(tmp, packed.raw);
+      const staged = SW.campaign.migrate(JSON.parse(s.getItem(tmp)));
+      if (!staged.ok) throw new Error(staged.msg);
+      const prior = s.getItem(key);
+      if (prior !== null) {
+        try {
+          const knownGood = SW.campaign.migrate(JSON.parse(prior));
+          if (knownGood.ok) s.setItem(previous, prior);
+        } catch (e) { /* retain the existing known-good previous generation */ }
+      }
+      s.setItem(key, packed.raw);
+      const verified = SW.campaign.migrate(JSON.parse(s.getItem(key)));
+      if (!verified.ok) throw new Error(verified.msg);
+      s.removeItem(tmp);
+      const account = G.accountState();
+      SW.campaign.register(account, state);
+      s.setItem(CAMPAIGN_INDEX_KEY, JSON.stringify(account.chronicle.campaigns));
+      const accountSave = G.saveAccount();
+      if (!accountSave.ok) return accountSave;
+      return { ok: true, key: key };
     } catch (e) { return { ok: false, msg: 'Save failed: ' + e.message }; }
   };
   G.load = function (slot) {
     const s = storage();
     if (!s) return { ok: false, msg: 'No storage available.' };
-    const raw = s.getItem('starweft_' + (slot || 'manual'));
+    const account = G.accountState();
+    const id = account.activeCampaignId;
+    const key = id ? (account.activeSaveKind === 'legacy-weave' ? legacyCampaignKey(id, slot) : campaignKey(id, slot)) : null;
+    let raw = key ? s.getItem(key) : null;
+    let source = key;
+    if (!raw) { source = legacyKey(slot); raw = s.getItem(source); }
     if (!raw) return { ok: false, msg: 'No save found.' };
-    return G.loadFromString(raw);
+    let result = G.loadFromString(raw);
+    if (!result.ok && key) {
+      const fallback = s.getItem(key + ':previous');
+      if (fallback) {
+        const recovered = G.loadFromString(fallback);
+        if (recovered.ok) {
+          recovered.recovered = true;
+          recovered.corruptKey = key;
+          return recovered;
+        }
+      }
+    }
+    if (result.ok && source === legacyKey(slot)) result.legacy = true;
+    return result;
   };
   G.loadFromString = function (raw) {
+    if (typeof raw !== 'string' || raw.length > 8 * 1024 * 1024) return { ok: false, msg: 'Save data is missing or too large.' };
     let st;
     try { st = JSON.parse(raw); } catch (e) { return { ok: false, msg: 'Save data is not valid JSON.' }; }
-    const v = validateSave(st);
-    if (!v.ok) return v;
+    const prepared = SW.campaign.migrate(st);
+    if (!prepared.ok) return prepared;
+    st = prepared.state;
+    if (st.story) st.story.dynamic = st.story.dynamic || {};
+    if (prepared.migrated) {
+      SW.objectives.ensure(st);
+      SW.charters.ensure(st);
+      if (!st.act.aperture) SW.aperture.init(st, st.homeId);
+    }
+    const errors = validateSave(st);
+    if (errors.length) return { ok: false, msg: errors.join('; '), errors: errors };
     G.state = st;
     G.fx.length = 0;
     SW.planets.clearCache(); // bodies are derived from seed; never trust a stale cache
     st.paused = true;
-    return { ok: true };
+    return { ok: true, migrated: prepared.migrated, fromVersion: prepared.fromVersion, legacy: st.kind === 'legacy-weave' };
   };
-  G.exportSave = function () { return G.state ? JSON.stringify(G.state) : null; };
+  G.exportSave = function () {
+    if (!G.state) return null;
+    const packed = SW.campaign.serialize(G.state);
+    return packed.ok ? packed.raw : null;
+  };
+  G.exportLegacy = function (slot) {
+    const s = storage();
+    return s ? s.getItem(legacyKey(slot || 'auto')) : null;
+  };
+  G.hasLegacy = function (slot) {
+    const s = storage();
+    return !!(s && s.getItem(legacyKey(slot || 'auto')));
+  };
+  G.loadLegacy = function (slot) {
+    const s = storage();
+    if (!s) return { ok: false, msg: 'No storage available.' };
+    const source = legacyKey(slot || 'auto');
+    const raw = s.getItem(source);
+    if (!raw) return { ok: false, msg: 'No legacy save found.' };
+    const result = G.loadFromString(raw);
+    if (result.ok) {
+      result.legacy = true;
+      result.legacySource = source;
+    }
+    return result;
+  };
   G.hasSave = function (slot) {
     const s = storage();
-    return !!(s && s.getItem('starweft_' + (slot || 'auto')));
+    if (!s) return false;
+    const account = G.accountState();
+    const activeKey = account.activeCampaignId
+      ? (account.activeSaveKind === 'legacy-weave'
+        ? legacyCampaignKey(account.activeCampaignId, slot || 'auto')
+        : campaignKey(account.activeCampaignId, slot || 'auto'))
+      : null;
+    return !!((activeKey && s.getItem(activeKey)) || s.getItem(legacyKey(slot || 'auto')));
   };
 
   function validateSave(st) {
-    if (!st || typeof st !== 'object') return { ok: false, msg: 'Not a save file.' };
-    if (st.version !== D.SAVE_VERSION) return { ok: false, msg: 'Save is from version ' + st.version + '; this build expects ' + D.SAVE_VERSION + '.' };
-    if (!Array.isArray(st.systems) || !st.systems.length) return { ok: false, msg: 'Save has no galaxy.' };
-    if (!st.stats || !st.tech || !st.story || !st.scourge) return { ok: false, msg: 'Save is missing core sections.' };
-    st.credits = U.num(st.credits); st.research = U.num(st.research); st.tick = U.num(st.tick);
-    return { ok: true };
+    const errors = SW.campaign.validate(st);
+    errors.push.apply(errors, validateJournal(st));
+    if (!st.stats || !st.tech || !st.story || !st.scourge) errors.push('save is missing core sections');
+    errors.push.apply(errors, SW.charters.validate(st));
+    errors.push.apply(errors, SW.aperture.validate(st));
+    const objectives = st && st.thread && st.thread.objectives;
+    if (!objectives || objectives.version !== SW.objectives.VERSION || !Array.isArray(objectives.active)) errors.push('objective store invalid');
+    else for (const objective of objectives.active) errors.push.apply(errors, SW.objectives.validate(objective, st));
+    if (!Number.isFinite(st.credits) || st.credits < 0) errors.push('credits invalid');
+    if (!Number.isFinite(st.research) || st.research < 0) errors.push('research invalid');
+    if (!Number.isFinite(st.tick) || st.tick < 0) errors.push('tick invalid');
+    return errors;
   }
 
   return G;

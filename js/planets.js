@@ -183,7 +183,8 @@ SW.planets = (function () {
         note: 'The Loomkeeper Lattice. The only large Precursor structure known to survive.',
       };
     }
-    if (sys.id === state.homeId) {
+    const solId = state.campaign && Number.isInteger(state.campaign.solId) ? state.campaign.solId : 0;
+    if (sys.id === solId) {
       const bodies = SOL_BODIES.map(function (b, i) {
         var body = makeBody(b.name, b.type, b.a, mass, lum, { real: true, pop: b.pop, settled: b.settled, station: b.station, radius: b.r, ring: b.ring });
         addBodyDetail(body, state.seed, sys.id);

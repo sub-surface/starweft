@@ -78,24 +78,25 @@ helpers rather than a framework.
 dependency order:
 
 ```text
- 1 util.js              11 ships.js              21 founders.js
- 2 data.js              12 combat.js             22 pledges.js
- 3 perks.js             13 rivals.js             23 acts.js
- 4 starcat.js           14 scourge.js            24 signals.js
- 5 lore.js              15 tech.js               25 game.js
- 6 events_data.js       16 story.js              26 audio.js
- 7 planets.js           17 worldevents.js        27 portraits.js
- 8 sites.js             18 tutorial.js           28 codex.js
- 9 galaxy.js            19 quests.js             29 render.js
-10 economy.js           20 civics.js             30 market_analytics.js
-31 ui_market.js         35 ui_pledge.js           39 boot.js
-32 ui_ship.js           36 ui_tech.js             40 main.js
-33 ui_system.js         37 ui_modals.js
-34 ui_routes.js         38 ui.js
+ 1 util.js              12 combat.js             23 charters.js
+ 2 data.js              13 rivals.js             24 aperture.js
+ 3 perks.js             14 scourge.js            25 founders.js
+ 4 starcat.js           15 tech.js               26 pledges.js
+ 5 lore.js              16 story.js              27 acts.js
+ 6 events_data.js       17 worldevents.js        28 signals.js
+ 7 planets.js           18 tutorial.js           29 game.js
+ 8 sites.js             19 quests.js             30 audio.js
+ 9 galaxy.js            20 civics.js             31 portraits.js
+10 economy.js           21 campaign.js           32 codex.js
+11 ships.js             22 objectives.js         33 render.js
+34 market_analytics.js  38 ui_routes.js          42 ui.js
+35 ui_market.js         39 ui_pledge.js           43 boot.js
+36 ui_ship.js           40 ui_tech.js             44 main.js
+37 ui_system.js         41 ui_modals.js
 ```
 
 `test/smoke.js` loads the headless-safe domain stack in the same relative order:
-scripts 1-25 plus `market_analytics.js`. It deliberately excludes audio, canvas
+scripts 1-29 plus `market_analytics.js`. It deliberately excludes audio, canvas
 helpers, render, UI, boot, and main.
 
 When adding a script:
@@ -137,6 +138,10 @@ When adding a script:
 | `js/tutorial.js` | current prologue/tutorial state and predicates |
 | `js/quests.js` | quest state and resolution |
 | `js/civics.js` | factions, ideology, presence, and civic state |
+| `js/campaign.js` | account/campaign/Thread/Act schemas, migrations, seed layers, Chronicle registration |
+| `js/objectives.js` | objective grammar, executable solution classes, seed validation and repair |
+| `js/charters.js` | Charter schema, slots, pool registration, and validation |
+| `js/aperture.js` | Hot/Warm/Cold records, causal classification, aggregate snapshots, conservation diagnostics |
 | `js/founders.js` | current Founder packages; migration input for archetypes |
 | `js/pledges.js` | Pledge construction, constraints, progress, completion/failure |
 | `js/acts.js` | current Act shell and transitions; target shape is in SPEC |
@@ -196,6 +201,7 @@ story
 tutorial
 stranded guard
 perks
+aperture classification/snapshot
 infamy legacy flag
 end-state check
 periodic autosave

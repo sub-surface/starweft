@@ -106,7 +106,7 @@ globalThis.prompt = function () { return null; };
 // no AudioContext on purpose: audio must degrade gracefully
 
 // ---------- load the whole stack, including main.js (boots immediately) ----------
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'founders', 'pledges', 'acts', 'signals', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'campaign', 'objectives', 'charters', 'aperture', 'founders', 'pledges', 'acts', 'signals', 'game', 'audio', 'portraits', 'codex', 'render', 'market_analytics', 'ui_market', 'ui_ship', 'ui_system', 'ui_routes', 'ui_pledge', 'ui_tech', 'ui_modals', 'ui', 'boot', 'main'];
 step('full stack loads and main.js boots', function () {
   for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 });
@@ -1207,8 +1207,12 @@ step('tech research through dispatcher', function () {
 });
 
 step('menu, help, save, load via dispatcher', function () {
+  const legacyManual = '{"version":2,"sentinel":"manual-byte-preservation"}';
+  storageMap.starweft_manual = legacyManual;
   fireClick('saveManual');
-  if (!storageMap.starweft_manual) throw new Error('manual save not written');
+  const manualKey = G.campaignSaveKey(G.state.campaign.id, 'manual');
+  if (!storageMap[manualKey]) throw new Error('canonical manual save not written');
+  if (storageMap.starweft_manual !== legacyManual) throw new Error('legacy manual save was overwritten');
   if (!storageMap.starweft_meta_manual) throw new Error('manual save metadata not written');
   fireClick('help');
   fireClick('closeModal');
@@ -1266,8 +1270,63 @@ step('interval loop bodies run without throwing', function () {
 });
 
 step('autosave happened via tick loop', function () {
+  const legacyAuto = '{"version":2,"sentinel":"auto-byte-preservation"}';
+  storageMap.starweft_auto = legacyAuto;
   for (let i = 0; i < 50; i++) G.tick(G.state);
-  if (!storageMap.starweft_auto) throw new Error('no autosave in storage');
+  const autoKey = G.campaignSaveKey(G.state.campaign.id, 'auto');
+  if (!storageMap[autoKey]) throw new Error('no canonical autosave in storage');
+  if (storageMap.starweft_auto !== legacyAuto) throw new Error('legacy autosave was overwritten');
+});
+
+step('corrupt canonical save recovers the previous verified generation', function () {
+  const recovery = G.newGame({ seed: 'boot-recovery', difficulty: 'relaxed' });
+  const first = G.save('manual');
+  if (!first.ok) throw new Error(first.msg || 'first recovery save failed');
+  const key = G.campaignSaveKey(recovery.campaign.id, 'manual');
+  const firstRaw = storageMap[key];
+  G.tick(recovery);
+  const second = G.save('manual');
+  if (!second.ok || storageMap[key + ':previous'] !== firstRaw) throw new Error('known-good generation was not rotated');
+  storageMap[key] = '{not-json';
+  const loaded = G.load('manual');
+  if (!loaded.ok || !loaded.recovered) throw new Error('previous generation was not recovered');
+  if (G.state.tick !== JSON.parse(firstRaw).thread.tick) throw new Error('recovery loaded the wrong generation');
+});
+
+step('corrupt account metadata recovers its previous verified generation', function () {
+  const previous = storageMap['starweft_v3_account:previous'];
+  if (!previous) throw new Error('no previous account generation available');
+  const expected = JSON.parse(previous);
+  storageMap.starweft_v3_account = '{not-json';
+  G._account = null;
+  const recovered = G.accountState();
+  if (recovered.id !== expected.id || recovered.activeCampaignId !== expected.activeCampaignId) throw new Error('account did not recover the previous generation');
+  const saved = G.saveAccount();
+  if (!saved.ok) throw new Error(saved.msg || 'recovered account could not be rewritten');
+});
+
+step('coexisting v2 play has an explicit adapter route without touching source bytes', function () {
+  const source = G.state;
+  const flat = { version: 2 };
+  const fields = SW.campaign.fields();
+  ['campaign', 'thread', 'act'].forEach(function (owner) {
+    fields[owner].forEach(function (name) {
+      if (source[name] !== undefined) flat[name] = JSON.parse(JSON.stringify(source[name]));
+    });
+  });
+  const raw = JSON.stringify(flat);
+  storageMap.starweft_manual = raw;
+  if (!G.hasLegacy('manual')) throw new Error('coexisting manual v2 save is not discoverable');
+  const imported = G.loadLegacy('manual');
+  if (!imported.ok || G.state.kind !== 'legacy-weave') throw new Error('v2 source was not imported as a legacy weave');
+  G.state.credits += 17;
+  const expectedCredits = G.state.credits;
+  const saved = G.save('manual');
+  if (!saved.ok || saved.key.indexOf('starweft_v3_legacy:') !== 0) throw new Error('legacy continuation did not use its adapter key');
+  if (storageMap.starweft_manual !== raw) throw new Error('v2 source bytes changed during continuation save');
+  G.state.credits = 0;
+  const continued = G.load('manual');
+  if (!continued.ok || G.state.credits !== expectedCredits || G.state.kind !== 'legacy-weave') throw new Error('Load did not return to continued legacy progress');
 });
 
 step('Sol prologue boots locked into the system view', function () {

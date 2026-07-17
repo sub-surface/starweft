@@ -785,6 +785,8 @@ SW.ui = (function () {
     renderInfobox(body ? { kind: 'body', body: body } : null);
   };
   ui.enterSystem = function (sysId) {
+    const state = st();
+    if (state && SW.game.actions.focusAperture) SW.game.actions.focusAperture(state, sysId);
     SW.render.enterSystem(sysId);
     $('#btnBackGalaxy').classList.remove('hidden');
     // Tell the layout we're in system view so the system panel can drop below

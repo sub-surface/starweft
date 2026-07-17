@@ -3,7 +3,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'founders', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
+const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'planets', 'sites', 'galaxy', 'economy', 'ships', 'combat', 'rivals', 'scourge', 'tech', 'story', 'worldevents', 'tutorial', 'quests', 'civics', 'campaign', 'objectives', 'charters', 'aperture', 'founders', 'pledges', 'acts', 'signals', 'game', 'market_analytics'];
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
@@ -533,7 +533,7 @@ section('Opening economy sanity (no-player run)');
   assert(prodTotal > 10, 'the world produces (' + prodTotal.toFixed(1) + '/t)');
   assert(shortages >= 3, 'real shortage pressure exists — prompts, not comfort (' + shortages + ')');
   assert(fed >= 1, 'not everything starves instantly (' + fed + ' worlds coping)');
-  const copy = JSON.parse(JSON.stringify(st));
+  const copy = SW.campaign.attach(JSON.parse(JSON.stringify(st)));
   for (const s of copy.systems) s.discovered = true;
   const ops = SW.economy.opportunities(copy, 12);
   assert(ops.length >= 6, 'profitable routes exist for the taking (' + ops.length + ')');
@@ -799,7 +799,7 @@ section('In-system sites (facilities on bodies)');
   // refusal away from the web; persistence through save/load
   const far = st.systems.find(function (s) { return !s.surveyed && s.scourge !== 2; });
   assert(A.buildSite(st, far.id, 'whatever', 'mine').ok === false, 'unsurveyed systems refuse sites');
-  const copy = JSON.parse(JSON.stringify(st));
+  const copy = SW.campaign.attach(JSON.parse(JSON.stringify(st)));
   assert(copy.systems[st.homeId].sites.length === 6, 'sites survive serialization');
   assert(SW.sites.fx(copy.systems[st.homeId]).prod.ORE > 0.4, 'site fx recompute from save data');
   invariants(st, 'post-sites');
@@ -1076,7 +1076,8 @@ section('World events');
   }
   assert(st.contracts.length + st.blockades.length >= 1, 'world events spawned (contracts=' + st.contracts.length + ', blockades=' + st.blockades.length + ')');
   // manufactured famine: deliver and complete
-  const pop = st.systems.find(function (s) { return s.pop > 5 && s.id !== st.homeId && s.discovered; });
+  const pop = st.systems.find(function (s) { return s.pop > 5 && s.id !== st.homeId; });
+  pop.discovered = true;
   const ct = { id: 'ctX', kind: 'famine', sysId: pop.id, c: 'FOOD', qty: 5, progress: 0, deadline: st.tick + 500, reward: { credits: 500, research: 50 }, label: 'Test famine at ' + pop.name };
   st.contracts.push(ct);
   const ship = st.ships[0];
@@ -1197,7 +1198,7 @@ section('Living Weave: laneFlow after long bot run');
 
   // Old saves without laneFlow: defensive initialization check
   // Simulate loading an old save by deleting laneFlow and running a tick
-  delete st.laneFlow;
+  delete st.campaign.laneFlow;
   G.tick(st);
   assert(typeof st.laneFlow === 'object', 'laneFlow re-initialized defensively after missing from save');
   invariants(st, 'post-laneflow');
@@ -2294,6 +2295,290 @@ section('Signal beacons (the map tells you)');
   const bd = SW.signals.list(ag).find(function (b) { return b.kind === 'boundary'; });
   assert(bd && bd.sys === ag.homeId && bd.glyph === '◈◈', 'open boundary casts its beacon at the Heart');
   assert(SW.signals.counts(ag).boundary === undefined, 'boundary stays out of the overflow counter (the act chip owns it)');
+}
+
+// ---------- Gate 1 foundations ----------
+section('Gate 1 — lifetime schemas, migration, continuation, and account isolation');
+{
+  const st = G.newGame({ seed: 'gate1-state', difficulty: 'standard' });
+  for (let i = 0; i < 100; i++) G.tick(st);
+  const rootKeys = Object.keys(st).sort();
+  assert(JSON.stringify(rootKeys) === JSON.stringify(['accountId', 'act', 'campaign', 'kind', 'schema', 'thread', 'version']),
+    'canonical save root contains only lifetime envelopes (' + rootKeys.join(',') + ')');
+  assert(st.version === 3 && st.campaign.version === 1 && st.thread.version === 1 && st.act.version === 1,
+    'all lifetime schemas are explicitly versioned');
+  assert(!Object.prototype.propertyIsEnumerable.call(st, 'systems') && st.systems === st.campaign.systems,
+    'flat compatibility access cannot escape campaign ownership');
+  assert(!Object.prototype.propertyIsEnumerable.call(st, 'ships') && st.ships === st.thread.ships,
+    'flat compatibility access cannot escape Thread ownership');
+
+  const packed = SW.campaign.serialize(st);
+  assert(packed.ok, 'canonical state serializes');
+  const round = SW.campaign.migrate(JSON.parse(packed.raw));
+  assert(round.ok && !round.migrated && G.replayDigest(round.state) === G.replayDigest(st),
+    '100-tick canonical save round-trips exactly');
+
+  const unknownV3 = JSON.parse(packed.raw);
+  unknownV3.unowned = { should: 'fail-closed' };
+  const unknownBefore = JSON.stringify(unknownV3);
+  const unknownResult = SW.campaign.migrate(unknownV3);
+  assert(!unknownResult.ok && /unpartitioned root field/.test(unknownResult.msg), 'unknown v3 root fields fail closed');
+  assert(JSON.stringify(unknownV3) === unknownBefore, 'failed v3 migration does not mutate its input');
+  const crossOwnerCampaign = JSON.parse(packed.raw);
+  crossOwnerCampaign.campaign.credits = 1;
+  assert(!SW.campaign.migrate(crossOwnerCampaign).ok, 'cross-owner campaign fields fail closed');
+  const crossOwnerThread = JSON.parse(packed.raw);
+  crossOwnerThread.thread.systems = [];
+  assert(!SW.campaign.migrate(crossOwnerThread).ok, 'cross-owner Thread fields fail closed');
+  const unknownAct = JSON.parse(packed.raw);
+  unknownAct.act.retiredClock = 12;
+  assert(!SW.campaign.migrate(unknownAct).ok, 'unknown Act fields fail closed');
+  const missingEnvelope = JSON.parse(packed.raw);
+  delete missingEnvelope.schema;
+  assert(!SW.campaign.migrate(missingEnvelope).ok, 'missing canonical v3 envelope fields fail closed');
+  const wrongAccountSchema = JSON.parse(packed.raw);
+  wrongAccountSchema.schema.account = 999;
+  assert(!SW.campaign.migrate(wrongAccountSchema).ok, 'unsupported account lifetime version fails closed');
+  const missingAperture = JSON.parse(packed.raw);
+  delete missingAperture.act.aperture;
+  assert(!G.loadFromString(JSON.stringify(missingAperture)).ok, 'missing canonical v3 domain schema is rejected rather than repaired');
+
+  const v2 = { version: 2 };
+  const ownership = SW.campaign.fields();
+  ['campaign', 'thread', 'act'].forEach(function (owner) {
+    ownership[owner].forEach(function (name) {
+      if (st[name] !== undefined) v2[name] = JSON.parse(JSON.stringify(st[name]));
+    });
+  });
+  v2.retiredModPayload = { intact: ['a', 2, true] };
+  const v2Before = JSON.stringify(v2);
+  const migrated = SW.campaign.migrate(v2);
+  assert(migrated.ok && migrated.migrated && migrated.state.kind === 'legacy-weave', 'v2 imports are visibly labeled legacy weaves');
+  assert(migrated.state.campaign.legacyUnknown.retiredModPayload.intact[1] === 2, 'unknown v2 data is quarantined intact');
+  assert(JSON.stringify(v2) === v2Before, 'v2 migration is pure');
+  const migratedAgain = SW.campaign.migrate(JSON.parse(JSON.stringify(migrated.state)));
+  assert(migratedAgain.ok && !migratedAgain.migrated && JSON.stringify(migratedAgain.state) === JSON.stringify(migrated.state),
+    'migration is idempotent');
+  assert(!SW.campaign.migrate({ version: 2, systems: 'broken', ships: null }).ok, 'corrupt v2 fixture is rejected');
+
+  const account = SW.campaign.newAccount({ won: true });
+  const campaignRaw = packed.raw;
+  SW.campaign.register(account, st);
+  account.settings.textScale = 1.5;
+  assert(SW.campaign.validateAccount(account).length === 0 && account.chronicle.flags.won,
+    'account/Chronicle schema validates independently');
+  const openAccount = JSON.parse(JSON.stringify(account)); openAccount.campaign = {};
+  assert(SW.campaign.validateAccount(openAccount).length > 0, 'unknown account fields fail closed');
+  const openChronicle = JSON.parse(JSON.stringify(account)); openChronicle.chronicle.thread = {};
+  assert(SW.campaign.validateAccount(openChronicle).length > 0, 'unknown Chronicle fields fail closed');
+  assert(SW.campaign.serialize(st).raw === campaignRaw, 'account mutation cannot alter campaign serialization');
+
+  const split = G.newGame({ seed: 'gate1-split', difficulty: 'relaxed' });
+  for (let i = 0; i < 45; i++) G.tick(split);
+  const midpoint = SW.campaign.serialize(split).raw;
+  for (let i = 0; i < 55; i++) G.tick(split);
+  const continuousDigest = G.replayDigest(split);
+  const resumed = G.loadFromString(midpoint);
+  assert(resumed.ok, 'mid-run canonical save loads');
+  for (let i = 0; i < 55; i++) G.tick(resumed.ok ? G.state : split);
+  assert(resumed.ok && G.replayDigest(G.state) === continuousDigest, 'save/load continuation has no causal drift');
+}
+
+section('Gate 1 — complete action replay and serialized procedural scenes');
+{
+  const st = G.newGame({ seed: 'gate1-replay', difficulty: 'relaxed' });
+  const mutableIntent = { kind: 'fetch', c: 'ORE', qty: 3, to: st.homeId };
+  A.order(st, 'missing-ship', mutableIntent); // failed actions are still causal evidence
+  mutableIntent.qty = 999;
+  A.focusAperture(st, st.homeId);
+  A.buyShip(st, 'missing-hull', st.homeId);
+  assert(st.journal.length === 3 && st.journal[0].ok === false && st.journal[2].ok === false,
+    'failed and successful actions share one ordered log');
+  assert(st.journal[0].args[1].qty === 3, 'journal captures deep-cloned pre-call arguments');
+  assert(st.journal[0].t === st.journal[1].t && st.journal[0].seq + 1 === st.journal[1].seq,
+    'same-tick action order is explicit');
+  for (let i = 0; i < 40; i++) G.tick(st);
+  const replayed = G.replay(SW.campaign.serialize(st).raw);
+  assert(replayed.ok && replayed.tick === st.tick && replayed.actions === 3, 'launch recipe + action log replay to the exact final tick');
+  assert(replayed.ok && G.replayDigest(replayed.state) === G.replayDigest(st), 'replay reproduces identical canonical state');
+
+  const longLog = G.newGame({ seed: 'gate1-long-log', difficulty: 'relaxed' });
+  for (let i = 0; i < 2005; i++) A.buyShip(longLog, 'missing-hull', longLog.homeId);
+  assert(longLog.journal.length === 2005, 'action log is complete beyond the retired 2,000-entry cap');
+  const longReplay = G.replay(SW.campaign.serialize(longLog).raw);
+  assert(longReplay.ok && longReplay.actions === 2005, 'long action log replays without truncation');
+
+  const invalidArgs = G.newGame({ seed: 'gate1-invalid-args', difficulty: 'relaxed' });
+  const cyclic = {}; cyclic.self = cyclic;
+  const invalidResult = A.order(invalidArgs, 'missing-ship', cyclic);
+  assert(!invalidResult.ok && invalidArgs.journal.length === 1 && invalidArgs.journal[0].rejected === 'nonserializable-arguments',
+    'non-serializable action input is rejected before mutation and represented in the log');
+  const rejectedReplay = G.replay(SW.campaign.serialize(invalidArgs).raw);
+  assert(rejectedReplay.ok && rejectedReplay.actions === 1, 'replay preserves fail-closed argument rejection');
+
+  const exactArgs = G.newGame({ seed: 'gate1-exact-args', difficulty: 'relaxed' });
+  A.setSpeed(exactArgs, -0);
+  assert(exactArgs.journal[0].args[0].__swv === 'negative-zero' && G.replay(SW.campaign.serialize(exactArgs).raw).ok,
+    'action codec preserves negative zero exactly');
+  const sparse = []; sparse[1] = 'unsafe-gap';
+  const sparseResult = A.order(exactArgs, 'missing-ship', sparse);
+  assert(!sparseResult.ok && exactArgs.journal[1].rejected === 'nonserializable-arguments',
+    'sparse action arrays are rejected before mutation');
+  const decorated = []; decorated.kind = 'lossy';
+  const decoratedResult = A.order(exactArgs, 'missing-ship', decorated);
+  assert(!decoratedResult.ok && exactArgs.journal[2].rejected === 'nonserializable-arguments',
+    'action arrays with non-index properties are rejected before mutation');
+  const symbolPayload = {}; symbolPayload[Symbol('lossy')] = true;
+  const symbolResult = A.order(exactArgs, 'missing-ship', symbolPayload);
+  assert(!symbolResult.ok && exactArgs.journal[3].rejected === 'nonserializable-arguments',
+    'symbol-keyed action data is rejected before mutation');
+
+  const lockedJournal = G.newGame({ seed: 'gate1-locked-journal', difficulty: 'relaxed' });
+  const lockedCredits = lockedJournal.credits;
+  Object.freeze(lockedJournal.journal);
+  const lockedResult = A.cheat(lockedJournal, 'resources');
+  assert(!lockedResult.ok && lockedJournal.credits === lockedCredits, 'an unwritable journal rejects the action before mutation');
+
+  const tampered = JSON.parse(SW.campaign.serialize(st).raw);
+  tampered.thread.journal[1].seq = 9;
+  assert(!G.replay(tampered).ok && !G.loadFromString(JSON.stringify(tampered)).ok,
+    'replay and load reject a non-contiguous journal sequence');
+
+  const sceneState = G.newGame({ seed: 'gate1-scene', difficulty: 'relaxed' });
+  const scene = SW.story.buildEncounter(sceneState, sceneState.systems[sceneState.homeId], sceneState.ships[0]);
+  assert(!!scene && !!sceneState.story.dynamic[scene.id], 'procedural encounter writes a serializable recipe');
+  sceneState.story.pending = scene.id;
+  sceneState.story.ctx = { sysId: sceneState.homeId, shipId: sceneState.ships[0].id };
+  const sceneLoad = G.loadFromString(SW.campaign.serialize(sceneState).raw);
+  const rebuilt = sceneLoad.ok ? SW.story.pendingEvent(G.state) : null;
+  assert(sceneLoad.ok && rebuilt && rebuilt.title === scene.title && rebuilt.choices.length === scene.choices.length,
+    'pending procedural encounter survives save/load with its choices');
+}
+
+section('Gate 1 — aperture causality and compatibility baseline');
+{
+  const st = G.newGame({ seed: 'gate1-aperture', difficulty: 'relaxed' });
+  assert(SW.aperture.validate(st).length === 0, 'aperture has one valid record per system');
+  const cold = st.systems.find(function (sys) { return SW.aperture.bandOf(st, sys.id) === 'cold'; });
+  assert(!!cold, 'fresh galaxy contains explicit Cold state');
+  const rngBefore = st.rngState;
+  const knownBefore = { discovered: cold.discovered, surveyed: cold.surveyed };
+  const objective = SW.objectives.create(st, { family: 'restore', sys: cold.id });
+  SW.aperture.sync(st);
+  assert(objective.ok && SW.aperture.bandOf(st, cold.id) === 'warm' &&
+    st.act.aperture.records[cold.id].reasons.indexOf('objective:active') >= 0,
+    'active causal obligation promotes Cold to Warm with an inspectable reason');
+  const hot = SW.aperture.focus(st, cold.id);
+  assert(hot.ok && SW.aperture.bandOf(st, cold.id) === 'hot' && hot.conserved, 'selection promotes to Hot without changing physical state');
+  SW.aperture.focus(st, st.homeId);
+  st.thread.objectives.active.splice(st.thread.objectives.active.indexOf(objective.objective), 1);
+  SW.aperture.sync(st, { forceAggregates: true });
+  assert(SW.aperture.bandOf(st, cold.id) === 'cold', 'system demotes after its final causal reason clears');
+  assert(cold.discovered === knownBefore.discovered && cold.surveyed === knownBefore.surveyed,
+    'fidelity transitions never alter player knowledge');
+  assert(st.rngState === rngBefore, 'aperture diagnostics never consume seeded RNG');
+  assert(st.act.aperture.conservation.length > 0 && st.act.aperture.conservation.every(function (entry) { return entry.conserved; }),
+    'compat-full transition diagnostics report unchanged full-state projections');
+
+  const baseRaw = SW.campaign.serialize(G.newGame({ seed: 'gate1-equivalence', difficulty: 'relaxed' })).raw;
+  const left = SW.campaign.migrate(JSON.parse(baseRaw)).state;
+  const right = SW.campaign.migrate(JSON.parse(baseRaw)).state;
+  const rightCold = right.systems.find(function (sys) { return SW.aperture.bandOf(right, sys.id) === 'cold'; });
+  SW.aperture.promote(right, rightCold.id, 'warm');
+  SW.aperture.promote(right, rightCold.id, 'hot');
+  SW.aperture.focus(right, right.homeId);
+  SW.aperture.sync(right, { forceAggregates: true });
+  for (let i = 0; i < 80; i++) { G.tick(left); G.tick(right); }
+  function physicalDigest(state) {
+    const value = JSON.parse(JSON.stringify(state));
+    delete value.act.aperture;
+    delete value.thread.journal;
+    delete value.thread.replay;
+    delete value.thread.paused;
+    delete value.thread.speed;
+    return JSON.stringify(value);
+  }
+  assert(physicalDigest(left) === physicalDigest(right), 'compat-full focus round trip matches the untouched full-simulation baseline');
+  assert(SW.aperture.validate(right).length === 0, 'round-tripped aperture remains schema-valid');
+}
+
+section('Gate 1 — layered seed and feasibility-validator scaffolds');
+{
+  const st = G.newGame({ seed: 'gate1-validator', difficulty: 'standard' });
+  const before = st.rngState;
+  const streamA = SW.campaign.seedStream(st, 'objectives');
+  const seqA = [U.rnd(streamA), U.rnd(streamA), U.rnd(streamA)];
+  const streamB = SW.campaign.seedStream(st, 'objectives');
+  const seqB = [U.rnd(streamB), U.rnd(streamB), U.rnd(streamB)];
+  const galaxyStream = SW.campaign.seedStream(st, 'galaxy');
+  assert(JSON.stringify(seqA) === JSON.stringify(seqB), 'named seed layers reproduce their own deterministic sequence');
+  assert(U.rnd(galaxyStream) !== seqA[0], 'different seed layers are isolated');
+  assert(st.rngState === before, 'layer generation leaves runtime RNG untouched');
+  const report = st.campaign.generation;
+  assert(report.errors.length === 0 && report.graph.connected && report.opening.loops.length >= 2,
+    'opening validator proves connectivity and two bounded, known commodity loops');
+  assert(Object.keys(report.solutions).every(function (family) { return report.solutions[family].length >= 3; }),
+    'every objective family registers at least three solution seams for later feasibility probes');
+
+  const unreachable = SW.campaign.migrate(JSON.parse(SW.campaign.serialize(st).raw)).state;
+  const target = unreachable.systems[unreachable.systems.length - 1];
+  const required = SW.objectives.create(unreachable, { family: 'restore', sys: target.id });
+  for (const neighbor of target.links.slice()) {
+    unreachable.systems[neighbor].links = unreachable.systems[neighbor].links.filter(function (id) { return id !== target.id; });
+  }
+  target.links = [];
+  const unreachableReport = SW.objectives.validateSeed(unreachable);
+  assert(required.ok && unreachableReport.errors.some(function (error) { return /mandatory objective unreachable/.test(error); }),
+    'validator rejects an unreachable mandatory objective');
+
+  const deadlock = SW.campaign.migrate(JSON.parse(SW.campaign.serialize(st).raw)).state;
+  const scope = deadlock.campaign.generation.opening.systems;
+  for (const id of scope) {
+    for (const c of D.COMM_IDS) {
+      deadlock.systems[id].prod[c] = 0;
+      deadlock.systems[id].cons[c] = 0;
+      deadlock.systems[id].stocks[c] = 0;
+    }
+  }
+  const broken = SW.objectives.validateSeed(deadlock);
+  assert(broken.opening.loops.length === 0 && broken.errors.length > 0, 'validator detects an opening economy deadlock');
+  const repaired = SW.objectives.repairSeed(deadlock, broken);
+  assert(repaired.errors.length === 0 && repaired.repairs.length >= 2 && repaired.opening.loops.length >= 2,
+    'seeded repair template restores multiple real opening routes and logs every repair');
+}
+
+section('Gate 1 — manifest parity and measured baseline budgets');
+{
+  const root = path.join(__dirname, '..');
+  const indexText = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const indexFiles = Array.from(indexText.matchAll(/<script\s+src="js\/([^".]+)\.js"/g)).map(function (m) { return m[1]; });
+  const browserText = fs.readFileSync(path.join(root, 'test', 'browser_boot.js'), 'utf8');
+  const browserBlock = (browserText.match(/const FILES = \[([^;]+)\];/) || [null, ''])[1];
+  const browserFiles = Array.from(browserBlock.matchAll(/'([^']+)'/g)).map(function (m) { return m[1]; });
+  assert(JSON.stringify(indexFiles.filter(function (name) { return FILES.indexOf(name) >= 0; })) === JSON.stringify(FILES),
+    'index and smoke manifests preserve identical headless dependency order');
+  assert(JSON.stringify(browserFiles.filter(function (name) { return FILES.indexOf(name) >= 0; })) === JSON.stringify(FILES),
+    'browser and smoke manifests preserve identical headless dependency order');
+
+  const mature = G.newGame({ seed: 'gate1-budget', difficulty: 'relaxed' });
+  for (let i = 0; i < 360; i++) G.tick(mature);
+  const samples = [];
+  for (let i = 0; i < 240; i++) {
+    const started = performance.now();
+    G.tick(mature);
+    samples.push(performance.now() - started);
+  }
+  samples.sort(function (a, b) { return a - b; });
+  const p95 = samples[Math.floor(samples.length * 0.95)];
+  const coldStart = performance.now();
+  SW.aperture.sync(mature, { forceAggregates: true });
+  const coldMs = performance.now() - coldStart;
+  const saveStart = performance.now();
+  const saveResult = SW.campaign.serialize(mature);
+  const saveMs = performance.now() - saveStart;
+  assert(p95 < 12, 'Hot tick p95 meets 12ms budget (' + p95.toFixed(2) + 'ms)');
+  assert(coldMs < 20, 'Cold compatibility batch meets 20ms budget (' + coldMs.toFixed(2) + 'ms)');
+  assert(saveResult.ok && saveMs < 100, 'canonical save serialization meets 100ms budget (' + saveMs.toFixed(2) + 'ms)');
 }
 
 // ---------- documentation authority ----------

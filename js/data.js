@@ -4,7 +4,7 @@ var SW = globalThis.SW = globalThis.SW || {};
 SW.data = (function () {
   const D = {};
 
-  D.SAVE_VERSION = 2;
+  D.SAVE_VERSION = 3;
   D.TICK_MS = 500;            // real ms per tick at 1x
   D.SPEEDS = [0, 1, 3, 10];
 
