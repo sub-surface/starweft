@@ -2,6 +2,8 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 .claude/
+.agents/
+.codex/
 
 # wrangler files
 .wrangler
