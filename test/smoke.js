@@ -1419,166 +1419,31 @@ section('Planet detailing');
   }), 'some non-giant worlds can have faint procedural rings');
 }
 
-section('Sol prologue (tutorial)');
+section('Act 0 recovery and berth guards');
 {
-  const berthGuard = G.newGame({ seed: 'smoke-tutorial-berth', difficulty: 'standard', tutorial: true });
+  const berthGuard = G.newGame(G.canonicalLaunch({ seed: 'smoke-act0-berth', archetype: 'courier', pressure: 'standard' }));
   const berthShip = berthGuard.ships[0];
   berthGuard.credits = 100000;
-  berthShip.body = 'Mars';
-  berthShip.cargo.ORE = 2;
-  berthShip.basis.ORE = 0;
+  berthShip.body = 'Mars'; berthShip.cargo.ORE = 2; berthShip.basis.ORE = 0;
   assert(A.shipSell(berthGuard, berthShip.id, 'ORE', 1).ok && !berthGuard.tutorial.profitableOreSale,
     'a profitable sale at another Sol berth cannot skip the instructed Earth leg');
   berthShip.body = 'Earth';
   assert(A.shipSell(berthGuard, berthShip.id, 'ORE', 1).ok && berthGuard.tutorial.profitableOreSale,
-    'the tutorial sale signal is earned specifically at Earth Anchorage');
+    'Act 0 first-delivery signal is earned specifically at Earth');
 
-  // Full prologue, driven exactly as a player would via actions:
-  // hop to the Belt, buy cheap ore, haul home, sell, anchor, jump.
-  const st = G.newGame({ seed: 'smoke-tutorial', difficulty: 'standard', tutorial: true });
-  assert(st.tutorial && st.tutorial.active, 'tutorial active when requested');
-  assert(st.credits >= 1200, 'Guild escrow granted (credits=' + st.credits + ')');
-  G.tick(st);
-  assert(st.tutorial.goal === 0, 'cast-off beat is current after first tick');
-  assert(SW.tutorial.mapLocked(st), 'galaxy map locked during early prologue');
-  assert(st.story.pending !== 'ev_wake', 'ev_wake suppressed in prologue');
-  assert(st.story.pending === 'ev_prologue_ledger', 'only prologue ledger may interrupt early prologue');
-  A.chooseEvent(st, 0);
-  st.tick = 5000;
-  st.credits = 100000;
-  st.stats.deliveries = 99;
-  st.story.pending = null;
-  for (let i = 0; i < 30; i++) G.tick(st);
-  assert(!st.story.pending || /^ev_prologue_/.test(st.story.pending), 'non-prologue story events suppressed while map locked (' + st.story.pending + ')');
-  assert(st.story.objective.indexOf('1)') >= 0 && st.story.objective.indexOf('FLY HERE') >= 0, 'prologue objective gives explicit numbered action');
+  const broke = G.newGame(G.canonicalLaunch({ seed: 'smoke-act0-broke', archetype: 'cartographer', pressure: 'guided' }));
+  G.tick(broke); broke.credits = 0;
+  for (const sh of broke.ships) { sh.cargo = {}; sh.basis = {}; }
+  for (let i = 0; i < D.TUNE.prologueStipendEvery + 5 && broke.credits < D.TUNE.prologueStipend; i++) G.tick(broke);
+  assert(broke.credits >= D.TUNE.prologueStipend, 'Act 0 recovery line rescues a broke Thread');
 
-  const ship = st.ships[0];
-  const home = st.systems[st.homeId];
-  const nb = home.links[0];
-  const blocked = A.shipSend(st, ship.id, nb);
-  assert(!blocked.ok, 'jump refused while the map is locked');
-
-  // berth pricing: the Belt discounts ore against the Anchorage rate
-  const hubOre = SW.economy.buyPrice(st, home, 'ORE', 'player');
-  const beltOre = SW.economy.buyPrice(st, home, 'ORE', 'player', 'The Belt');
-  assert(beltOre < hubOre * 0.7, 'Belt berth discounts ore (' + beltOre.toFixed(1) + ' vs ' + hubOre.toFixed(1) + ')');
-  assert(SW.economy.berthMult(st, home, 'Earth', 'ORE') === 1, 'hub berth is neutral');
-  assert(SW.economy.berthMult(st, home, 'Mars', 'FOOD') > 1, 'settled Mars pays a food premium');
-
-  // hop guards + the hop itself
-  assert(!A.shipHop(st, ship.id, 'Nonsuch').ok, 'hop to unknown body refused');
-  const hop = A.shipHop(st, ship.id, 'The Belt');
-  assert(hop.ok && ship.mode === 'shuttle' && ship.hop, 'hop departs (' + (hop.msg || 'eta ' + hop.eta) + ')');
-  assert(!A.shipHop(st, ship.id, 'Mars').ok, 'no second hop mid-flight');
-  assert(!A.shipBuy(st, ship.id, 'ORE', 5).ok, 'no trading mid-hop');
-  G.tick(st);
-  assert(st.tutorial.goal === 1, 'first-cargo beat once the hop is committed');
-  for (let i = 0; i < 25 && ship.mode !== 'idle'; i++) G.tick(st);
-  assert(ship.mode === 'idle' && ship.body === 'The Belt', 'berthed at the Belt');
-  const bad = SW.game.validate(st);
-  assert(bad.length === 0, 'validator clean with berthed ships: ' + bad.join('; '));
-
-  if (st.story.pending) A.chooseEvent(st, 0); // drain the cold-open / Belt events
-  const buyOre = A.shipBuy(st, ship.id, 'ORE', 8);
-  assert(buyOre.ok && buyOre.qty >= D.TUNE.prologueOreBeat, 'ore loads at Belt rates (' + (buyOre.msg || buyOre.qty) + ')');
-  G.tick(st);
-  assert(st.tutorial.goal === 2, 'first-sale beat after loading ore');
-
-  const back = A.shipHop(st, ship.id, 'Earth');
-  assert(back.ok, 'hop back to the Anchorage');
-  for (let i = 0; i < 25 && ship.mode !== 'idle'; i++) G.tick(st);
-  const sold = A.shipSell(st, ship.id, 'ORE', 999);
-  assert(sold.ok && sold.profit > 0, 'the Belt spread pays (profit=' + (sold.ok ? Math.round(sold.profit) : sold.msg) + ')');
-  G.tick(st);
-  assert(st.tutorial.goal === 3, 'gather beat after the first profitable sale');
-
-  const buy = A.shipBuy(st, ship.id, 'ALLOY', 5);
-  assert(buy.ok, 'alloy purchase succeeds (' + (buy.msg || 'ok') + ')');
-  G.tick(st);
-  assert(st.tutorial.goal === 4, 'anchor beat after gathering alloy');
-
-  const built = A.buildSite(st, st.homeId, 'Earth', 'hydrofarm');
-  assert(built.ok, 'hydrofarm anchors on Earth (' + (built.msg || 'ok') + ')');
-  G.tick(st);
-  assert(st.tutorial.goal === 5, 'chain beat after anchoring');
-
-  for (let i = 0; i < 40 && st.tutorial.goal === 5; i++) G.tick(st);
-  assert(st.tutorial.goal === 6, 'net beat after watching the chain feed the city');
-  const contract = SW.quests.company(st)[0];
-  assert(contract && contract.id === 'sol_net', 'prologue company contract exists');
-  assert(contract.steps.some(function (step) { return step.id === 'authorize' && step.current; }), 'Sol Net authorization is the current contract step');
-  assert(SW.tutorial.mapLocked(st), 'map still locked until Sol Net is authorized');
-  assert(!st.story.flags.routes_unlocked, 'route automation is not unlocked before the Sol Net sign-off');
-  assert(!A.authorizeSolNet(st).ok, 'Sol Net sign-off requires the journal prompt');
-  st.tutorial.netPrompted = true;
-  const auth = A.authorizeSolNet(st);
-  assert(auth.ok, 'Sol Net authorization action succeeds (' + (auth.msg || 'ok') + ')');
-  assert(st.story.flags.sol_net_authorized, 'Sol Net flag set');
-  assert(st.story.flags.routes_unlocked, 'route automation core unlocks with Sol Net authorization');
-  G.tick(st);
-  assert(st.tutorial.goal === 7, 'jump beat follows Sol Net authorization');
-  assert(!SW.tutorial.mapLocked(st), 'map unlocks with the Guild gift');
-
-  const go = A.shipSend(st, ship.id, nb);
-  assert(go.ok, 'jump allowed after the gift (' + (go.msg || 'ok') + ')');
-  assert(ship.body === null, 'inter-system departure clears the berth');
-  for (let i = 0; i < 300 && !st.tutorial.done; i++) G.tick(st);
-  assert(st.tutorial.done && !st.tutorial.active, 'prologue completes when the jump lands');
-
-  // Title card fires through the normal event machinery (drain competitors)
-  let sawCard = false;
-  for (let i = 0; i < 30 && !sawCard; i++) {
-    if (st.story.pending === 'ev_first_thread') { sawCard = true; break; }
-    if (st.story.pending) A.chooseEvent(st, 0);
-    G.tick(st);
-  }
-  assert(sawCard || st.story.pending === 'ev_first_thread', 'ev_first_thread title card fires after the prologue');
-  A.chooseEvent(st, 0);
-  assert(st.story.flags.first_thread === true, 'first_thread flag set by title card');
-
-  // Bankruptcy is never a wall: a broke, empty-handed prologue run gets a
-  // Guild advance and can buy back into the ore loop.
-  const br = G.newGame({ seed: 'smoke-tutorial-broke', difficulty: 'standard', tutorial: true });
-  G.tick(br);
-  br.credits = 0;
-  for (const sh of br.ships) { sh.cargo = {}; sh.basis = {}; }
-  let rescued = false;
-  for (let i = 0; i < D.TUNE.prologueStipendEvery + 5 && !rescued; i++) {
-    G.tick(br);
-    if (br.credits >= D.TUNE.prologueStipend) rescued = true;
-  }
-  assert(rescued, 'Guild stipend rescues a broke prologue run (credits=' + br.credits + ')');
-
-  // Lost-ship safety net: destroying the only ship in the prologue must not strand.
-  const ls = G.newGame({ seed: 'smoke-tut-lostship', difficulty: 'standard', tutorial: true });
-  ls.story.pending = null;
-  G.tick(ls);
-  while (ls.ships.length) SW.ships.destroy(ls, ls.ships[0], 'test');
-  ls.credits = 0;
-  let shipAided = false;
-  for (let i = 0; i < D.TUNE.prologueStipendEvery + 3 && !shipAided; i++) {
-    G.tick(ls);
-    if (ls.credits >= SW.ships.hullCost(ls, 'sparrow')) shipAided = true;
-  }
-  assert(shipAided, 'lost-ship in prologue is bailed out enough to rebuild a Sparrow (credits=' + ls.credits + ')');
-  assert(ls.story.objective.indexOf('BUILD') >= 0 || ls.story.objective.indexOf('build') >= 0, 'lost-ship objective tells the player to build a new ship');
-
-  // Objective re-asserts after a world event overwrites it mid-beat.
-  const oa = G.newGame({ seed: 'smoke-tut-objreassert', difficulty: 'standard', tutorial: true });
-  oa.story.pending = null;
-  G.tick(oa);
-  const beatPrompt = oa.tutorial.prompt;
-  assert(beatPrompt && oa.story.objective === beatPrompt, 'beat prompt is recorded on tu.prompt');
-  SW.story.setObjective(oa, 'AN EVENT HIJACKED THE OBJECTIVE');           // simulate an event obj() call
-  assert(oa.story.objective !== beatPrompt, 'objective was overwritten');
-  G.tick(oa);
-  assert(oa.story.objective === beatPrompt, 'tutorial restores its beat prompt after an event overwrite');
-
-  // Skip path: no tutorial state, ev_wake fires as today
-  const sk = G.newGame({ seed: 'smoke-tutorial-skip', difficulty: 'standard' });
-  assert(!sk.tutorial, 'no tutorial state on skip path');
-  G.tick(sk);
-  assert(sk.story.pending === 'ev_wake', 'ev_wake fires normally without tutorial');
+  const lost = G.newGame(G.canonicalLaunch({ seed: 'smoke-act0-lost', archetype: 'warden', pressure: 'severe' }));
+  G.tick(lost);
+  while (lost.ships.length) SW.ships.destroy(lost, lost.ships[0], 'test');
+  lost.credits = 0;
+  for (let i = 0; i < D.TUNE.prologueStipendEvery + 3 && lost.credits < SW.ships.hullCost(lost, 'sparrow'); i++) G.tick(lost);
+  assert(lost.credits >= SW.ships.hullCost(lost, 'sparrow') && /build/i.test(lost.story.objective),
+    'Act 0 lost-craft recovery funds and signals a replacement');
 }
 
 section('Stranded guard (post-tutorial last-ship)');
@@ -1854,7 +1719,7 @@ section('New Weave — authored worlds (age / topology / heart / myth / named ad
   assert(drift.systems[drift.homeId].links.length > 0, 'a drift home is lane-connected (no soft-lock)');
   // the prologue pins home to Sol regardless of the heart dial
   const tut = G.newGame({ seed: 'heart-t', difficulty: 'standard', world: { heart: 'rim' }, tutorial: true });
-  assert(tut.homeId === 0, 'the Sol prologue forces home to Sol even when a rim heart is chosen');
+  assert(tut.homeId === 0, 'canonical Act 0 forces home to Sol even when a rim heart is chosen');
 
   // Topology resolves and runs without breaking generation (lanes still connect).
   ['filaments', 'cluster', 'halo', 'natural'].forEach(function (t) {
@@ -2763,6 +2628,115 @@ section('Gate 1 — layered seed and feasibility-validator scaffolds');
     const probe = fullHoldProbes.find(function (item) { return item.id === id; });
     return probe && !probe.ok;
   }), 'catalog hull capacity cannot hide a real full hold from construction, delivery, or reroute probes');
+}
+
+section('Gate 2 — canonical launch and action-driven Act 0');
+{
+  for (const archetype of D.ARCHETYPE_IDS) {
+    for (const pressure of D.PRESSURE_IDS) {
+      const cfg = G.canonicalLaunch({ seed: 'gate2-matrix-' + archetype + '-' + pressure, archetype: archetype, pressure: pressure });
+      const s = G.newGame(cfg);
+      const ship = s.ships[0];
+      assert(s.archetype === archetype && s.pressure === pressure && s.difficulty === D.PRESSURE[pressure].difficulty,
+        archetype + '/' + pressure + ' resolves one canonical launch recipe');
+      assert(s.acts.on && s.acts.phase === 'act0' && s.acts.n === 0 && s.act.index === 0 && s.acts.clock === null,
+        archetype + '/' + pressure + ' begins in canonical clockless Act 0');
+      assert(s.tutorial.cargoTarget > 0 && s.tutorial.cargoTarget <= SW.ships.cap(s, ship) - SW.ships.cargoTotal(ship),
+        archetype + ' opening cargo fits its actual free hold');
+      const offers = SW.pledges.seedTutorialBoard(s);
+      assert(offers.length === 2 && offers.some(function (o) { return o.tutorialTier === 'safe'; }) && offers.some(function (o) { return o.tutorialTier === 'ambitious'; }),
+        archetype + '/' + pressure + ' receives safe and ambitious opening Pledges');
+      for (const offer of offers) {
+        const pf = SW.pledges.preflight(s, offer);
+        assert(pf.capacity >= offer.qty && pf.eta > 0 && pf.slack > 0 && s.credits >= offer.bond && SW.ships.inRange(s, s.systems[offer.to]),
+          archetype + '/' + pressure + ' ' + offer.tutorialTier + ' Pledge proves hold, ETA, slack, bond, and command range');
+      }
+      assert(G.validate(s).length === 0, archetype + '/' + pressure + ' opening state validates');
+    }
+  }
+
+  const s = G.newGame(G.canonicalLaunch({ seed: 'gate2-full-wake', archetype: 'cartographer', pressure: 'standard' }));
+  const A2 = G.actions;
+  function until(pred, limit, label) {
+    let n = 0;
+    while (!pred() && n++ < limit && !s.gameOver) G.tick(s);
+    assert(pred(), label + ' within ' + limit + ' ticks');
+  }
+  G.tick(s); G.tick(s); // initialize wake, then enter cast-off
+  const lead = s.ships[0];
+  assert(A2.shipHop(s, lead.id, 'The Belt').ok, 'Act 0 cast-off uses the public hop action');
+  until(function () { return lead.mode === 'idle' && lead.body === 'The Belt' && s.tutorial.goal === 2; }, 80, 'Belt arrival advances to load');
+  assert(A2.shipBuy(s, lead.id, 'ORE', s.tutorial.cargoTarget).ok, 'Act 0 first cargo uses the public buy action');
+  G.tick(s);
+  assert(A2.shipHop(s, lead.id, 'Earth').ok, 'Act 0 return uses the public hop action');
+  until(function () { return lead.mode === 'idle' && lead.body === 'Earth'; }, 80, 'Earth arrival');
+  assert(A2.shipSell(s, lead.id, 'ORE', lead.cargo.ORE).ok, 'Act 0 first delivery uses the public sell action');
+  until(function () { return s.tutorial.goal === 5 && s.board.some(function (o) { return o.actZero; }); }, 30, 'exact arrival feedback opens the Pledge choice');
+  const safe = s.board.find(function (o) { return o.tutorialTier === 'safe'; });
+  assert(A2.takePledge(s, safe.id).ok, 'Act 0 informed Pledge uses the public take action');
+  G.tick(s);
+  const pledge = s.pledges[0];
+  assert(A2.shipBuy(s, lead.id, pledge.c, pledge.qty).ok, 'Act 0 Pledge cargo uses the public buy action');
+  assert(A2.shipSend(s, lead.id, pledge.to, true).ok, 'Act 0 Pledge dispatch uses the public send action');
+  until(function () { return s.tutorial.pledgeCompleted; }, 240, 'Pledge delivery changes world and scores contract');
+  G.tick(s);
+  const loaner = s.ships.find(function (sh) { return sh.id === s.tutorial.loanerId; });
+  const routeResult = A2.createRoute(s, [
+    { sys: s.homeId, action: 'buy', c: 'ORE' },
+    { sys: pledge.to, action: 'sell' }
+  ], 'Act 0 Ore Circuit');
+  assert(routeResult.ok && A2.assignShip(s, loaner.id, routeResult.route.id).ok, 'Act 0 automation uses public route and assignment actions');
+  G.tick(s);
+  assert(A2.shipSend(s, lead.id, s.homeId, false).ok, 'reserve shuttle returns through the public send action');
+  until(function () { return lead.mode === 'idle' && lead.at === s.homeId; }, 240, 'reserve shuttle reaches Sol');
+  assert(A2.shipBuy(s, lead.id, 'FOOD', 3).ok && A2.depotDrop(s, lead.id, 'FOOD', 2).ok,
+    'Act 0 reserve is stocked through public market and depot actions');
+  G.tick(s);
+  assert(A2.depotDrop(s, lead.id, 'FOOD', 1).ok, 'lane pressure accepts the reserve response through a public action');
+  G.tick(s);
+  assert(s.tutorial.pressureResponse === 'reserve' && A2.toggleRoute(s, routeResult.route.id).ok,
+    'nonlethal pressure records its response and reroute/resume is a public action');
+  G.tick(s);
+  assert(A2.draftCharter(s, 'held_reserve').ok, 'Act 0 Charter is drafted through a public action');
+  G.tick(s);
+  until(function () { return !SW.tutorial.isActive(s); }, 80, 'stable knot transitions to Act I');
+  const sig = SW.tutorial.actOneSignature(s);
+  assert(sig.phase === 'act1' && sig.clockStarted && sig.routesUnlocked && sig.charterCount === 1 && sig.bubbleNeeds === 3 && sig.mapUnlocked,
+    'Act 0 transition starts Act I with one Charter and three Bubble needs');
+  assert(s.pledgeStats.completed >= 1 && s.routes.length >= 1 && s.thread.objectives.completed.some(function (o) { return o.source === 'act0-pressure'; }),
+    'full Wake preserves kept Pledge, real route, and resolved pressure objective');
+  assert(A2.renameThread(s, '  The Cartographer\'s   Knot ').ok && s.identity.name === "The Cartographer's Knot",
+    'generated Thread identity can be renamed after waking through a public action');
+  const actZeroReplay = G.replay(SW.campaign.serialize(s).raw);
+  assert(actZeroReplay.ok && G.replayDigest(actZeroReplay.state) === G.replayDigest(s) && actZeroReplay.state.identity.name === "The Cartographer's Knot",
+    'action-driven Act 0 replay reconstructs the transition and renamed identity exactly');
+
+  const skipped = G.newGame(G.canonicalLaunch({ seed: 'gate2-skip', archetype: 'courier', pressure: 'guided', guidance: 'brief' }));
+  G.tick(skipped); G.tick(skipped);
+  assert(skipped.tutorial.goal === 1 && G.actions.skipActZero(skipped).ok, 'visible pre-flight beat can skip through a public action');
+  assert(JSON.stringify(SW.tutorial.actOneSignature(skipped)) === JSON.stringify({ actsOn: true, phase: 'act1', clockStarted: true, routesUnlocked: true, charterCount: 1, bubbleNeeds: 3, mapUnlocked: true }),
+    'skip converges on the canonical Act I capability projection');
+
+  const charterFixture = G.newGame(G.canonicalLaunch({ seed: 'gate2-charters', archetype: 'courier', pressure: 'standard' }));
+  SW.charters.openingDraft(charterFixture);
+  SW.charters.draft(charterFixture, 'held_reserve');
+  const baseBond = SW.acts.bondMult(charterFixture);
+  charterFixture.systems[charterFixture.homeId].depot.FOOD = 2;
+  assert(baseBond === 1 && SW.acts.bondMult(charterFixture) === 0.75, 'Held Reserve Charter changes Pledge bond rules only while its reserve condition holds');
+
+  const quickFixture = G.newGame(G.canonicalLaunch({ seed: 'gate2-charter-quick', archetype: 'courier', pressure: 'standard' }));
+  SW.charters.openingDraft(quickFixture);
+  SW.charters.draft(quickFixture, 'quick_ledger');
+  assert(SW.acts.mods(quickFixture).firstKeptChipMult === 1.25, 'Quick Ledger changes the first kept Pledge scoring rule');
+
+  const laneFixture = G.newGame(G.canonicalLaunch({ seed: 'gate2-charter-lane', archetype: 'courier', pressure: 'standard' }));
+  SW.charters.openingDraft(laneFixture);
+  SW.charters.draft(laneFixture, 'living_lane');
+  assert(SW.acts.mods(laneFixture).threadBonus === 0, 'Living Lane is dormant without a staffed running route');
+  laneFixture.routes.push({ id: 'charter-test-route', paused: false, ships: [laneFixture.ships[0].id], nodes: [] });
+  assert(SW.acts.mods(laneFixture).threadBonus === 0.5, 'Living Lane adds THREAD while a staffed route is running');
+  laneFixture.routes[0].paused = true;
+  assert(SW.acts.mods(laneFixture).threadBonus === 0, 'Living Lane withdraws its bonus when the route is paused');
 }
 
 section('Gate 1 — manifest parity and measured baseline budgets');

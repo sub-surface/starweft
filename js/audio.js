@@ -190,6 +190,7 @@ SW.audio = (function () {
   };
 
   A.sfx = function (name) {
+    if (SW.ui && SW.ui.audioCaption) SW.ui.audioCaption(name);
     if (SFX[name]) { try { SFX[name](); } catch (e) {} }
   };
 

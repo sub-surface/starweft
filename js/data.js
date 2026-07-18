@@ -245,6 +245,70 @@ SW.data = (function () {
   };
   D.LEGACY_HINTS = { won: 'Win a run', wonder: 'Survey a galactic wonder', infamy: 'Reach infamy 5' };
 
+  // ---- Canonical run archetypes (SPEC[SW-START-004]) ----
+  // These five packages are the only identity choice in Begin New Weave.
+  // `origin` / `founder` are compatibility adapters for systems that still read
+  // the pre-Reweave axes; Custom/Sandbox continues to expose those old axes.
+  // Starting craft and kit are physical promises, while bend/liability/firstVerb
+  // are the concise contract shown before launch. Deeper role hooks are consumed
+  // by the owning systems as the overhaul reaches them -- never by the UI.
+  D.ARCHETYPES = {
+    courier: {
+      name: 'Courier', glyph: '▸', origin: 'courier', founder: 'courier',
+      bend: 'Link deliveries into one moving manifest; a kept chain gathers momentum.',
+      liability: 'Break one link and every downstream promise loses slack.',
+      craft: 'Sparrow shuttle', ships: ['sparrow'], techs: [], credits: 0,
+      firstVerb: 'Buy Ore at the Belt. Carry it home.',
+      visual: 'A bright shuttle pulling one taut line through the dark.',
+      fx: { firstlightX2: true }
+    },
+    cartographer: {
+      name: 'Cartographer', glyph: '⌖', origin: 'surveyor', founder: 'courier',
+      bend: 'Survey and data promises can complete the same Charter economy as cargo.',
+      liability: 'Survey gear occupies most of the hold until its record is delivered.',
+      craft: 'Pathfinder scout', ships: ['pathfinder'], techs: ['scouts'], credits: 120,
+      firstVerb: 'Read the nearest unknown lane, then sell what you learned.',
+      visual: 'A needle-thin scout sketching constellations into a blank chart.'
+    },
+    stationwright: {
+      name: 'Stationwright', glyph: '▦', origin: 'courier', founder: 'underwriter',
+      bend: 'A completed delivery may remain behind as useful infrastructure.',
+      liability: 'Capital committed to an anchor cannot answer the next emergency.',
+      craft: 'Sparrow tug + anchor kit', ships: ['sparrow'], techs: ['depots'], credits: 250,
+      cargo: { ALLOY: 5 },
+      firstVerb: 'Carry an anchor kit to the place that needs a permanent answer.',
+      visual: 'A work tug framed by an unfinished ring and five alloy struts.'
+    },
+    envoy: {
+      name: 'Envoy', glyph: '◇', origin: 'courier', founder: 'courier',
+      bend: 'Reciprocal promises turn deliveries into durable relationships.',
+      liability: 'Abandonment travels farther; some profitable cargo is politically forbidden.',
+      craft: 'Passenger courier', ships: ['courier'], techs: ['couriers'], credits: 0,
+      firstVerb: 'Carry what a neighbor asked for, and learn what they will return.',
+      visual: 'A warm-windowed courier crossing between two listening worlds.'
+    },
+    warden: {
+      name: 'Warden', glyph: '⛨', origin: 'vigil', founder: 'courier',
+      bend: 'Threatened and recovery promises reward protection as part of delivery.',
+      liability: 'Danger follows the escort, and peaceful opportunities appear less often.',
+      craft: 'Corvette escort-hauler', ships: ['corvette'], techs: ['corvettes'], credits: 180,
+      cargo: { ALLOY: 3 },
+      firstVerb: 'Move repair stock through a lane that may not stay safe.',
+      visual: 'A scarred escort sheltering a cargo light in its wake.'
+    }
+  };
+  D.ARCHETYPE_IDS = ['courier', 'cartographer', 'stationwright', 'envoy', 'warden'];
+
+  // Player-facing pressure names intentionally map onto stable internal keys so
+  // existing saves/replays keep their tuning identity while the launch language
+  // becomes clear and consistent.
+  D.PRESSURE = {
+    guided:  { name: 'Guided',  difficulty: 'guided',   desc: 'More runway and gentler consequences while every system stays present.' },
+    standard:{ name: 'Standard',difficulty: 'standard', desc: 'The intended clock, economy, and recovery margin.' },
+    severe:  { name: 'Severe',  difficulty: 'brutal',   desc: 'Lean capital, early pressure, and little room for a broken promise.' }
+  };
+  D.PRESSURE_IDS = ['guided', 'standard', 'severe'];
+
   // ---- Founders (SPEC[RUN-FOUNDERS]): who the Guild seats at the Loomship's helm ----
   // Orthogonal to Origin (which still sets ships/credits/rep flavor): a Founder
   // is chosen for a *focused* (Act Ladder) run and layers one rule-bend, one
@@ -421,6 +485,7 @@ SW.data = (function () {
 
   // ---- Difficulty ----
   D.DIFFICULTY = {
+    guided:   { name: 'Guided',  desc: 'Long runway; the Fray still arrives and every progression system remains live.', startCredits: 900, scourgeStart: 680, spreadEvery: 96, spreadAccel: 0.25, research: 1.2 },
     relaxed:  { name: 'Relaxed',  desc: 'No Scourge. Pure sandbox weaving.',            startCredits: 900, scourgeStart: -1,  spreadEvery: 0,  spreadAccel: 0,    research: 1.2 },
     standard: { name: 'Standard', desc: 'The Scourge wakes in time. Win by Panacea.',   startCredits: 700, scourgeStart: 420, spreadEvery: 72, spreadAccel: 0.45, research: 1.0 },
     brutal:   { name: 'Brutal',   desc: 'It is already hungry.',                        startCredits: 500, scourgeStart: 280, spreadEvery: 50, spreadAccel: 0.8,  research: 0.9 },
@@ -620,7 +685,7 @@ SW.data = (function () {
     // In-system shuttle hops (ship.body berths)
     hopTicksBase: 2,                // floor for any berth-to-berth hop
     hopTicksPerAU: 2.2,             // x |sqrt(a1)-sqrt(a2)| — sqrt keeps outer hops sane
-    // Sol prologue
+    // Canonical Act 0 opening (legacy tuning keys retained for save/source stability)
     prologueEscrow: 600,            // the Guild escrow granted at wake
     prologueGift: 400,              // the Guildmaster's parting gift at the jump beat
     prologueStipend: 150,           // Guild advance when a prologue run goes broke

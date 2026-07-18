@@ -73,6 +73,19 @@ SW.uiSystem = (function () {
       (sys.ideology !== 'free' ? ' · <span data-info="faction:' + sys.ideology + '">' + D.IDEOLOGIES[sys.ideology].name + '</span>' : '') +
       (sys.region ? ' · <span data-info="region:' + sys.region + '">' + D.REGIONS[sys.region].name + '</span>' : '') + '</div>';
     if (!sys.surveyed) html += '<div class="sub">Unsurveyed — idle a scout here to chart its worlds' + (sys.surveyProg ? ' (' + Math.round(100 * sys.surveyProg / D.TUNE.surveyTicks) + '%)' : '') + '.</div>';
+    // Canvas bodies always have an equivalent keyboard/text path. During the
+    // Wake this is deliberately just Earth + Belt: the same staged choice as the
+    // picture, expressed as ordinary focusable buttons.
+    if (SW.render.mode === 'system' && SW.render.systemId === sys.id && sys.surveyed) {
+      const lockedBodies = SW.tutorial && SW.tutorial.mapLocked(s);
+      let bodies = SW.planets.get(s, sys.id).bodies;
+      if (lockedBodies) bodies = bodies.filter(function (body) { return body.name === 'Earth' || body.name === 'The Belt'; });
+      html += '<h4>Orbital destinations</h4><div class="bodyNav" role="group" aria-label="Orbital destinations">' + bodies.map(function (body) {
+        const selected = !!(SW.render.selectedBody && SW.render.selectedBody.name === body.name);
+        return '<button data-act="selectBody" data-body="' + esc(body.name) + '" aria-pressed="' + selected + '" class="' + (selected ? 'selected' : '') + '">' +
+          '<b>' + esc(body.name) + '</b><span>' + esc(body.classLabel || body.type) + '</span></button>';
+      }).join('') + '</div>';
+    }
     if (SW.tech.has(s, 'driftholds') && sys.id !== s.homeId && sys.surveyed && sys.scourge !== 2) {
       html += '<div class="row"><button data-act="relocate" ' + (s.credits < D.TUNE.relocateCost ? 'disabled' : '') +
         ' title="Move the Home anchorage here. The command web re-centers; the Scourge loses your scent.">⌂ relocate home (' + U.fmt(D.TUNE.relocateCost) + '¤)</button></div>';
@@ -237,7 +250,7 @@ SW.uiSystem = (function () {
           const eta = SW.ships.hopTicks(s, sys.id, hopShip.body, selBody.name);
           html += '<div class="row"><button class="primary" data-act="hopHere" data-body="' + esc(selBody.name) + '" ' +
             'title="Shuttle ' + esc(hopShip.name) + ' to a berth at ' + esc(selBody.name) + ' (~' + eta + 't). Berth rates apply to trades.">⇢ FLY HERE (' + eta + 't)</button></div>' +
-            (locked ? '<div class="sub">This is the prologue verb: berth, buy, haul, sell.</div>' : '');
+            (locked ? '<div class="sub">This is the Act 0 verb: berth, buy, haul, sell.</div>' : '');
         } else if (hopShip) {
           html += '<div class="sub">⇢ ' + esc(hopShip.name) + ' is berthed here.</div>';
         }

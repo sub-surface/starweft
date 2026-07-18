@@ -16,6 +16,9 @@ SW.uiModals = (function () {
   let codexTab = 'ships', codexHull = 'sparrow';
   let chosenOrigin = 'courier';
   let chosenFounder = 'courier';
+  let chosenArchetype = 'courier';
+  let chosenPressure = 'standard';
+  let canonicalSeed = '';
   let sim = null, raidChoice = null;
 
   // Expose codexHull for portraitLoop in coordinator (reads at animation time)
@@ -137,8 +140,11 @@ SW.uiModals = (function () {
         (e.boons && e.boons.length ? gr('Boons drafted', e.boons.map(esc).join(' · ')) : '') +
         '</div>';
     }
+    const runIdentity = s.archetype && D.ARCHETYPES[s.archetype]
+      ? D.ARCHETYPES[s.archetype].name + ' · ' + ((D.PRESSURE[s.pressure] && D.PRESSURE[s.pressure].name) || s.difficulty)
+      : D.ORIGINS[s.origin].name + ' · ' + (SW.tech.doctrine(s) ? D.TECHS[SW.tech.doctrine(s)].name.replace('Doctrine: ', '') : 'none');
     html += '<div class="statGrid">' +
-      gr('Origin · Doctrine', D.ORIGINS[s.origin].name + ' · ' + (SW.tech.doctrine(s) ? D.TECHS[SW.tech.doctrine(s)].name.replace('Doctrine: ', '') : 'none')) +
+      gr(s.archetype ? 'Archetype · Pressure' : 'Origin · Doctrine', runIdentity) +
       gr('Cycles', go.tick) +
       gr('Deliveries', stats.deliveries || 0) +
       gr('Credits earned', U.fmt(stats.creditsEarned || 0) + '¤') +
@@ -153,7 +159,10 @@ SW.uiModals = (function () {
     html += '<div class="titleArt" style="font-size:20px;letter-spacing:4px">WEAVE RATING <i>' + U.fmt(go.score) + '</i></div>';
     html += '<div class="choices">';
     if (go.win) html += '<button class="primary" data-act="postgame">keep weaving</button>';
-    html += '<button data-act="newGameMenu">new run</button></div>';
+    if (!go.win && s.archetype && D.ARCHETYPES[s.archetype] && D.PRESSURE[s.pressure]) {
+      html += '<button class="primary" data-act="replayLastThread">replay ' + esc(D.ARCHETYPES[s.archetype].name) + ' · ' + esc(D.PRESSURE[s.pressure].name) + '</button>';
+    }
+    html += '<button data-act="newGameMenu">choose another Thread</button></div>';
     modal.innerHTML = html;
     modal.classList.toggle('bad', !go.win);
     SW.ui.showModal('gameoverModal');
@@ -167,23 +176,29 @@ SW.uiModals = (function () {
   function showTitle() {
     const modal = $('#titleModal');
     modal.classList.remove('setupModal');
+    modal.classList.remove('canonicalSetup');
     modal.classList.add('titleFront');
     const hasAuto = SW.game.hasSave('auto');
     const meta = SW.ui.saveMeta('auto');
+    const account = SW.game.accountState();
+    const activeSummary = account && account.chronicle && account.chronicle.campaigns.find(function (c) { return c.id === account.activeCampaignId; });
     let html = '<div class="titleArt"><i>✦</i> STARWEFT</div>' +
       '<div class="tagline">The worlds drifted apart. You are the thread.</div>' +
-      '<div class="titleBlurb">A cozy space-logistics strategy game — weave isolated star systems back into one living trade network, before the Scourge eats the galaxy from the rim.</div>';
+      '<div class="titleBlurb">A logistics roguelike about promises under pressure. Carry one broken system into a living network, then widen the weave from Bubble to galaxy before the Fray reaches its heart.</div>';
     html += '<div class="frontMenu">';
     if (hasAuto) {
       html += '<button class="frontBtn primary" data-act="continueGame">' +
-        '<span class="fbLabel">▸ Continue last weave</span>' +
-        (meta ? '<span class="fbSub">' + esc(meta.name) + ' · cycle ' + meta.tick + ' · ' + U.fmt(meta.credits) + '¤</span>' : '') +
+        '<span class="fbLabel">▸ Continue Weave</span>' +
+        (activeSummary ? '<span class="fbSub">' + esc(activeSummary.threadName || activeSummary.id) + ' · ' + esc((D.ARCHETYPES[activeSummary.archetype] || {}).name || 'legacy weave') + ' · cycle ' + activeSummary.tick + '</span>' :
+          (meta ? '<span class="fbSub">' + esc(meta.name) + ' · cycle ' + meta.tick + ' · ' + U.fmt(meta.credits) + '¤</span>' : '')) +
         '</button>';
     }
-    html += '<button class="frontBtn' + (hasAuto ? '' : ' primary') + '" data-act="newRun"><span class="fbLabel">▸ New weave</span><span class="fbSub">choose your origin, doctrine, and galaxy</span></button>';
-    html += '<button class="frontBtn" data-act="dailyWeave"><span class="fbLabel">▸ Daily weave</span><span class="fbSub">' + esc(dailySub()) + '</span></button>';
+    html += '<button class="frontBtn' + (hasAuto ? '' : ' primary') + '" data-act="newRun"><span class="fbLabel">▸ Begin New Weave</span><span class="fbSub">choose a role, choose the pressure, launch</span></button>';
+    html += '<button class="frontBtn" data-act="dailyWeave"><span class="fbLabel">▸ Daily Thread</span><span class="fbSub">' + esc(dailySub()) + '</span></button>';
+    html += '<button class="frontBtn" data-act="customRun"><span class="fbLabel">▸ Custom / Sandbox</span><span class="fbSub">seeds, world authorship, conditions, and the Long Weave</span></button>';
+    html += '<button class="frontBtn" data-act="chronicle"><span class="fbLabel">▸ Chronicle</span><span class="fbSub">campaigns, Threads, records, and remembered cuts</span></button>';
     html += '<button class="frontBtn" data-act="help"><span class="fbLabel">▸ How to play</span></button>';
-    html += '<button class="frontBtn" data-act="settings"><span class="fbLabel">▸ Settings</span></button>';
+    html += '<button class="frontBtn" data-act="settings"><span class="fbLabel">▸ Settings &amp; Accessibility</span></button>';
     html += '<button class="frontBtn" data-act="codexFromTitle"><span class="fbLabel">▸ Codex &amp; lore</span></button>';
     html += '</div>';
     html += '<div class="titleFoot"><span>v' + (D.SAVE_VERSION || 1) + '.0</span><span class="dot">·</span>' +
@@ -216,6 +231,29 @@ SW.uiModals = (function () {
   function setBuild(link, sha) {
     link.textContent = 'build ' + sha;
     link.href = 'https://github.com/sub-surface/starweft/commit/' + sha;
+  }
+
+  function showChronicle() {
+    const modal = $('#titleModal');
+    modal.classList.remove('titleFront');
+    modal.classList.remove('setupModal');
+    modal.classList.add('canonicalSetup');
+    const account = SW.game.accountState();
+    const campaigns = (account.chronicle && account.chronicle.campaigns) || [];
+    let html = '<div class="setupHead canonicalHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
+      '<div><div class="titleArt" style="font-size:20px;letter-spacing:5px">CHRONICLE</div><div class="sub">What this account has carried, cut, and kept.</div></div></div>';
+    if (!campaigns.length) html += '<div class="emptyChronicle"><b>No Threads recorded yet.</b><span>Begin a Weave. The Chronicle remembers completion and failure alike.</span></div>';
+    else {
+      html += '<div class="chronicleList">' + campaigns.slice().reverse().map(function (c) {
+        const a = D.ARCHETYPES[c.archetype];
+        const p = D.PRESSURE[c.pressure];
+        return '<article class="chronicleCard"><span class="archetypeGlyph">' + (a ? a.glyph : '◇') + '</span><div><b>' + esc(c.threadName || c.id) + '</b>' +
+          '<span>' + esc(a ? a.name : 'Legacy Weave') + ' · ' + esc(p ? p.name : (D.DIFFICULTY[c.difficulty] || {}).name || 'unknown pressure') + ' · cycle ' + (c.tick || 0) + '</span>' +
+          '<small>Campaign ' + esc(c.id) + ' · Thread ' + (c.threadNumber || 1) + ' · ' + esc(c.status || 'active') + '</small></div></article>';
+      }).join('') + '</div>';
+    }
+    modal.innerHTML = html;
+    SW.ui.showModal('titleModal');
   }
 
   // ============ daily weave — a deterministic shared galaxy per day ============
@@ -331,13 +369,87 @@ SW.uiModals = (function () {
       (subtitle ? '<span class="h4sub">— ' + esc(subtitle) + '</span>' : '') + '</h4>';
   }
 
+  // Canonical launch: role, pressure, launch. Every world-authoring control from
+  // the former option wall remains available in showCustomRun below.
   function showNewRun() {
     const modal = $('#titleModal');
     modal.classList.remove('titleFront');
+    modal.classList.remove('setupModal');
+    modal.classList.add('canonicalSetup');
+    const account = SW.game.accountState();
+    const launchPrefs = (account && account.settings && account.settings.launch) || {};
+    chosenArchetype = D.ARCHETYPES[launchPrefs.archetype] ? launchPrefs.archetype : 'courier';
+    chosenPressure = D.PRESSURE[launchPrefs.pressure] ? launchPrefs.pressure : 'standard';
+    canonicalSeed = 'thread-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 0xffff).toString(16);
+    const guidance = SW.game.legacy().prologue ? 'Brief guidance' : 'Full guided wake';
+
+    let html = '<div class="setupHead canonicalHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
+      '<div><div class="titleArt" style="font-size:20px;letter-spacing:5px">BEGIN NEW WEAVE</div>' +
+      '<div class="sub">One role. One pressure. The rest is discovered in play.</div></div></div>';
+    html += '<section class="launchSection"><div class="launchStep"><span>1</span><div><b>Choose your archetype</b><small>Your rule-bend, liability, craft, and first useful verb.</small></div></div>' +
+      '<div class="archetypeGrid" role="radiogroup" aria-label="Archetype">';
+    D.ARCHETYPE_IDS.forEach(function (id) {
+      const a = D.ARCHETYPES[id], on = id === chosenArchetype;
+      html += '<button type="button" class="archetypeCard' + (on ? ' sel' : '') + '" data-archetype="' + id + '" role="radio" aria-checked="' + on + '" tabindex="' + (on ? '0' : '-1') + '"' + (on ? ' data-autofocus' : '') + '>' +
+        '<span class="archetypeTop"><span class="archetypeGlyph">' + a.glyph + '</span><span><b>' + esc(a.name) + '</b><small>' + esc(a.craft) + '</small></span></span>' +
+        '<span class="archetypeFact bend"><i>RULE-BEND</i>' + esc(a.bend) + '</span>' +
+        '<span class="archetypeFact liability"><i>LIABILITY</i>' + esc(a.liability) + '</span>' +
+        '<span class="archetypeVerb">FIRST VERB · ' + esc(a.firstVerb) + '</span>' +
+        '<span class="srOnly">' + esc(a.visual) + '</span></button>';
+    });
+    html += '</div></section>';
+
+    html += '<section class="launchSection"><div class="launchStep"><span>2</span><div><b>Choose the pressure</b><small>Assists remain separate in Settings &amp; Accessibility.</small></div></div>' +
+      '<div class="pressureRow" role="radiogroup" aria-label="Pressure">';
+    D.PRESSURE_IDS.forEach(function (id) {
+      const p = D.PRESSURE[id], on = id === chosenPressure;
+      html += '<button type="button" class="pressureCard' + (on ? ' sel' : '') + '" data-pressure="' + id + '" role="radio" aria-checked="' + on + '" tabindex="' + (on ? '0' : '-1') + '"><b>' + esc(p.name) + '</b><small>' + esc(p.desc) + '</small></button>';
+    });
+    html += '</div></section>';
+
+    html += '<div class="launchFinal"><div class="launchIdentity"><small>THREAD</small><b id="canonicalThreadName">' + esc(SW.game.threadName(canonicalSeed, chosenArchetype)) + '</b>' +
+      '<span>' + esc(guidance) + ' · rename after waking</span></div>' +
+      '<button class="primary launchBtn" data-act="begin">LAUNCH THREAD ▸</button></div>';
+    html += '<details class="launchDetails"><summary>Share / replay details</summary><label for="ngSeed">Seed</label>' +
+      '<input id="ngSeed" value="' + esc(canonicalSeed) + '" aria-describedby="seedHelp"><span id="seedHelp" class="sub">Same seed, archetype, and pressure reconstruct the same physical galaxy.</span></details>';
+    modal.innerHTML = html;
+
+    function selectCard(selector, attr, value) {
+      modal.querySelectorAll(selector).forEach(function (el) {
+        const on = el.dataset[attr] === value;
+        el.classList.toggle('sel', on);
+        el.setAttribute('aria-checked', on ? 'true' : 'false');
+        el.setAttribute('tabindex', on ? '0' : '-1');
+      });
+    }
+    modal.querySelectorAll('[data-archetype]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        chosenArchetype = el.dataset.archetype;
+        selectCard('[data-archetype]', 'archetype', chosenArchetype);
+        const n = $('#canonicalThreadName'); if (n) n.textContent = SW.game.threadName(($('#ngSeed') && $('#ngSeed').value) || canonicalSeed, chosenArchetype);
+      });
+    });
+    modal.querySelectorAll('[data-pressure]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        chosenPressure = el.dataset.pressure;
+        selectCard('[data-pressure]', 'pressure', chosenPressure);
+      });
+    });
+    const seedInput = $('#ngSeed');
+    if (seedInput) seedInput.addEventListener('input', function () {
+      const n = $('#canonicalThreadName'); if (n) n.textContent = SW.game.threadName(seedInput.value || canonicalSeed, chosenArchetype);
+    });
+    SW.ui.showModal('titleModal');
+  }
+
+  function showCustomRun() {
+    const modal = $('#titleModal');
+    modal.classList.remove('titleFront');
+    modal.classList.remove('canonicalSetup');
     modal.classList.add('setupModal');
     SW.ui._sigilSeed = Math.floor(Math.random() * 1000);
     let html = '<div class="setupHead"><button class="backLink" data-act="backToTitle">‹ back</button>' +
-      '<div class="titleArt" style="font-size:20px;letter-spacing:5px">NEW WEAVE</div>' +
+      '<div class="titleArt" style="font-size:20px;letter-spacing:5px">CUSTOM / SANDBOX</div>' +
       '<button class="surpriseBtn" data-act="surpriseWeave" title="Roll a fresh galaxy, doctrine and myth — then tweak to taste">✦ surprise me</button></div>';
 
     // Prologue toggle — promoted to the top as a proper switch card. It's the
@@ -504,7 +616,7 @@ SW.uiModals = (function () {
       '<div class="forecast" id="ngForecast">' + esc(forecastLine()) + '</div>' +
       '<div class="setupActions">' +
       '<button data-act="backToTitle">back</button>' +
-      '<button class="primary grow" data-act="begin">begin weaving ▸</button>' +
+      '<button class="primary grow" data-act="beginCustom">begin custom weave ▸</button>' +
       '</div></div>';
     modal.innerHTML = html;
 
@@ -579,6 +691,8 @@ SW.uiModals = (function () {
   m.selectedConditions = function () {
     return Object.keys(chosenConditions).filter(function (k) { return chosenConditions[k]; });
   };
+  m.selectedArchetype = function () { return chosenArchetype; };
+  m.selectedPressure = function () { return chosenPressure; };
   m.selectedThreat = function () { return chosenThreat; };
   m.selectedLean = function () { const el = $('#ngLean'); return (el && el.value) || ''; };
 
@@ -631,7 +745,10 @@ SW.uiModals = (function () {
   function showMenu() {
     const modal = $('#menuModal');
     const hasManual = SW.game.hasSave('manual');
-    let html = '<h2>PAUSED</h2>';
+    const state = SW.game.state;
+    const threadName = state && state.identity && state.identity.name ? state.identity.name : 'Unnamed Thread';
+    let html = '<h2>PAUSED</h2><div class="sub" style="margin-bottom:10px">THREAD · ' + esc(threadName) +
+      ' <button class="inlineBtn" data-act="openRenameThread" aria-label="Rename Thread">rename</button></div>';
     html += '<div class="menuGroup">' +
       '<button class="frontBtn primary" data-act="closeModal"><span class="fbLabel">▸ Resume</span><span class="fbSub"><span class="kbd">Esc</span> or <span class="kbd">Space</span></span></button>' +
       '</div>';
@@ -664,25 +781,49 @@ SW.uiModals = (function () {
     const modal = $('#settingsModal');
     const p = SW.ui.prefs();
     function row(act, on, label, sub) {
-      return '<button class="frontBtn toggleBtn" data-act="' + act + '"><span class="fbLabel">' + label +
+      return '<button class="frontBtn toggleBtn" data-act="' + act + '" aria-pressed="' + on + '"><span class="fbLabel">' + label +
         '<span class="toggleState">' + (on ? '◉ on' : '○ off') + '</span></span>' +
         (sub ? '<span class="fbSub">' + sub + '</span>' : '') + '</button>';
     }
-    let html = '<h2><i>⚙</i> SETTINGS</h2><div class="menuGroup">';
+    let html = '<h2><i>⚙</i> SETTINGS &amp; ACCESSIBILITY</h2><div class="menuGroup"><div class="sectionLabel">AUDIO</div>';
     html += row('setSfx', !SW.audio.muted, 'Sound effects', 'market chimes, ship clicks, raids');
     html += row('setMusic', !SW.audio.musicMuted, 'Ambient music', 'the slow drift between the stars');
+    html += row('setSoundCaptions', !!p.soundCaptions, 'Sound captions', 'visible text for gameplay-relevant cues');
+    html += '</div><div class="menuGroup"><div class="sectionLabel">READABILITY &amp; MOTION</div>';
     html += row('setReduceMotion', !!p.reduceMotion, 'Reduce motion', 'calmer camera, skip the boot crawl');
+    html += row('setHighContrast', !!p.highContrast, 'High contrast', 'brighter text, stronger borders, redundant labels');
     html += row('setBootSkip', !!p.skipBoot, 'Skip boot sequence', 'jump straight to the menu next visit');
-    html += '</div><div class="menuGroup">';
+    html += '<div class="setRow"><span class="fbLabel grow">Text &amp; UI scale</span><span class="segGroup" role="radiogroup" aria-label="Text and UI scale">' +
+      [100, 125, 150, 200].map(function (scale) {
+        const on = (parseInt(p.uiScale, 10) || 100) === scale;
+        return '<button class="seg' + (on ? ' on' : '') + '" data-act="setUiScale" data-scale="' + scale + '" role="radio" aria-checked="' + on + '">' + scale + '%</button>';
+      }).join('') + '</span></div>';
+    html += '</div><div class="menuGroup"><div class="sectionLabel">PLAY</div>';
+    html += row('setConfirmIrreversible', !!p.confirmIrreversible, 'Confirm irreversible actions', 'asks before scrapping craft or abandoning Pledges');
     html += '<div class="setRow"><span class="fbLabel grow">Default speed</span><span class="segGroup">' +
       [['1', '▶', 1], ['2', '▶▶', 3], ['3', '▶▶▶', 10]].map(function (sp) {
         return '<button class="seg' + (p.defaultSpeed === sp[2] ? ' on' : '') + '" data-act="setDefaultSpeed" data-spd="' + sp[2] + '" title="speed ' + sp[0] + '">' + sp[1] + '</button>';
       }).join('') + '</span></div>';
     html += '</div>';
-    html += '<div class="menuGroup"><div class="sub" style="line-height:1.5">Settings save to this browser. Game progress autosaves separately and survives a refresh.</div></div>';
+    html += '<div class="menuGroup"><div class="sub" style="line-height:1.5">The simulation pauses while any dialog is being read. Exact Pledge forecasts and objective text remain available at every setting. Settings save to this browser; game progress autosaves separately.</div></div>';
     html += '<div class="choices" style="margin-top:10px"><button class="primary" data-act="closeSettings">done</button></div>';
     modal.innerHTML = html;
     SW.ui.showModal('settingsModal');
+  }
+
+  function showRenameThread() {
+    const modal = $('#confirmModal');
+    const state = SW.game.state;
+    const current = state && state.identity ? state.identity.name : '';
+    modal.innerHTML = '<h2>RENAME THREAD</h2>' +
+      '<label class="fieldLabel" for="renameThreadInput">Thread name</label>' +
+      '<input id="renameThreadInput" maxlength="40" value="' + esc(current) + '" data-autofocus>' +
+      '<div class="sub" style="margin-top:8px">Naming never changes the seed or blocks play.</div>' +
+      '<div class="choices row" style="margin-top:14px"><button data-act="cancelRenameThread">cancel</button>' +
+      '<button class="primary" data-act="renameThread">save name</button></div>';
+    SW.ui.showModal('confirmModal');
+    const input = $('#renameThreadInput');
+    if (input && input.select) input.select();
   }
 
   // ============ import save (textarea modal, not a raw prompt) ============
@@ -767,7 +908,7 @@ SW.uiModals = (function () {
     const power = SW.combat.power(s, ship);
     let defense = 3 + (sys.pop || 0) * 0.15 + SW.combat.patrolPower(s, sys.region);
     if (sys.ideology === 'vigil') defense += 6;
-    raidChoice = { ship: ship, sys: sys, wasPaused: s.paused };
+    raidChoice = { ship: ship, sys: sys };
     $('#combatSim').innerHTML = '<div class="modalCard"><h3>RAID PLAN</h3>' +
       '<div class="sub">' + esc(ship.name) + ' (pwr ' + power + ') vs ' + esc(sys.name) + ' (def ~' + Math.round(defense) + ')</div>' +
       '<p class="sub">The Simulacrum sketches patrol lanterns, decoy manifests, and one very nervous customs clerk.</p>' +
@@ -797,15 +938,13 @@ SW.uiModals = (function () {
       '<button data-act="simAuto">AUTO-RESOLVE</button><button class="danger" data-act="simAbort">ABORT</button></div></div>';
     SW.ui.showModal('combatSim');
     const cv = document.getElementById('simCanvas');
-    const wasPaused = s.paused;
-    s.paused = true;
     const total = Math.max(4, Math.min(24, Math.round(defense * 1.5)));
     const inv = [];
     for (let i = 0; i < total; i++) {
       inv.push({ x: 60 + (i % 8) * 52, y: 36 + Math.floor(i / 8) * 34, alive: true, ph: i * 0.7, prize: i % 7 === 3 });
     }
     sim = {
-      ship: ship, sys: sys, cv: cv, wasPaused: wasPaused,
+      ship: ship, sys: sys, cv: cv,
       px: 260, keys: {}, shots: [], bombs: [], inv: inv, total: total,
       hp: 3, lootPips: 0, t0: 0, lastShot: 0, lastBomb: 0, over: false,
       bombRate: Math.min(900, 280 + 4000 / Math.max(2, defense)),
@@ -819,7 +958,6 @@ SW.uiModals = (function () {
     $('#combatSim').innerHTML = '';
     sim = null; raidChoice = null;
     if (!wasSim) return;
-    if (s) s.paused = wasSim.wasPaused;
     if (autoResolve && s) {
       const r = A().raid(s, wasSim.ship.id, wasSim.sys.id);
       if (!r.ok) SW.ui.toast({ kind: 'bad', text: r.msg }); else SW.audio.sfx('raid');
@@ -835,7 +973,6 @@ SW.uiModals = (function () {
     $('#combatSim').innerHTML = '';
     sim = null;
     if (s) {
-      s.paused = w.wasPaused;
       const r = A().raid(s, w.ship.id, w.sys.id, edge);
       if (!r.ok) SW.ui.toast({ kind: 'bad', text: r.msg });
       else {
@@ -921,10 +1058,13 @@ SW.uiModals = (function () {
   m.showGameOver = showGameOver;
   m.showTitle = showTitle;
   m.showNewRun = showNewRun;
+  m.showCustomRun = showCustomRun;
+  m.showChronicle = showChronicle;
   m.showDailyBrief = showDailyBrief;
   m.dailyConfig = dailyConfig;
   m.showMenu = showMenu;
   m.showSettings = showSettings;
+  m.showRenameThread = showRenameThread;
   m.showImport = showImport;
   m.showConfirm = showConfirm;
   m.runConfirm = runConfirm;

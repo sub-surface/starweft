@@ -32,25 +32,31 @@ SW.quests = (function () {
     const out = [];
     const tu = state.tutorial;
     const ship = shipNamed(state, 'Stitch');
-    if (tu && (tu.active || tu.done)) {
+    if (tu && tu.active) {
       const g = tu.goal == null ? -1 : tu.goal;
+      const labels = [
+        'Wake inside the live canonical Thread',
+        'Fly to The Belt',
+        'Load a feasible first cargo',
+        'Deliver unpledged Ore to Earth',
+        'Read the exact arrival change',
+        'Compare and seal a contextual Pledge',
+        'Keep the Pledge before its deadline',
+        'Create and staff a circular route',
+        'Hold Food in the Sol reserve',
+        'Answer a nonlethal lane disruption',
+        'Resume or replace the affected route',
+        'Draft the first gameplay Charter',
+        'Hold a stable knot for 25 pulses'
+      ];
       out.push({
-        id: 'sol_net',
-        title: 'First Contract: Sol Logistics Net',
-        issuer: 'Courier Guild escrow',
-        summary: 'Stand up a local supply chain before WEFT-7 takes contracts beyond Sol.',
-        action: tu.active && g === 6 && !state.story.flags.sol_net_authorized ? 'authorizeSolNet' : null,
-        actionLabel: 'Authorize Sol Net',
-        steps: [
-          step('belt', 'Berth Stitch at The Belt', g > 0 || atOrGoingToBelt(ship), g === 0),
-          step('ore', 'Load Belt ore at rockhopper rates', g > 1 || hasOre(state), g === 1),
-          step('sale', 'Sell ore at Earth Anchorage', g > 2, g === 2),
-          step('alloy', 'Buy alloy for the first anchor', g > 3 || hasAlloyOnSite(state), g === 3),
-          step('hydrofarm', 'Anchor the Earth Hydrofarm', g > 4 || ((home(state).sites || []).length > 0), g === 4),
-          step('chain', 'Let Biomass, Food, and city demand connect', g > 5, g === 5),
-          step('authorize', 'Authorize the Sol logistics net', !!state.story.flags.sol_net_authorized, g === 6),
-          step('jump', 'Take the Guild jump contract beyond Sol', tu.done || g > 7, g === 7),
-        ],
+        id: 'act_zero_wake',
+        title: 'Act 0: The Wake',
+        issuer: 'Menders’ Guild',
+        summary: 'Prove one physical loop, one promise, one reserve, one response, and one stable knot before Act I begins.',
+        action: null,
+        actionLabel: null,
+        steps: labels.map(function (label, i) { return step('wake_' + i, label, g > i, g === i); })
       });
       return out;
     }
@@ -74,9 +80,8 @@ SW.quests = (function () {
   };
 
   Q.markJournalViewed = function (state) {
-    if (state && state.tutorial && state.tutorial.active && state.tutorial.goal === 6) {
-      state.tutorial.netPrompted = true;
-    }
+    // Read-only by design. Rendering the Journal must never change replay state.
+    return !!state;
   };
 
   return Q;

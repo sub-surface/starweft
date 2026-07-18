@@ -170,10 +170,26 @@ step('game state exists after boot', function () {
 
 step('begin a new game via title-screen action', function () {
   elCache['#ngSeed'] = stubEl('input'); elCache['#ngSeed'].value = 'boot-test';
-  elCache['#ngDiff'] = stubEl('select'); elCache['#ngDiff'].value = 'standard';
   fireClick('begin');
   if (G.state.seed !== 'boot-test') throw new Error('seed not applied: ' + G.state.seed);
+  if (G.state.archetype !== 'courier' || G.state.pressure !== 'standard') throw new Error('canonical launch did not resolve default role/pressure');
+  if (!G.state.acts || G.state.acts.phase !== 'act0' || G.state.acts.clock !== null) throw new Error('canonical launch did not enter clockless Act 0');
   if (G.state.paused) throw new Error('game did not unpause');
+  const actZeroPanel = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
+  if (actZeroPanel.indexOf('data-act="selectBody"') < 0 || actZeroPanel.indexOf('The Belt') < 0 || actZeroPanel.indexOf('Earth') < 0) throw new Error('Act 0 has no keyboard/text body selector');
+  fireClick('selectBody', { body: 'The Belt' });
+  if (!SW.render.selectedBody || SW.render.selectedBody.name !== 'The Belt') throw new Error('keyboard-equivalent body button did not select the Belt');
+  if (((elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '').indexOf('data-act="hopHere"') < 0) throw new Error('body button did not reveal the FLY HERE action');
+  const alerts = (elCache['#alerts'] && elCache['#alerts'].innerHTML) || '';
+  if (alerts.indexOf('data-act="skipActZero"') < 0 || alerts.indexOf('CLOCK PAUSED') < 0 || alerts.indexOf('ticks left') >= 0) throw new Error('Act 0 strip does not expose an honest, reachable skip/clock state');
+  fireClick('skipActZero');
+  if (G.state.tutorial.active || G.state.acts.phase !== 'act1') throw new Error('visible opening skip did not enter Act I');
+  // The remainder of this broad UI harness exercises the open game, not guided
+  // disclosure. Act 0 receives its own action-driven and browser fixtures below.
+  G.newGame({ seed: 'boot-test-open', difficulty: 'standard' });
+  SW.render.exitSystem();
+  SW.render.centerOn(G.state.homeId);
+  A.setSpeed(G.state, 1);
 });
 
 step('simulate 300 ticks with UI refresh + frames', function () {
@@ -181,6 +197,7 @@ step('simulate 300 ticks with UI refresh + frames', function () {
     if (G.state.story.pending) {
       SW.ui.showEvent();              // exercise the modal builder
       A.chooseEvent(G.state, 0);
+      SW.ui.hideModals();             // close the rendered result before continuing the shared harness
     }
     G.tick(G.state);
     if (i % 10 === 0) { SW.ui.refresh(); pumpFrames(2); }
@@ -616,7 +633,7 @@ step('raid button opens simulacrum choice once unlocked', function () {
   if (commandHtml.indexOf('data-act="simRaid"') >= 0) throw new Error('separate sim button still rendered');
   fireClick('raidHere');
   if ((s.infamy || 0) !== inf0) throw new Error('raidHere resolved before player chose manual or auto');
-  if (s.paused !== paused0) throw new Error('raid choice changed pause state');
+  if (!s.paused) throw new Error('raid choice did not pause while the decision modal is being read');
   if (elCache['#modalShade'].classList.contains('hidden') || elCache['#combatSim'].classList.contains('hidden')) throw new Error('raidHere did not open visible choice modal');
   const modalHtml = (elCache['#combatSim'] && elCache['#combatSim'].innerHTML) || '';
   if (modalHtml.indexOf('MANUAL BREACH') < 0 || modalHtml.indexOf('AUTO-RESOLVE') < 0) throw new Error('raid choice modal missing manual/auto actions');
@@ -1100,7 +1117,7 @@ step('boot screen short-circuits headlessly and invokes the title handoff', func
   if (SW.boot.isActive && SW.boot.isActive()) throw new Error('boot left itself active after headless skip');
 });
 
-step('front-door title shows the menu verbs, new-run setup omits dead selectors', function () {
+step('canonical front door separates fast launch from Custom/Sandbox', function () {
   SW.ui.showTitle();
   const front = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
   if (front.indexOf('data-act="newRun"') < 0) throw new Error('front door missing New weave');
@@ -1108,34 +1125,36 @@ step('front-door title shows the menu verbs, new-run setup omits dead selectors'
   // Identity/origin config must NOT be on the landing — it lives one step in.
   if (front.indexOf('id="ngDiff"') >= 0) throw new Error('setup form leaked onto the front door');
   if (front.indexOf('data-act="dailyWeave"') < 0) throw new Error('front door missing Daily weave');
-  // Step into setup and check the form is there, minus the removed selectors.
+  if (front.indexOf('data-act="customRun"') < 0) throw new Error('front door missing Custom/Sandbox');
+  if (front.indexOf('data-act="chronicle"') < 0) throw new Error('front door missing Chronicle');
+  // Canonical setup contains only role + pressure, with the seed secondary.
   SW.uiModals.showNewRun();
   const setup = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
-  if (setup.indexOf('id="ngDiff"') < 0) throw new Error('new-run setup missing difficulty');
-  if (setup.indexOf('id="ngThreat"') < 0) throw new Error('new-run setup missing threat selector');
-  if (setup.indexOf('id="ngLean"') < 0) throw new Error('new-run setup missing doctrine lean');
-  if (setup.indexOf('data-cond=') < 0) throw new Error('new-run setup missing weave conditions');
-  if (setup.indexOf('id="ngForecast"') < 0) throw new Error('new-run setup missing forecast');
+  for (const id of ['courier', 'cartographer', 'stationwright', 'envoy', 'warden']) if (setup.indexOf('data-archetype="' + id + '"') < 0) throw new Error('canonical setup missing ' + id);
+  for (const id of ['guided', 'standard', 'severe']) if (setup.indexOf('data-pressure="' + id + '"') < 0) throw new Error('canonical setup missing ' + id + ' pressure');
   if (setup.indexOf('data-act="begin"') < 0) throw new Error('new-run setup missing begin');
+  if (setup.indexOf('<details class="launchDetails"') < 0 || setup.indexOf('id="ngSeed"') < 0) throw new Error('seed sharing is not secondary-but-preserved');
+  for (const obsolete of ['id="ngDiff"', 'id="ngThreat"', 'id="ngLean"', 'data-cond=', 'id="ngAge"', 'id="ngTopo"', 'id="ngHeart"', 'id="ngMyth"', 'id="ngTut"', 'data-founder=']) {
+    if (setup.indexOf(obsolete) >= 0) throw new Error('advanced control leaked into canonical launch: ' + obsolete);
+  }
+  // The complete former configurator remains intact behind Custom/Sandbox.
+  SW.uiModals.showCustomRun();
+  const custom = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
+  if (custom.indexOf('id="ngDiff"') < 0 || custom.indexOf('id="ngThreat"') < 0 || custom.indexOf('id="ngLean"') < 0) throw new Error('custom setup lost world controls');
+  if (custom.indexOf('data-cond=') < 0 || custom.indexOf('id="ngForecast"') < 0 || custom.indexOf('data-act="beginCustom"') < 0) throw new Error('custom setup lost conditions, forecast, or launch');
   if (setup.indexOf('ngBad') >= 0) throw new Error('badlands depth selector still present');
   if (setup.indexOf('ngRiv') >= 0) throw new Error('rival count selector still present');
-  // authored-world dials + founding myth + the promoted prologue switch
-  if (setup.indexOf('id="ngAge"') < 0) throw new Error('new-run setup missing galaxy age');
-  if (setup.indexOf('id="ngTopo"') < 0) throw new Error('new-run setup missing topology');
-  if (setup.indexOf('id="ngHeart"') < 0) throw new Error('new-run setup missing the heart');
-  if (setup.indexOf('id="ngMyth"') < 0) throw new Error('new-run setup missing founding myth');
-  if (setup.indexOf('id="ngTut"') < 0) throw new Error('new-run setup missing prologue toggle');
-  if (setup.indexOf('id="prologueCard"') < 0) throw new Error('prologue toggle not promoted to a switch card');
+  if (custom.indexOf('id="ngAge"') < 0 || custom.indexOf('id="ngTopo"') < 0 || custom.indexOf('id="ngHeart"') < 0 || custom.indexOf('id="ngMyth"') < 0 || custom.indexOf('id="ngTut"') < 0) throw new Error('custom setup lost authored-world/guidance controls');
   // collapsible sections + the surprise-me / name reroll QOL controls
-  if (setup.indexOf('data-fold="conditions"') < 0) throw new Error('weave conditions not collapsible');
-  if (setup.indexOf('data-act="surpriseWeave"') < 0) throw new Error('surprise-me button missing');
-  if (setup.indexOf('data-act="rerollName"') < 0) throw new Error('name reroll button missing');
+  if (custom.indexOf('data-fold="conditions"') < 0) throw new Error('weave conditions not collapsible');
+  if (custom.indexOf('data-act="surpriseWeave"') < 0) throw new Error('surprise-me button missing');
+  if (custom.indexOf('data-act="rerollName"') < 0) throw new Error('name reroll button missing');
   // the randomizers run without throwing against the form
   SW.uiModals.rerollName();
   SW.uiModals.surpriseWeave();
 });
 
-step('Founder picker (SPEC[RUN-FOUNDERS]): cards render; begin resolves a founder only for a Focused run', function () {
+step('Custom/Sandbox preserves the legacy Founder adapter', function () {
   // The stub DOM's querySelector/querySelectorAll don't parse innerHTML (they
   // key a memoized stub by selector string — see elCache above), so neither
   // per-card click wiring nor chosenFounderFromModal's live .sel lookup can be
@@ -1144,7 +1163,7 @@ step('Founder picker (SPEC[RUN-FOUNDERS]): cards render; begin resolves a founde
   // same reason). What IS real and worth locking in: the cards render with
   // the right ids, and newGame's acts-gate on opts.founder actually applies
   // end-to-end through the dispatcher, not just in the direct-call smoke test.
-  SW.uiModals.showNewRun();
+  SW.uiModals.showCustomRun();
   const setup = (elCache['#titleModal'] && elCache['#titleModal'].innerHTML) || '';
   if (setup.indexOf('data-founder="courier"') < 0) throw new Error('founder picker missing the Courier card');
   if (setup.indexOf('data-founder="underwriter"') < 0) throw new Error('founder picker missing the Underwriter card');
@@ -1156,12 +1175,12 @@ step('Founder picker (SPEC[RUN-FOUNDERS]): cards render; begin resolves a founde
   elCache['#idMotto'] = stubEl('input'); elCache['#idMotto'].value = 'x';
   elCache['#ngShape'] = stubEl('input'); elCache['#ngShape'].checked = true;   // Focused — founders matter
   elCache['#ngTut'] = stubEl('input'); elCache['#ngTut'].checked = false;
-  fireClick('begin');
+  fireClick('beginCustom');
   if (!G.state.founder) throw new Error('a Focused run through the dispatcher resolved no founder at all');
 
   elCache['#ngSeed'].value = 'boot-founder-sandbox';
   elCache['#ngShape'].checked = false; // Long Weave — founders should not apply
-  fireClick('begin');
+  fireClick('beginCustom');
   if (G.state.founder) throw new Error('a Long Weave run through the dispatcher should resolve no founder (' + G.state.founder + ')');
 });
 
@@ -1185,14 +1204,51 @@ step('daily weave config is deterministic and well-formed', function () {
 });
 
 step('settings panel renders toggles and persists prefs', function () {
+  SW.ui.hideModals();
+  A.setSpeed(G.state, 3);
   SW.uiModals.showSettings();
   let html = (elCache['#settingsModal'] && elCache['#settingsModal'].innerHTML) || '';
   if (html.indexOf('data-act="setReduceMotion"') < 0) throw new Error('settings missing reduce-motion toggle');
+  if (html.indexOf('data-act="setHighContrast"') < 0) throw new Error('settings missing high-contrast toggle');
+  if (html.indexOf('data-act="setSoundCaptions"') < 0) throw new Error('settings missing sound-caption toggle');
+  if (html.indexOf('data-act="setUiScale"') < 0 || html.indexOf('200%') < 0) throw new Error('settings missing 200% UI scale');
+  if (html.indexOf('data-act="setConfirmIrreversible"') < 0) throw new Error('settings missing irreversible-action confirmation');
   if (html.indexOf('data-act="setDefaultSpeed"') < 0) throw new Error('settings missing default speed');
+  if (!G.state.paused) throw new Error('opening a reading dialog did not pause the live simulation');
   fireClick('setReduceMotion');
   if (!storageMap.starweft_prefs || JSON.parse(storageMap.starweft_prefs).reduceMotion !== true) throw new Error('reduce-motion pref not persisted');
+  if (!documentElement.classList.contains('reduceMotion')) throw new Error('reduce-motion class not applied');
+  SW.render.cam.dist = 120; SW.render.cam.distTarget = 60; pumpFrames(1);
+  if (SW.render.cam.dist !== 60) throw new Error('reduced motion did not remove camera easing');
+  fireClick('setHighContrast');
+  if (!documentElement.classList.contains('highContrast')) throw new Error('high-contrast class not applied');
+  fireClick('setSoundCaptions');
+  SW.audio.sfx('dread');
+  if ((elCache['#audioCaption'] && elCache['#audioCaption'].textContent || '').indexOf('Threat warning') < 0) throw new Error('gameplay sound produced no text caption');
+  fireClick('setUiScale', { scale: '200' });
+  if (JSON.parse(storageMap.starweft_prefs).uiScale !== 200 || documentElement.dataset.uiScale !== '200') throw new Error('200% UI scale not applied and persisted');
+  fireClick('setConfirmIrreversible');
+  if (!JSON.parse(storageMap.starweft_prefs).confirmIrreversible) throw new Error('confirmation preference not persisted');
   fireClick('setDefaultSpeed', { spd: '3' });
   if (JSON.parse(storageMap.starweft_prefs).defaultSpeed !== 3) throw new Error('default speed pref not persisted');
+  fireClick('closeSettings');
+  if (G.state.paused || G.state.speed !== 3) throw new Error('closing the reading dialog did not restore prior speed');
+  A.setSpeed(G.state, 1);
+  SW.ui.setPref('uiScale', 100);
+  SW.ui.setPref('reduceMotion', false);
+  SW.ui.setPref('highContrast', false);
+  SW.ui.setPref('confirmIrreversible', false);
+});
+
+step('generated Thread identity can be renamed through a recorded action', function () {
+  const before = G.state.journal.length;
+  const r = A.renameThread(G.state, '  The Test   Passage  ');
+  if (!r.ok || G.state.identity.name !== 'The Test Passage') throw new Error('rename action did not normalize and apply the name');
+  if (G.state.journal.length !== before + 1 || G.state.journal[G.state.journal.length - 1].a !== 'renameThread') throw new Error('rename was not recorded in the action journal');
+  SW.uiModals.showMenu();
+  const html = (elCache['#menuModal'] && elCache['#menuModal'].innerHTML) || '';
+  if (html.indexOf('The Test Passage') < 0 || html.indexOf('data-act="openRenameThread"') < 0) throw new Error('pause menu does not expose the renamed Thread');
+  SW.ui.hideModals();
 });
 
 step('import modal and generic confirm wire up', function () {
@@ -1260,6 +1316,23 @@ step('game over modal (forced win) renders', function () {
   SW.ui.showGameOver(G.state.gameOver);
   fireClick('postgame');
   if (G.state.gameOver) throw new Error('postgame did not clear gameOver');
+});
+
+step('canonical loss offers one-click replay of identity and pressure', function () {
+  const saved = G.state;
+  const lost = G.newGame(G.canonicalLaunch({ seed: 'boot-loss-replay', archetype: 'warden', pressure: 'severe', identity: { name: 'The Last Lantern', hue: 18 } }));
+  lost.gameOver = { win: false, reason: 'test loss', tick: lost.tick, score: 12 };
+  lost.paused = true;
+  SW.ui.showGameOver(lost.gameOver);
+  const html = (elCache['#gameoverModal'] && elCache['#gameoverModal'].innerHTML) || '';
+  if (html.indexOf('Archetype') < 0 || html.indexOf('Warden') < 0 || html.indexOf('Severe') < 0) throw new Error('death screen reports legacy run axes instead of archetype/pressure');
+  if (html.indexOf('data-act="replayLastThread"') < 0) throw new Error('canonical loss has no one-click replay');
+  fireClick('replayLastThread');
+  if (G.state === lost || G.state.archetype !== 'warden' || G.state.pressure !== 'severe') throw new Error('replay did not launch the same archetype and pressure');
+  if (G.state.identity.name !== 'The Last Lantern' || G.state.seed === lost.seed) throw new Error('replay did not preserve identity on a fresh seed');
+  if (!G.state.tutorial || !G.state.tutorial.active || G.state.acts.phase !== 'act0') throw new Error('replay did not return directly to canonical Act 0 control');
+  G.state = saved;
+  SW.ui.hideModals();
 });
 
 step('postgame continue resumes the simulation', function () {
@@ -1506,14 +1579,15 @@ step('coexisting v2 play has an explicit adapter route without touching source b
   if (!continued.ok || G.state.credits !== expectedCredits || G.state.kind !== 'legacy-weave') throw new Error('Load did not return to continued legacy progress');
 });
 
-step('Sol prologue boots locked into the system view', function () {
-  G.newGame({ seed: 'boot-tutorial', difficulty: 'standard', tutorial: true });
+step('canonical Act 0 boots locked into the opening system view', function () {
+  G.newGame(G.canonicalLaunch({ seed: 'boot-tutorial', archetype: 'cartographer', pressure: 'standard' }));
   const s = G.state;
   if (!SW.tutorial.isActive(s)) throw new Error('tutorial not active');
   SW.ui.enterSystem(s.homeId);
   if (SW.render.mode !== 'system') throw new Error('not in system view');
-  G.tick(s);
-  if (!s.story.objective || s.story.objective.indexOf('BELT') < 0) throw new Error('prologue prompt not set: ' + s.story.objective);
+  G.tick(s); G.tick(s);
+  if (!s.story.objective || s.story.objective.indexOf('BELT') < 0) throw new Error('Act 0 prompt not set: ' + s.story.objective);
+  if (s.act.index !== 0 || s.acts.n !== 0 || s.acts.clock !== null) throw new Error('Wake is not canonical clockless Act 0');
   SW.ui.exitSystem();                       // must be refused while locked
   if (SW.render.mode !== 'system') throw new Error('map lock did not hold');
   SW.ui.refresh();                          // panels render in tutorial state without throwing
@@ -1522,7 +1596,7 @@ step('Sol prologue boots locked into the system view', function () {
   const r = A.shipHop(s, s.ships[0].id, 'The Belt');
   if (!r.ok) throw new Error('Belt hop failed: ' + r.msg);
   G.tick(s);
-  if (s.tutorial.goal !== 1) throw new Error('cast-off beat did not advance (goal=' + s.tutorial.goal + ')');
+  if (s.tutorial.goal !== 2) throw new Error('cast-off beat did not advance (goal=' + s.tutorial.goal + ')');
   // panels render with a ship mid-shuttle (command bar, fleet, sys panel)
   SW.ui.refresh();
   pumpFrames(2);
@@ -1554,10 +1628,10 @@ step('Sol prologue boots locked into the system view', function () {
   }
 });
 
-step('Sol prologue selected body exposes FLY HERE without manual expansion', function () {
-  G.newGame({ seed: 'boot-tutorial-body', difficulty: 'standard', tutorial: true });
+step('canonical Act 0 selected body exposes FLY HERE without manual expansion', function () {
+  G.newGame(G.canonicalLaunch({ seed: 'boot-tutorial-body', archetype: 'courier', pressure: 'standard' }));
   const s = G.state;
-  G.tick(s);
+  G.tick(s); G.tick(s);
   SW.render.enterSystem(s.homeId);
   SW.render.selectedSys = s.homeId;
   SW.render.selectedShip = s.ships[0].id;
@@ -1565,21 +1639,21 @@ step('Sol prologue selected body exposes FLY HERE without manual expansion', fun
   SW.ui.refresh();
   const html = (elCache['#sysPanel'] && elCache['#sysPanel'].innerHTML) || '';
   if (html.indexOf('FLY HERE') < 0) throw new Error('selected body lacks FLY HERE action');
-  if (html.indexOf('Mining Station') >= 0 || html.indexOf('Orbital Spindle') >= 0) throw new Error('prologue exposes non-current body construction');
+  if (html.indexOf('Mining Station') >= 0 || html.indexOf('Orbital Spindle') >= 0) throw new Error('Act 0 exposes non-current body construction');
   const idx = html.indexOf('The Belt');
   if (idx < 0) throw new Error('selected Belt section missing from panel HTML');
   const sectionStart = html.lastIndexOf('panelSection', idx);
   const sectionOpen = sectionStart >= 0 && html.slice(sectionStart, Math.min(html.length, sectionStart + 80)).indexOf('collapsed') < 0;
-  if (!sectionOpen) throw new Error('selected Belt section is collapsed in prologue');
+  if (!sectionOpen) throw new Error('selected Belt section is collapsed in Act 0');
 });
 
-step('Sol prologue opens market during buy and sell beats', function () {
-  G.newGame({ seed: 'boot-tutorial-market', difficulty: 'standard', tutorial: true });
+step('canonical Act 0 opens market during buy and sell beats', function () {
+  G.newGame(G.canonicalLaunch({ seed: 'boot-tutorial-market', archetype: 'warden', pressure: 'guided' }));
   const s = G.state;
-  G.tick(s);
+  G.tick(s); G.tick(s);
   const ship = s.ships[0];
   ship.body = 'The Belt';
-  s.tutorial.goal = 1;
+  s.tutorial.goal = 2;
   SW.render.enterSystem(s.homeId);
   SW.render.selectedSys = s.homeId;
   SW.render.selectedShip = ship.id;
@@ -1590,27 +1664,23 @@ step('Sol prologue opens market during buy and sell beats', function () {
   if (marketIdx < 0) throw new Error('market section missing');
   const sectionStart = html.lastIndexOf('panelSection', marketIdx);
   const sectionOpen = sectionStart >= 0 && html.slice(sectionStart, Math.min(html.length, sectionStart + 80)).indexOf('collapsed') < 0;
-  if (!sectionOpen) throw new Error('market section is collapsed during prologue cargo beat');
-  if (html.indexOf('data-c="ORE"') < 0) throw new Error('ore buy/sell controls missing during prologue cargo beat');
+  if (!sectionOpen) throw new Error('market section is collapsed during Act 0 cargo beat');
+  if (html.indexOf('data-c="ORE"') < 0) throw new Error('ore buy/sell controls missing during Act 0 cargo beat');
 });
 
 step('Journal groups company contract with the run log', function () {
-  G.newGame({ seed: 'boot-tutorial-journal', difficulty: 'standard', tutorial: true });
+  G.newGame(G.canonicalLaunch({ seed: 'boot-tutorial-journal', archetype: 'courier', pressure: 'standard' }));
   const s = G.state;
   G.tick(s);
   SW.ui.setTab('log');
   const html0 = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
   if (html0.indexOf('Company Contracts') < 0) throw new Error('journal lacks company contract heading');
-  if (html0.indexOf('First Contract: Sol Logistics Net') < 0) throw new Error('journal lacks Sol Net contract');
-  if (html0.indexOf('Berth Stitch at The Belt') < 0) throw new Error('journal lacks current prologue step');
+  if (html0.indexOf('Act 0: The Wake') < 0) throw new Error('journal lacks Act 0 contract');
+  if (html0.indexOf('Wake inside the live canonical Thread') < 0) throw new Error('journal lacks current Wake step');
 
-  s.tutorial.goal = 6;
-  s.tutorial.netPrompted = true;
+  const before = JSON.stringify(s.tutorial);
   SW.ui.setTab('log');
-  const html1 = (elCache['#dockBody'] && elCache['#dockBody'].innerHTML) || '';
-  if (html1.indexOf('Authorize Sol Net') < 0) throw new Error('journal lacks Sol Net authorization action');
-  fireClick('authorizeSolNet');
-  if (!s.story.flags.sol_net_authorized || !s.story.flags.routes_unlocked) throw new Error('Sol Net authorization did not set company flags');
+  if (JSON.stringify(s.tutorial) !== before) throw new Error('rendering the Journal mutated replay state');
 });
 
 console.log('\n' + (failures ? failures + ' FAILURES' : 'BROWSER BOOT CHECK PASSED ✓'));

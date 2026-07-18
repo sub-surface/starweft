@@ -1,6 +1,6 @@
 # STARWEFT engineering guide
 
-STARWEFT is a zero-dependency browser logistics game: plain HTML, CSS, and
+STARWEFT is a zero-dependency browser logistics roguelike: plain HTML, CSS, and
 classic JavaScript, rendered with Canvas 2D, with no build step. It runs from
 `file://` by opening `index.html` and is hosted as static assets.
 
@@ -135,16 +135,16 @@ When adding a script:
 | `js/tech.js` | technology state and research |
 | `js/story.js` | pending event/story engine |
 | `js/worldevents.js` | simulated world events |
-| `js/tutorial.js` | current prologue/tutorial state and predicates |
+| `js/tutorial.js` | canonical clockless Act 0, staged guidance, recovery, skip convergence, and transition predicates |
 | `js/quests.js` | quest state and resolution |
 | `js/civics.js` | factions, ideology, presence, and civic state |
 | `js/campaign.js` | account/campaign/Thread/Act schemas, migrations, seed layers, Chronicle registration |
 | `js/objectives.js` | objective grammar, executable solution classes, seed validation and repair |
-| `js/charters.js` | Charter schema, slots, pool registration, and validation |
+| `js/charters.js` | Charter schema, opening draft, live modifier sources, slots, pool registration, and validation |
 | `js/aperture.js` | Hot/Warm/Cold records, causal classification, aggregate snapshots, conservation diagnostics |
-| `js/founders.js` | current Founder packages; migration input for archetypes |
+| `js/founders.js` | archetype effect lookup plus quarantined Founder compatibility adapter |
 | `js/pledges.js` | Pledge construction, constraints, progress, completion/failure |
-| `js/acts.js` | current Act shell and transitions; target shape is in SPEC |
+| `js/acts.js` | clockless Act 0 suspension, Act I start, quotas, Charter modifiers, and transitions |
 | `js/signals.js` | signal data/selection helpers used by presentation |
 | `js/game.js` | canonical state, action boundary, journal, tick orchestration, validation, save/load, browser loop |
 | `js/market_analytics.js` | headless market analysis used by UI and tests |

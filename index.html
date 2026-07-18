@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-ui-scale="100">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -38,8 +38,8 @@
     <button id="btnMore" title="More — development, market, codex, sound" aria-label="More controls" aria-expanded="false" data-info="ui:more">⋯</button>
   </div>
   <div class="srow" id="stripSub">
-    <div id="objective"><b>◈</b> <span>…</span></div>
-    <div id="ticker"></div>
+    <div id="objective" role="status" aria-live="polite"><b>◈</b> <span>…</span></div>
+    <div id="ticker" role="status" aria-live="polite"></div>
   </div>
   <div class="srow hidden" id="stripMore">
     <button id="btnTech" title="Development — research tree, aptitudes and milestones in one place" data-info="ui:research">DEVELOPMENT</button>
@@ -51,7 +51,8 @@
 </div>
 
 <div id="main">
-  <canvas id="map"></canvas>
+  <canvas id="map" role="img" aria-label="Interactive galaxy map. Use Search, the Journal, or the signal list for text navigation."></canvas>
+  <div id="mapA11y" class="srOnly" aria-live="polite"></div>
   <button id="btnBackGalaxy" class="hidden">← THE BUBBLE</button>
   <div id="sysPanel" class="panel hidden"></div>
   <div id="ring" class="hidden"></div>
@@ -75,20 +76,21 @@
   <div id="techOverlay" class="hidden"></div>
 </div>
 
-<div id="toasts"></div>
+<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+<div id="audioCaption" class="audioCaption hidden" role="status" aria-live="polite"></div>
 
-<div id="modalShade" class="hidden">
-  <div id="eventModal" class="modal hidden"></div>
-  <div id="gameoverModal" class="modal hidden"></div>
-  <div id="titleModal" class="modal hidden"></div>
-  <div id="helpModal" class="modal hidden"></div>
-  <div id="menuModal" class="modal hidden"></div>
-  <div id="settingsModal" class="modal hidden"></div>
-  <div id="importModal" class="modal hidden"></div>
-  <div id="confirmModal" class="modal hidden"></div>
-  <div id="cheatModal" class="modal hidden"></div>
-  <div id="codexModal" class="modal wide hidden"></div>
-  <div id="combatSim" class="modal hidden"></div>
+<div id="modalShade" class="hidden" aria-hidden="true">
+  <div id="eventModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="gameoverModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="titleModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="helpModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="menuModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="importModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="cheatModal" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="codexModal" class="modal wide hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
+  <div id="combatSim" class="modal hidden" role="dialog" aria-modal="true" tabindex="-1"></div>
 </div>
 
 <script src="js/util.js"></script>

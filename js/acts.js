@@ -38,6 +38,36 @@ SW.acts = (function () {
   A2.init = function (state) {
     if (!A2.active(state)) return;
     const a = state.acts;
+    a.boons = a.boons || [];
+    a.history = a.history || [];
+    a.lanesUsed = {}; a.completionsThisAct = 0; a.firstKeptDone = false;
+    a.graceLeft = 0;
+    // Act 0 is canonical state, not a separate mode. It owns the same fleet,
+    // economy, Pledges and Charter surface, but no quota clock begins until the
+    // Wake has taught an informed promise and hands control to Act I.
+    if (SW.tutorial && SW.tutorial.isActive(state)) {
+      a.phase = 'act0';
+      a.suspended = 'act0';
+      a.n = 0;
+      a.startWeave = state.weave || 0;
+      a.startTick = null;
+      a.quota = 0;
+      a.clock = null;
+      a.aperture = 1;
+      a.commission = 'open';
+      a.boundary = false; a.summit = false; a.draft = [];
+      if (state.act) { state.act.index = 0; state.act.id = state.campaign.id + '-' + state.thread.id + '-act-0'; state.act.startedAt = state.tick; state.act.scale = 'system'; }
+      if (state.ships && state.ships[0]) { state.loomshipId = state.ships[0].id; state.ships[0].loomship = true; }
+      return;
+    }
+    A2.beginActOne(state);
+  };
+
+  A2.beginActOne = function (state) {
+    if (!A2.active(state)) return;
+    const a = state.acts;
+    a.phase = 'act1';
+    a.suspended = null;
     a.n = 1;
     a.startWeave = state.weave || 0;
     a.startTick = state.tick;
@@ -45,11 +75,13 @@ SW.acts = (function () {
     a.clock = state.tick + A2.clockLen(1);
     a.aperture = 1;
     a.boons = a.boons || [];
+    a.commissionsUsed = [];
     a.commission = drawCommission(state);
     a.boundary = false; a.summit = false; a.draft = [];
     a.lanesUsed = {}; a.completionsThisAct = 0; a.firstKeptDone = false;
     a.graceLeft = 0;
     a.history = a.history || [];
+    if (state.act) { state.act.index = 1; state.act.startedAt = state.tick; state.act.scale = 'system'; }
     // the WEFT core rides one hull — the Loomship. Losing it is death.
     if (state.ships && state.ships[0]) { state.loomshipId = state.ships[0].id; state.ships[0].loomship = true; }
     refreshGrace(state);
@@ -64,17 +96,18 @@ SW.acts = (function () {
   function ownsBoon(state, id) { return (state.acts.boons || []).indexOf(id) >= 0; }
 
   // ---- the modifier bag: commission fx folded with owned boon fx ----
-  const IDENTITY = { chipMult: 1, threadBonus: 0, maxActiveBonus: 0, windowMult: 1, bondMult: 1,
+  const IDENTITY = { chipMult: 1, threadBonus: 0, maxActiveBonus: 0, windowMult: 1, bondMult: 1, firstKeptChipMult: 1,
     shortageChipMult: 1, frontChipMult: 1, tierChipMult: [1, 1, 1, 1],
     farThreadBonus: 0, tautThreadBonus: 0, firstlightX2: false, fifthSeal: false, streakCapBonus: 0 };
   A2.mods = function (state) {
     if (!A2.active(state)) return IDENTITY;
-    const m = { chipMult: 1, threadBonus: 0, maxActiveBonus: 0, windowMult: 1, bondMult: 1,
+    const m = { chipMult: 1, threadBonus: 0, maxActiveBonus: 0, windowMult: 1, bondMult: 1, firstKeptChipMult: 1,
       shortageChipMult: 1, frontChipMult: 1, tierChipMult: [1, 1, 1, 1],
       farThreadBonus: 0, tautThreadBonus: 0, firstlightX2: false, fifthSeal: false, streakCapBonus: 0 };
     const sources = [D.COMMISSIONS[state.acts.commission] && D.COMMISSIONS[state.acts.commission].fx];
     for (const id of (state.acts.boons || [])) sources.push(D.BOONS[id] && D.BOONS[id].fx);
     if (SW.founders) { const fo = SW.founders.current(state); if (fo) sources.push(fo.fx); }
+    if (SW.charters && SW.charters.modSources) sources.push.apply(sources, SW.charters.modSources(state));
     for (const fx of sources) {
       if (!fx) continue;
       if (fx.chipMult) m.chipMult *= fx.chipMult;
@@ -82,6 +115,7 @@ SW.acts = (function () {
       if (fx.maxActiveBonus) m.maxActiveBonus += fx.maxActiveBonus;
       if (fx.windowMult) m.windowMult *= fx.windowMult;
       if (fx.bondMult) m.bondMult *= fx.bondMult;
+      if (fx.firstKeptChipMult) m.firstKeptChipMult *= fx.firstKeptChipMult;
       if (fx.shortageChipMult) m.shortageChipMult *= fx.shortageChipMult;
       if (fx.frontChipMult) m.frontChipMult *= fx.frontChipMult;
       if (fx.tierChipMult) for (let i = 0; i < 4; i++) m.tierChipMult[i] *= (fx.tierChipMult[i] || 1);
@@ -118,6 +152,7 @@ SW.acts = (function () {
   A2.scoreCompletion = function (state, p, baseThread) {
     const m = A2.mods(state);
     let chips = p.chips * m.chipMult * (m.tierChipMult[(D.COMMODITIES[p.c].tier || 0)] || 1);
+    if (!state.acts.firstKeptDone) chips *= m.firstKeptChipMult;
     if (m.shortageChipMult !== 1 && isShortage(state, p)) chips *= m.shortageChipMult;
     if (m.frontChipMult !== 1 && isFront(state, p)) chips *= m.frontChipMult;
     chips = Math.round(chips);
@@ -160,6 +195,7 @@ SW.acts = (function () {
   A2.tick = function (state) {
     if (!A2.active(state) || state.gameOver) return;
     const a = state.acts;
+    if (a.suspended) return;
     if (a.boundary) return; // waiting on the player's bank/push
     if (A2.progress(state) >= a.quota) { enterBoundary(state); return; }
     if (state.tick % 10 === 0) setObjective(state);
@@ -269,6 +305,7 @@ SW.acts = (function () {
   A2.checkEnd = function (state) {
     if (!A2.active(state) || state.gameOver) return;
     const a = state.acts, home = state.systems[state.homeId];
+    if (a.suspended) return;
     // Eaten — the Heart falls
     if (home && home.scourge === 2) {
       return end(state, { win: false, cut: 'eaten', reason: 'The Fray takes the Heart. ' + tn(state) + ' unravels from its first knot.' });

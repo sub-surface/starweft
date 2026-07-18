@@ -294,11 +294,13 @@ This is the honest starting point, not the target.
 - [ ] **SW-BASE-019** Galaxy-scale objects are interactable. The current Milky Way
   is presentation only.
 - [ ] **SW-BASE-020** Intergalactic play exists.
-- [ ] **SW-BASE-021** The first-run prologue remains inside canonical Acts. Current
-  behavior disables Acts when the prologue is enabled.
-- [ ] **SW-BASE-022** Canonical launch avoids the existing wall of run shape,
+- [x] **SW-BASE-021** The first-run prologue remains inside canonical Acts. Evidence:
+  the replacement Act 0 is canonical Act index 0 and starts the real Act I clock
+  only after its transition criteria pass.
+- [x] **SW-BASE-022** Canonical launch avoids the existing wall of run shape,
   identity, myth, Origin, Founder, galaxy dials, conditions, doctrine, aptitude,
-  and seed.
+  and seed. Evidence: the primary surface requires only archetype and pressure;
+  the retired wall is isolated in Custom/Sandbox.
 
 **Baseline verdict:** the existing game is a rich open logistics sandbox with a
 useful PLEDGE/Act prototype and substantial UI refacing. It is not yet the target
@@ -452,15 +454,24 @@ their use without shaming the player.
 ### 5.5 Launch ledger
 
 - [ ] **SW-START-001** Founder and Origin are replaced by one archetype system.
-- [ ] **SW-START-002** Exactly five baseline cards appear in canonical launch.
-- [ ] **SW-START-003** Every card has one rule-bend, liability, craft/loadout, and
-  plain-language playstyle.
-- [ ] **SW-START-004** Difficulty is the only other required choice.
-- [ ] **SW-START-005** Courier and Standard have sensible defaults.
-- [ ] **SW-START-006** Returning players start in no more than two deliberate
-  clicks from title.
-- [ ] **SW-START-007** Default launch hides all world-authoring controls.
-- [ ] **SW-START-008** Daily and Custom are separate surfaces.
+  Partial: the canonical surface resolves only `archetype` and `pressure`, but
+  canonical creation still maps through legacy Origin/Founder IDs and effects.
+  Removing that internal duplication remains part of SW-START-010/Gate 3 cleanup.
+- [x] **SW-START-002** Exactly five baseline cards appear in canonical launch.
+  Evidence: `SW.data.ARCHETYPE_IDS`, `showNewRun`, and the Gate 2 launch matrix.
+- [x] **SW-START-003** Every card has one rule-bend, liability, craft/loadout, and
+  plain-language playstyle. Evidence: `SW.data.ARCHETYPES` and canonical card
+  rendering in `js/ui_modals.js`.
+- [x] **SW-START-004** Difficulty is the only other required choice. Evidence:
+  the canonical surface exposes archetype, pressure, and one Launch action.
+- [x] **SW-START-005** Courier and Standard have sensible defaults. Evidence:
+  `G.canonicalLaunch`, saved last-launch preferences, and browser boot coverage.
+- [x] **SW-START-006** Returning players start in no more than two deliberate
+  clicks from title. Evidence: Begin New Weave -> Launch Thread with valid defaults.
+- [x] **SW-START-007** Default launch hides all world-authoring controls. Evidence:
+  seed is secondary disclosure; authoring dials exist only in Custom/Sandbox.
+- [x] **SW-START-008** Daily and Custom are separate surfaces. Evidence:
+  distinct title actions, renderers, and dispatch paths.
 - [x] **SW-START-009** Three Founder rule-bend prototypes exist. Evidence:
   `js/founders.js`.
 - [ ] **SW-START-010** Existing Origin/Founder effects are merged, rewritten, or
@@ -1962,7 +1973,8 @@ Required from the first overhaul milestone:
 - [x] **SW-UI-001** Contextual command strip, drawers, selection lens, signal marks,
   orbital ring, and edge compass exist in the current build.
   Evidence: render and UI modules plus browser boot coverage.
-- [ ] **SW-UI-002** Start-to-control flow is archetype, difficulty, Launch.
+- [x] **SW-UI-002** Start-to-control flow is archetype, difficulty, Launch.
+  Evidence: canonical title browser fixture and the 15-recipe launch matrix.
 - [ ] **SW-UI-003** System, Bubble, and Galaxy have distinct information and command
   grammars.
 - [ ] **SW-UI-004** Always-visible HUD is limited to objective, selection, dominant
@@ -1970,14 +1982,20 @@ Required from the first overhaul milestone:
 - [ ] **SW-UI-005** Selection lens names the next useful actions and causal links.
 - [ ] **SW-UI-006** All commands implement the five-stage feedback grammar.
 - [ ] **SW-UI-007** No more than three urgent priorities or strategic fronts compete.
-- [ ] **SW-UI-008** Canonical tutorial teaches all nine staged-disclosure beats.
-- [ ] **SW-UI-009** First-time guidance can be reduced without disabling mechanics.
+- [x] **SW-UI-008** Canonical tutorial teaches all nine staged-disclosure beats.
+  Evidence: the 13-beat action-driven Act 0 fixture covers delivery, response,
+  Pledge, automation, reserve, pressure, reroute, Charter, and transition.
+- [x] **SW-UI-009** First-time guidance can be reduced without disabling mechanics.
+  Evidence: full/brief guidance changes explanatory copy only; skip converges on
+  the same declared Act I capability floor.
 - [ ] **SW-ACC-001** Keyboard-only canonical play is complete.
 - [ ] **SW-ACC-002** UI remains complete at 200% scale.
 - [ ] **SW-ACC-003** Essential state never depends on color, motion, or audio alone.
 - [ ] **SW-ACC-004** Reduced motion, pressure adjustment, extended forecasts, and
   irreversible-action confirmation are available without unlocks.
-- [ ] **SW-ACC-005** Canvas information has accessible text equivalents.
+- [x] **SW-ACC-005** Canvas information has accessible text equivalents. Evidence:
+  the canvas has an accessible name; objective, current selection, craft state,
+  and signal counts are mirrored into `#mapA11y`, with Search and Journal paths.
 
 ---
 
@@ -2461,19 +2479,35 @@ resumes without causal drift. Reference-browser budget evidence remains required
 **Purpose:** replace the option wall and establish the true game in its first ten
 minutes.
 
-- [ ] **G2-01** Start flow is Continue/New -> five archetypes -> difficulty ->
-  Launch.
-- [ ] **G2-02** Advanced and Custom options are absent from the primary flow and
-  preserve seed sharing.
-- [ ] **G2-03** Act 0 guidance runs inside the canonical rules.
-- [ ] **G2-04** Guided delivery, arrival feedback, automation, reserve, pressure,
-  Pledge, reroute, Charter, and Act transition are all taught.
-- [ ] **G2-05** Returning players can reduce copy without disabling systems.
+- [x] **G2-01** Start flow is Continue/New -> five archetypes -> difficulty ->
+  Launch. Evidence: `js/ui_modals.js`, `js/ui.js`, and browser front-door coverage.
+- [x] **G2-02** Advanced and Custom options are absent from the primary flow and
+  preserve seed sharing. Evidence: canonical and Custom renderers are separate;
+  seed is secondary disclosure and part of the serialized launch recipe.
+- [x] **G2-03** Act 0 guidance runs inside the canonical rules. Evidence: canonical
+  Threads enter real Act index 0 with a suspended clock, live Fray configuration,
+  real stocks/craft/actions, and deterministic replay.
+- [x] **G2-04** Guided delivery, arrival feedback, automation, reserve, pressure,
+  Pledge, reroute, Charter, and Act transition are all taught. Evidence: the full
+  Cartographer Wake fixture performs each beat through `SW.game.actions.*` and
+  reaches the declared Act I projection with exact replay.
+- [x] **G2-05** Returning players can reduce copy without disabling systems.
+  Evidence: brief guidance preserves every objective and action; the explicit
+  opening skip grants the same documented Act I capability floor.
 - [ ] **G2-06** Keyboard, focus, 200% scale, reduced motion, and non-audio cues pass.
+  Partial evidence (2026-07-18): semantic radio groups, arrow navigation, focus
+  trap/restore, modal pause leases, visible focus, 100-200% UI scale, high contrast,
+  reduced camera/CSS motion, sound captions, canvas text, and structural browser
+  fixtures pass. Completion still requires a real reference-browser keyboard and
+  200% visual run; the configured in-app browser backend remains unavailable.
 - [ ] **G2-07** Onboarding targets in section 25.3 pass.
+  Requires observed first-time-player sessions; automated fixtures cannot close it.
 
-**Gate 2 exit:** an unbriefed new player launches in under 25 seconds, completes a
-meaningful delivery in under two minutes, and understands the next objective.
+**Gate 2 exit (open on G2-06 and G2-07 only):** the implementation and automated
+  contracts are complete. 2026-07-18 verification: smoke 161,553 checks/0 failures;
+browser boot passed. Exit still requires reference-browser accessibility evidence
+and observed unbriefed-player onboarding evidence: launch under 25 seconds, a
+meaningful delivery under two minutes, and correct explanation of the next objective.
 
 ### Gate 3 — One run spine: objective, PLEDGE, and Charters
 

@@ -22,7 +22,7 @@ SW.campaign = (function () {
     'scarceCommodity', 'conditions', 'threat'
   ];
   const THREAD_FIELDS = [
-    'daily', 'difficulty', 'doctrineLean', 'founder', 'identity', 'origin',
+    'daily', 'difficulty', 'pressure', 'archetype', 'doctrineLean', 'founder', 'identity', 'origin',
     'rngState', 'credits', 'research', 'ships', 'routes', 'directives', 'stats', 'tech',
     'bookmarks', 'perks', 'perkPoints', 'milestones', 'scourgeStance',
     'originBonusSurvey', 'autoYardsOff', 'gameOver', 'journal',
@@ -413,6 +413,10 @@ SW.campaign = (function () {
       seed: state.seed,
       status: state.campaign.status,
       threadNumber: state.campaign.threadNumber,
+      threadName: state.identity && state.identity.name,
+      archetype: state.archetype || null,
+      pressure: state.pressure || null,
+      difficulty: state.difficulty,
       tick: state.tick,
       capabilityTotal: (state.campaign.capabilities.reach || 0) +
         (state.campaign.capabilities.resilience || 0) + (state.campaign.capabilities.accord || 0)

@@ -614,18 +614,28 @@ SW.render = (function () {
   function frame(now) {
     requestAnimationFrame(frame);
     const st = SW.game.state;
+    // Reduced motion keeps every command and camera endpoint, but removes the
+    // inertial travel between them. The preference is UI-owned and never enters
+    // simulation state, so replay remains untouched.
+    const reduceMotion = !!(SW.ui && SW.ui.prefs && SW.ui.prefs().reduceMotion);
+    if (reduceMotion) {
+      if (R.cam.distTarget != null) R.cam.dist = R.cam.distTarget;
+      if (R.cam.yawTarget != null) { R.cam.yaw = R.cam.yawTarget; R.cam.pitch = R.cam.pitchTarget; }
+      R.systemZoom = R.systemZoomT; R.systemAngle = R.systemAngleT; R.systemPitch = R.systemPitchT;
+      R.systemPan.x = R.systemPanT.x; R.systemPan.y = R.systemPanT.y;
+    }
     // eased camera: zoom and orbit glide toward their targets
-    if (R.cam.distTarget != null && R.cam.distTarget !== R.cam.dist) {
+    if (!reduceMotion && R.cam.distTarget != null && R.cam.distTarget !== R.cam.dist) {
       const d = R.cam.distTarget - R.cam.dist;
       R.cam.dist = Math.abs(d) < R.cam.dist * 0.001 ? R.cam.distTarget : R.cam.dist + d * 0.18;
     }
-    if (R.cam.yawTarget != null) {
+    if (!reduceMotion && R.cam.yawTarget != null) {
       const dy2 = R.cam.yawTarget - R.cam.yaw, dp2 = R.cam.pitchTarget - R.cam.pitch;
       R.cam.yaw = Math.abs(dy2) < 0.0004 ? R.cam.yawTarget : R.cam.yaw + dy2 * 0.3;
       R.cam.pitch = Math.abs(dp2) < 0.0004 ? R.cam.pitchTarget : R.cam.pitch + dp2 * 0.3;
     }
     // system view camera glides toward its targets (input writes targets only)
-    if (R.mode === 'system') {
+    if (!reduceMotion && R.mode === 'system') {
       R.systemZoom += (R.systemZoomT - R.systemZoom) * 0.22;
       if (Math.abs(R.systemZoomT - R.systemZoom) < 0.001) R.systemZoom = R.systemZoomT;
       R.systemAngle += (R.systemAngleT - R.systemAngle) * 0.25;

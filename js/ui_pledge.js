@@ -24,6 +24,19 @@ SW.uiPledge = (function () {
   // The act HUD + the boundary (bank / push-with-boon / summit) banner.
   function actBlock(s) {
     const AC = SW.acts, a = s.acts;
+    if (a.suspended === 'act0') {
+      let wake = '<div class="listItem" data-info="ui:acts" style="border-color:var(--accent)">' +
+        '<div class="row"><span class="title grow">Act 0 · THE WAKE</span><span class="sub">no Charter clock</span></div>' +
+        '<div class="row"><span class="sub grow">Learn inside the live Thread. Act I begins only when this knot holds.</span></div>';
+      const build = s.thread && s.thread.build;
+      if (build && build.pool && build.pool.length) {
+        wake += '<div class="charterDraft"><div class="sub">CHOOSE YOUR FIRST CHARTER</div>' + build.pool.map(function (id) {
+          const ch = SW.charters.catalog[id];
+          return '<button data-act="draftCharter" data-id="' + id + '"><b>' + esc(ch.name) + '</b><span>' + esc(ch.line) + '</span></button>';
+        }).join('') + '</div>';
+      }
+      return wake + '</div>';
+    }
     const com = D.COMMISSIONS[a.commission] || { name: a.commission, line: '' };
     const prog = Math.round(AC.progress(s)), quota = a.quota, left = AC.ticksLeft(s);
     const pct = Math.max(0, Math.min(100, Math.round(prog / Math.max(1, quota) * 100)));
@@ -114,13 +127,14 @@ SW.uiPledge = (function () {
         const canAfford = s.credits >= o.bond;
         const dis = full || !canAfford;
         const weaveIf = Math.round(o.chips * nextThread);
+        const pf = PG.preflight(s, o);
         html += '<div class="listItem">' +
           '<div class="row"><span class="title grow">' + o.qty + '× ' + comm(o.c) + ' → ' + esc(o.toName) + '</span>' +
-          '<span class="num" title="WEAVE if taken now, at ×' + nextThread.toFixed(1) + '">+' + U.fmt(weaveIf) + '</span></div>' +
+          (o.tutorialTier ? '<span class="tag acc">' + esc(o.tutorialTier) + '</span>' : '') + '<span class="num" title="WEAVE if taken now, at ×' + nextThread.toFixed(1) + '">+' + U.fmt(weaveIf) + '</span></div>' +
           '<div class="row"><span class="sub num grow">' + o.hops + ' hops · ' + o.window + '-tick window · fare ' + U.fmt(o.fare) + '¤ · bond ' + U.fmt(o.bond) + '¤</span>' +
           '<button class="primary" data-act="takePledge" data-id="' + o.id + '"' + (dis ? ' disabled' : '') +
           ' title="' + (full ? 'Manifest full' : (canAfford ? 'Seal this pledge (escrow the bond)' : 'Cannot cover the bond')) + '">take</button>' +
-          '</div></div>';
+          '</div><div class="pledgePreflight">source ' + esc(pf.source) + ' · hold ' + pf.capacity + ' · ETA ' + pf.eta + ' · slack ' + pf.slack + ' · ' + pf.exposure + '<br>stake ' + U.fmt(pf.stake) + '¤ → ' + esc(pf.worldEffect) + '</div></div>';
       }
     }
 

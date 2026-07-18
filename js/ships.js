@@ -209,6 +209,7 @@ SW.ships = (function () {
     if (!sys || sys.scourge === 2) return { ok: false, msg: 'No market here.' };
     qty = Math.min(qty, ship.cargo[c] || 0);
     if (qty <= 0) return { ok: false, msg: 'Nothing to sell.' };
+    const stockBefore = (sys.stocks && sys.stocks[c]) || 0;
     const t = SW.economy.marketSell(state, sys, c, qty, 'player', ship.body);
     if (t.qty <= 0) return { ok: false, msg: 'Their stores are full.' };
     ship.cargo[c] -= t.qty;
@@ -218,6 +219,13 @@ SW.ships = (function () {
     const profit = t.revenue - (ship.basis[c] || 0) * t.qty;
     if (state.tutorial && state.tutorial.active && sys.id === state.homeId && ship.body === 'Earth' && c === 'ORE' && profit > 0) {
       state.tutorial.profitableOreSale = true;
+    }
+    if (state.tutorial && state.tutorial.active) {
+      state.tutorial.lastDelivery = {
+        sys: sys.id, commodity: c, qty: t.qty,
+        stockBefore: stockBefore, stockAfter: (sys.stocks && sys.stocks[c]) || stockBefore,
+        revenue: t.revenue, profit: profit
+      };
     }
     SW.worldevents.onPlayerSell(state, sys.id, c, t.qty);
     // PLEDGE fulfilment seam: every delivery route (manual, route, queue,

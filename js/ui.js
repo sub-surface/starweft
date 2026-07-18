@@ -159,23 +159,54 @@ SW.ui = (function () {
 
   // ============ modal helpers (exposed for all modules) ============
   let _modalOpener = null; // element that had focus when a modal was opened
+  let _activeModalId = null;
+  let _modalPauseLease = null;
   function showModal(id) {
-    // Remember the element that opened this modal so we can restore focus on close.
-    // Guard: stub DOM in test/browser_boot.js may not implement activeElement.
-    _modalOpener = (typeof document !== 'undefined' && document.activeElement) ? document.activeElement : null;
-    $('#modalShade').classList.remove('hidden');
-    document.querySelectorAll('.modal').forEach(function (m) { m.classList.add('hidden'); });
-    $('#' + id).classList.remove('hidden');
+    // Acquire one pause lease for the entire modal stack. Moving from Pause to
+    // Settings and back must not briefly restart the simulation behind the shade.
+    if (!_activeModalId) {
+      _modalOpener = (typeof document !== 'undefined' && document.activeElement) ? document.activeElement : null;
+      const s = st();
+      if (s && !s.gameOver) {
+        _modalPauseLease = { state: s, wasPaused: !!s.paused, speed: s.speed || 1 };
+        if (!s.paused) A().setSpeed(s, 0);
+      } else _modalPauseLease = null;
+    }
+    const shade = $('#modalShade');
+    shade.classList.remove('hidden');
+    if (shade.setAttribute) shade.setAttribute('aria-hidden', 'false');
+    document.querySelectorAll('.modal').forEach(function (m) {
+      m.classList.add('hidden');
+      if (m.setAttribute) m.setAttribute('aria-hidden', 'true');
+    });
+    const modal = $('#' + id);
+    modal.classList.remove('hidden');
+    if (modal.setAttribute) {
+      modal.setAttribute('aria-hidden', 'false');
+      const heading = modal.querySelector && modal.querySelector('h1, h2, h3');
+      modal.setAttribute('aria-label', heading && heading.textContent ? heading.textContent.trim() : 'STARWEFT dialog');
+    }
+    _activeModalId = id;
     // Move focus into the modal so keyboard users don't get stranded behind the shade.
-    // Every call is guarded: querySelector and focus may be stubs in the test environment.
-    var modal = $('#' + id);
-    var b = modal && modal.querySelector && modal.querySelector('button');
-    if (b && b.focus) b.focus();
+    // Prefer the selected radio on launch; otherwise the first deliberate control.
+    var b = modal && modal.querySelector && (modal.querySelector('[data-autofocus]') ||
+      modal.querySelector('[role="radio"][aria-checked="true"]') || modal.querySelector('button, input, select, textarea'));
+    if (b && b.focus) b.focus(); else if (modal && modal.focus) modal.focus();
   }
   ui.showModal = showModal;
   function hideModals() {
-    $('#modalShade').classList.add('hidden');
+    const shade = $('#modalShade');
+    shade.classList.add('hidden');
+    if (shade.setAttribute) shade.setAttribute('aria-hidden', 'true');
     document.querySelectorAll('.modal').forEach(function (m) { m.classList.add('hidden'); });
+    const lease = _modalPauseLease;
+    _modalPauseLease = null;
+    _activeModalId = null;
+    // Only release the run that acquired the lease. Launch/load may have replaced
+    // G.state while a title dialog was open; that new state owns its own speed.
+    if (lease && lease.state === st() && !lease.wasPaused && !lease.state.gameOver) {
+      A().setSpeed(lease.state, lease.speed);
+    }
     // Restore focus to the element that triggered the modal, if it is still in the DOM.
     // Every step guarded: stub DOM may not implement focus or body.contains.
     if (_modalOpener && _modalOpener.focus &&
@@ -187,6 +218,7 @@ SW.ui = (function () {
   }
   ui.hideModals = hideModals;
   ui.modalOpen = function () { return !$('#modalShade').classList.contains('hidden'); };
+  ui.activeModal = function () { return _activeModalId ? $('#' + _activeModalId) : null; };
 
   // ============ toast (exposed for modules) ============
   function toast(t) {
@@ -201,6 +233,21 @@ SW.ui = (function () {
     $('#ticker').textContent = t.text;
   }
   ui.toast = toast;
+  let captionTimer = null;
+  const AUDIO_CAPTIONS = {
+    discover: 'New system discovered.', chime: 'Opportunity signal.', tech: 'Research completed.',
+    build: 'Construction completed.', dread: 'Threat warning.', fall: 'A system has fallen.',
+    shield: 'Defence held.', loss: 'A craft was lost.', raid: 'Conflict resolved.',
+    panacea: 'Cure delivered.', survey: 'Survey completed.', victory: 'Thread completed.', defeat: 'Thread lost.'
+  };
+  ui.audioCaption = function (name) {
+    if (!ui.prefs().soundCaptions || !AUDIO_CAPTIONS[name]) return;
+    const el = $('#audioCaption'); if (!el) return;
+    el.textContent = '[sound] ' + AUDIO_CAPTIONS[name];
+    el.classList.remove('hidden');
+    if (captionTimer) clearTimeout(captionTimer);
+    captionTimer = setTimeout(function () { el.classList.add('hidden'); }, 2400);
+  };
 
   // ============ infobox (exposed for ui_tech canvas hover) ============
   const UI_TOPICS = {
@@ -259,6 +306,7 @@ SW.ui = (function () {
 
   // ============ boot ============
   ui.init = function () {
+    ui.applyPrefs();
     document.addEventListener('click', dispatch);
     document.addEventListener('change', dispatchChange);
     document.addEventListener('input', dispatchInput);
@@ -631,9 +679,14 @@ SW.ui = (function () {
     syncSpeedButtons();
     const expiring = s.contracts.filter(function (c) { return c.deadline - s.tick < 80; });
     let html = '';
+    if (s.tutorial && s.tutorial.active && s.tutorial.goal <= 1) {
+      html += '<button class="alert hailChip" data-act="skipActZero" title="Skip before the first flight and enter Act I with the canonical capability floor">SKIP GUIDED WAKE</button>';
+    }
     if (SW.acts && SW.acts.active(s)) {
       const a = s.acts;
-      if (a.boundary) {
+      if (a.suspended === 'act0') {
+        html += '<div class="alert hailChip" title="Act I pressure and its Charter clock begin only after the Wake holds">ACT 0 · CLOCK PAUSED</div>';
+      } else if (a.boundary) {
         html += '<div class="alert hailChip" data-act="openPledges" title="A Charter boundary is open — bank or push in the Pledges tab">◈ ' + (a.summit ? 'SUMMIT' : 'ACT ' + SW.acts.roman(a.n) + ' MET') + '</div>';
       } else {
         const left = SW.acts.ticksLeft(s);
@@ -662,6 +715,16 @@ SW.ui = (function () {
     if (looseHails.length > 3) html += '<div class="alert hailChip" data-act="openSignals" title="All waiting signals — Journal tab">◌ +' + (looseHails.length - 3) + '</div>';
     $('#alerts').innerHTML = html;
     $('#objective span').textContent = s.story.objective || '…';
+    const a11y = $('#mapA11y');
+    if (a11y) {
+      const sys = SW.render.selectedSys !== null && SW.render.selectedSys !== undefined ? s.systems[SW.render.selectedSys] : null;
+      const ship = selectedShip();
+      const summary = 'Objective: ' + (s.story.objective || 'none') + '. ' +
+        (sys ? 'Selected system: ' + sys.name + '. ' : '') +
+        (ship ? 'Selected craft: ' + ship.name + ', ' + ship.mode + '. ' : '') +
+        (parts.length ? 'Signals: ' + parts.join(', ') + '.' : 'No urgent map signals.');
+      if (a11y.textContent !== summary) a11y.textContent = summary;
+    }
   }
   function syncSpeedButtons() {
     const s = st();
@@ -788,6 +851,7 @@ SW.ui = (function () {
     const state = st();
     if (state && SW.game.actions.focusAperture) SW.game.actions.focusAperture(state, sysId);
     SW.render.enterSystem(sysId);
+    if (state && SW.tutorial && SW.tutorial.isActive(state)) ui.drawer.open('sys');
     $('#btnBackGalaxy').classList.remove('hidden');
     // Tell the layout we're in system view so the system panel can drop below
     // the back button instead of colliding with it (CSS: #main.inSystem #sysPanel).
@@ -876,9 +940,22 @@ SW.ui = (function () {
     catch (e) { return {}; }
   }
   ui.prefs = function () { if (!_prefs) _prefs = loadPrefs(); return _prefs; };
+  ui.applyPrefs = function () {
+    const p = ui.prefs();
+    const root = document.documentElement;
+    const scale = [100, 125, 150, 200].indexOf(parseInt(p.uiScale, 10)) >= 0 ? parseInt(p.uiScale, 10) : 100;
+    if (root.dataset) root.dataset.uiScale = String(scale);
+    if (root.style && root.style.setProperty) root.style.setProperty('--ui-scale', String(scale / 100));
+    if (root.classList) {
+      root.classList.toggle('reduceMotion', !!p.reduceMotion);
+      root.classList.toggle('highContrast', !!p.highContrast);
+    }
+    return p;
+  };
   ui.setPref = function (k, v) {
     const p = ui.prefs(); p[k] = v;
     try { localStorage.setItem('starweft_prefs', JSON.stringify(p)); } catch (e) {}
+    ui.applyPrefs();
     return v;
   };
 
@@ -991,7 +1068,16 @@ SW.ui = (function () {
       }
       case 'landPax': if (ship) { const r = A().landPax(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'takePledge': { const r = A().takePledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { SW.audio.sfx('click'); renderDock(true); } break; }
-      case 'abandonPledge': { const r = A().abandonPledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else renderDock(true); break; }
+      case 'draftCharter': { const r = A().draftCharter(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else renderDock(true); break; }
+      case 'skipActZero': { const r = A().skipActZero(s); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { ui.exitSystem(); ui.refresh(); } break; }
+      case 'abandonPledge': {
+        const abandon = function () { const r = A().abandonPledge(s, btn.dataset.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else renderDock(true); };
+        if (ui.prefs().confirmIrreversible) {
+          ui.confirm({ title: 'Abandon this Pledge?', text: 'Its bond and promised world change will be forfeited.', yes: 'Abandon Pledge', danger: true, onYes: abandon });
+          return;
+        }
+        abandon(); break;
+      }
       case 'bankThread': { const r = A().bankThread(s); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
       case 'pushThread': { const r = A().pushThread(s, btn.dataset.boon); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { syncSpeedButtons(); ui.setTab('pledges'); } break; }
       case 'graduateThread': { const r = A().graduateThread(s); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { syncSpeedButtons(); renderDock(true); } break; }
@@ -1011,7 +1097,14 @@ SW.ui = (function () {
       case 'sendMode': setMapMode('send', '➤ click a destination for ' + (ship ? ship.name : 'ship')); return;
       case 'autoExplore': if (ship) { const r = A().toggleAutoExplore(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'unassign': if (ship) A().unassignShip(s, ship.id); break;
-      case 'scrap': if (ship) { const r = A().scrapShip(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else SW.render.selectedShip = null; } break;
+      case 'scrap': if (ship) {
+        const scrap = function () { const r = A().scrapShip(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); else { SW.render.selectedShip = null; ui.refresh(); } };
+        if (ui.prefs().confirmIrreversible) {
+          ui.confirm({ title: 'Scrap ' + ship.name + '?', text: 'The craft and its current assignment will be permanently removed.', yes: 'Scrap craft', danger: true, onYes: scrap });
+          return;
+        }
+        scrap();
+      } break;
       case 'deliverPanacea': if (ship) { const r = A().deliverPanacea(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'inoculate': if (ship) { const r = A().inoculate(s, ship.id); if (!r.ok) toast({ kind: 'bad', text: r.msg }); } break;
       case 'raidHere':
@@ -1081,6 +1174,17 @@ SW.ui = (function () {
       }
       case 'yardsToggle': { const r = A().toggleAutoYards(s); if (r.ok) toast({ kind: 'info', text: 'Tessellation Yards: ' + (r.enabled ? 'auto' : 'off') + '.' }); break; }
       case 'buildSite': { const r = A().buildSite(s, sysId, btn.dataset.body, btn.dataset.fac); if (!r.ok) toast({ kind: 'bad', text: r.msg }); break; }
+      case 'selectBody': {
+        const bodySysId = SW.render.systemId !== null && SW.render.systemId !== undefined ? SW.render.systemId : sysId;
+        const data = Number.isInteger(bodySysId) ? SW.planets.get(s, bodySysId) : null;
+        const body = data && data.bodies.find(function (candidate) { return candidate.name === btn.dataset.body; });
+        if (!body) { toast({ kind: 'bad', text: 'That orbital destination is unavailable.' }); break; }
+        ui.bodyClick(body);
+        const panel = $('#sysPanel');
+        const next = panel && panel.querySelector && (panel.querySelector('[data-act="hopHere"]') || panel.querySelector('[data-act="selectBody"][aria-pressed="true"]'));
+        if (next && next.focus) next.focus();
+        break;
+      }
       case 'hopHere': {
         const sh = (ship && ship.mode === 'idle' && ship.at === sysId) ? ship :
           s.ships.find(function (x) { return x.mode === 'idle' && x.at === sysId; });
@@ -1234,8 +1338,30 @@ SW.ui = (function () {
       case 'closeModal': hideModals(); break;
       case 'closeExchange': $('#exchange').classList.add('hidden'); break;
       case 'postgame': A().continuePostgame(s); hideModals(); break;
+      case 'replayLastThread': {
+        const launch = s && s.thread && s.thread.launch;
+        if (!launch || !D.ARCHETYPES[launch.archetype] || !D.PRESSURE[launch.pressure]) { SW.uiModals.showNewRun(); return; }
+        const cfg = SW.game.canonicalLaunch({
+          seed: 'thread-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 0xffff).toString(16),
+          archetype: launch.archetype,
+          pressure: launch.pressure,
+          guidance: launch.guidance === 'brief' ? 'brief' : 'full',
+          identity: JSON.parse(JSON.stringify(s.identity || launch.identity || {}))
+        });
+        SW.game.newGame(cfg);
+        hideModals(); afterLoad(); ui.writeSaveMeta('auto');
+        SW.render.selectedSys = SW.game.state.homeId;
+        if (SW.game.state.ships[0]) SW.render.selectedShip = SW.game.state.ships[0].id;
+        ui.enterSystem(SW.game.state.homeId);
+        ui.refresh();
+        A().setSpeed(SW.game.state, 1);
+        toast({ kind: 'good', text: 'Replaying ' + D.ARCHETYPES[cfg.archetype].name + ' · ' + D.PRESSURE[cfg.pressure].name + '.' });
+        return;
+      }
       case 'newGameMenu': ui.showTitle(); return;
       case 'newRun': SW.uiModals.showNewRun(); return;
+      case 'customRun': SW.uiModals.showCustomRun(); return;
+      case 'chronicle': SW.uiModals.showChronicle(); return;
       case 'dailyWeave': SW.uiModals.showDailyBrief(); return;
       case 'beginDaily': {
         const cfg = SW.uiModals.dailyConfig();
@@ -1255,8 +1381,23 @@ SW.ui = (function () {
       case 'setSfx': { SW.audio.toggleMute(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
       case 'setMusic': { SW.audio.ensure(); SW.audio.toggleMusic(); syncAudioButtons(); SW.uiModals.showSettings(); return; }
       case 'setReduceMotion': { ui.setPref('reduceMotion', !ui.prefs().reduceMotion); SW.uiModals.showSettings(); return; }
+      case 'setHighContrast': { ui.setPref('highContrast', !ui.prefs().highContrast); SW.uiModals.showSettings(); return; }
+      case 'setSoundCaptions': { ui.setPref('soundCaptions', !ui.prefs().soundCaptions); SW.uiModals.showSettings(); return; }
+      case 'setConfirmIrreversible': { ui.setPref('confirmIrreversible', !ui.prefs().confirmIrreversible); SW.uiModals.showSettings(); return; }
+      case 'setUiScale': { ui.setPref('uiScale', parseInt(btn.dataset.scale, 10) || 100); SW.uiModals.showSettings(); return; }
       case 'setBootSkip': { ui.setPref('skipBoot', !ui.prefs().skipBoot); SW.uiModals.showSettings(); return; }
       case 'setDefaultSpeed': { ui.setPref('defaultSpeed', parseInt(btn.dataset.spd, 10) || 1); SW.uiModals.showSettings(); return; }
+      case 'openRenameThread': SW.uiModals.showRenameThread(); return;
+      case 'cancelRenameThread': SW.uiModals.showMenu(); return;
+      case 'renameThread': {
+        const input = $('#renameThreadInput');
+        const r = A().renameThread(s, input ? input.value : '');
+        if (!r.ok) { toast({ kind: 'bad', text: r.msg }); return; }
+        ui.writeSaveMeta('auto');
+        SW.uiModals.showMenu();
+        toast({ kind: 'good', text: 'Thread renamed · ' + r.name });
+        return;
+      }
       case 'quitToMenu': {
         ui.confirm({
           title: 'Quit to main menu?',
@@ -1272,10 +1413,39 @@ SW.ui = (function () {
       case 'surpriseWeave': SW.uiModals.surpriseWeave(); return;
       case 'continueGame': { const r = SW.game.load('auto'); if (r.ok) { hideModals(); afterLoad(); } else toast({ kind: 'bad', text: r.msg }); return; }
       case 'begin': {
-        const seedV = $('#ngSeed').value.trim();
+        const seedEl = $('#ngSeed');
+        const seedV = seedEl && seedEl.value ? seedEl.value.trim() : '';
+        const archetype = SW.uiModals.selectedArchetype();
+        const pressure = SW.uiModals.selectedPressure();
+        const guidance = SW.game.legacy().prologue ? 'brief' : 'full';
+        const cfg = SW.game.canonicalLaunch({
+          seed: seedV || undefined,
+          archetype: archetype,
+          pressure: pressure,
+          guidance: guidance,
+          identity: { name: SW.game.threadName(seedV, archetype), hue: 195, sigil: U.seedFrom(seedV) % 1000, motto: 'Finish the round.', myth: 'none' }
+        });
+        SW.game.newGame(cfg);
+        const account = SW.game.accountState();
+        account.settings.launch = { archetype: archetype, pressure: pressure };
+        SW.game.saveAccount();
+        hideModals();
+        afterLoad();
+        ui.writeSaveMeta('auto');
+        SW.render.selectedSys = SW.game.state.homeId;
+        if (SW.game.state.ships[0]) SW.render.selectedShip = SW.game.state.ships[0].id;
+        ui.enterSystem(SW.game.state.homeId);
+        ui.refresh();
+        A().setSpeed(SW.game.state, 1);
+        toast({ kind: 'good', text: D.ARCHETYPES[archetype].glyph + ' ' + D.ARCHETYPES[archetype].name + ' Thread launched · ' + D.PRESSURE[pressure].name + ' pressure.' });
+        return;
+      }
+      case 'beginCustom': {
+        const seedEl = $('#ngSeed');
+        const seedV = seedEl && seedEl.value ? seedEl.value.trim() : '';
         SW.game.newGame({
           seed: seedV || undefined,
-          difficulty: $('#ngDiff').value,
+          difficulty: ($('#ngDiff') && $('#ngDiff').value) || 'standard',
           threat: ($('#ngThreat') && $('#ngThreat').value) || undefined,
           conditions: SW.uiModals.selectedConditions ? SW.uiModals.selectedConditions() : [],
           doctrineLean: ($('#ngLean') && $('#ngLean').value) || undefined,
@@ -1283,9 +1453,9 @@ SW.ui = (function () {
           founder: chosenFounderFromModal(),
           aptitude: ($('#ngApt') && $('#ngApt').value) || undefined,
           tutorial: !!($('#ngTut') && $('#ngTut').checked),
-          // Focused run = the Act Ladder. Off during the prologue (the cold open
-          // is a wake-at-home beat, not an act). Absent control => sandbox.
-          acts: !!($('#ngShape') && $('#ngShape').checked) && !($('#ngTut') && $('#ngTut').checked),
+          // Custom preserves both historical shapes. A guided custom Focused
+          // run now uses Act 0 and therefore keeps the Act Ladder enabled.
+          acts: !!($('#ngShape') && $('#ngShape').checked),
           world: {
             density: ($('#ngDen') && $('#ngDen').value) || 'standard',
             wealth: ($('#ngWea') && $('#ngWea').value) || 'standard',
@@ -1294,9 +1464,9 @@ SW.ui = (function () {
             heart: ($('#ngHeart') && $('#ngHeart').value) || 'home',
           },
           identity: {
-            name: ($('#idName').value || 'The Provisional Weft').slice(0, 40),
-            motto: ($('#idMotto').value || 'Finish the round.').slice(0, 60),
-            hue: parseInt($('#idHue').value, 10) || 195,
+            name: (($('#idName') && $('#idName').value) || 'The Provisional Weft').slice(0, 40),
+            motto: (($('#idMotto') && $('#idMotto').value) || 'Finish the round.').slice(0, 60),
+            hue: parseInt(($('#idHue') && $('#idHue').value) || '195', 10) || 195,
             sigil: ui._sigilSeed || 7,
             myth: ($('#ngMyth') && $('#ngMyth').value) || 'none',
           },
@@ -1408,10 +1578,56 @@ SW.ui = (function () {
     }
   }
 
+  function handleModalNavigation(e) {
+    const modal = ui.activeModal();
+    if (!modal) return false;
+    const target = e.target || {};
+    const radio = target.closest ? target.closest('[role="radio"]') : null;
+    if (radio && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].indexOf(e.key) >= 0) {
+      const group = radio.closest('[role="radiogroup"]');
+      const radios = group && group.querySelectorAll ? Array.prototype.slice.call(group.querySelectorAll('[role="radio"]')) : [];
+      if (radios.length) {
+        let i = radios.indexOf(radio);
+        if (e.key === 'Home') i = 0;
+        else if (e.key === 'End') i = radios.length - 1;
+        else i = (i + ((e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1) + radios.length) % radios.length;
+        if (e.preventDefault) e.preventDefault();
+        if (radios[i].click) radios[i].click();
+        if (radios[i].focus) radios[i].focus();
+        return true;
+      }
+    }
+    if (e.key === 'Tab') {
+      const selector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      const controls = modal.querySelectorAll ? Array.prototype.slice.call(modal.querySelectorAll(selector)).filter(function (el) {
+        return !el.classList || !el.classList.contains('hidden');
+      }) : [];
+      if (!controls.length) {
+        if (e.preventDefault) e.preventDefault();
+        if (modal.focus) modal.focus();
+        return true;
+      }
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { if (e.preventDefault) e.preventDefault(); if (last.focus) last.focus(); return true; }
+      if (!e.shiftKey && document.activeElement === last) { if (e.preventDefault) e.preventDefault(); if (first.focus) first.focus(); return true; }
+    }
+    return false;
+  }
+
   function onKey(e) {
     if (SW.uiModals.simKeys(e, true)) { e.preventDefault(); return; }
     // Let Escape through even from a focused field so it always backs out;
     // every other shortcut yields to typing.
+    if (ui.modalOpen()) {
+      if (handleModalNavigation(e)) return;
+      if (e.key === 'Escape') {
+        const id = _activeModalId;
+        if (id === 'titleModal' || id === 'eventModal' || id === 'gameoverModal') return;
+        if (id === 'settingsModal' || id === 'helpModal' || id === 'codexModal' || id === 'importModal') ui.closeLeaf();
+        else hideModals();
+      }
+      return; // gameplay shortcuts never fire through a modal
+    }
     if ((e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') && e.key !== 'Escape') return;
     const s = st();
     if (!s) return;
@@ -1428,11 +1644,6 @@ SW.ui = (function () {
       if (ui.moreOpen()) { ui.toggleMore(false); return; }
       if (SW.uiTech && SW.uiTech.isOpen && SW.uiTech.isOpen()) { SW.uiTech.close(); return; }
       if (!$('#exchange').classList.contains('hidden')) { $('#exchange').classList.add('hidden'); return; }
-      // A modal is open: close it (but never the blocking title/event/gameover).
-      if (ui.modalOpen()) {
-        if (!st().story.pending && !st().gameOver && $('#titleModal').classList.contains('hidden')) hideModals();
-        return;
-      }
       if (SW.render.mode === 'system') { ui.exitSystem(); return; }
       if (mapMode) { setMapMode(null); if (ui.editorOpen) { ui.editorOpen = false; ui.routeDraft = null; renderDock(true); } return; }
       // an unpinned dock drawer is the most recent summons — dismiss it next

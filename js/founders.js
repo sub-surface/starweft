@@ -14,7 +14,12 @@ SW.founders = (function () {
   const F = {};
   const D = SW.data;
 
-  F.current = function (state) { return (state && D.FOUNDERS[state.founder]) || null; };
+  // Canonical archetypes supersede the legacy Founder axis. Custom/Sandbox and
+  // old saves still resolve their Founder exactly as before.
+  F.current = function (state) {
+    if (state && state.archetype && D.ARCHETYPES && D.ARCHETYPES[state.archetype]) return D.ARCHETYPES[state.archetype];
+    return (state && D.FOUNDERS[state.founder]) || null;
+  };
   F.list = function () { return D.FOUNDER_IDS.map(function (id) { return Object.assign({ id: id }, D.FOUNDERS[id]); }); };
 
   // Rockhopper: raw goods count one tier higher for TONNAGE (pledges.js's

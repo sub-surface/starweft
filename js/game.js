@@ -79,18 +79,54 @@ SW.game = (function () {
     return !!G.legacy()[o.locked];
   };
 
+  // ---- Canonical launch contract ----
+  // The primary front door speaks only in archetype + pressure. This adapter is
+  // deliberately pure: Custom/Sandbox and old replays can still pass the wider
+  // option shape directly to newGame, while canonical callers get one stable
+  // recipe that can be serialized and replayed exactly.
+  G.canonicalLaunch = function (opts) {
+    opts = opts || {};
+    const archetype = D.ARCHETYPES[opts.archetype] ? opts.archetype : 'courier';
+    const pressure = D.PRESSURE[opts.pressure] ? opts.pressure : 'standard';
+    const def = D.ARCHETYPES[archetype];
+    return {
+      seed: opts.seed,
+      archetype: archetype,
+      pressure: pressure,
+      difficulty: D.PRESSURE[pressure].difficulty,
+      origin: def.origin,
+      founder: def.founder,
+      acts: true,
+      tutorial: true,
+      guidance: opts.guidance === 'brief' ? 'brief' : 'full',
+      identity: opts.identity || undefined
+    };
+  };
+
+  const THREAD_NAME_A = ['Patient', 'Lantern', 'Far', 'Quiet', 'Bright', 'Tidal', 'Unbroken', 'Errant'];
+  const THREAD_NAME_B = ['Thread', 'Ferry', 'Skein', 'Passage', 'Knot', 'Relay', 'Weft', 'Span'];
+  G.threadName = function (seed, archetype) {
+    const h = U.seedFrom(String(seed) + ':thread-name:' + String(archetype || 'courier')) >>> 0;
+    return 'The ' + THREAD_NAME_A[h % THREAD_NAME_A.length] + ' ' + THREAD_NAME_B[(h >>> 5) % THREAD_NAME_B.length];
+  };
+
   // ---- New game ----
   G.newGame = function (opts) {
     opts = opts || {};
     const seed = opts.seed !== undefined ? String(opts.seed) : String(Math.floor((typeof performance !== 'undefined' ? performance.now() : 1234) * 1000) % 1e9);
+    const archetypeId = D.ARCHETYPES[opts.archetype] ? opts.archetype : null;
+    const archetype = archetypeId ? D.ARCHETYPES[archetypeId] : null;
+    const pressure = D.PRESSURE[opts.pressure] ? opts.pressure : null;
     const difficulty = D.DIFFICULTY[opts.difficulty] ? opts.difficulty : 'standard';
-    const originId = (D.ORIGINS[opts.origin] && (G._replaying || G.originUnlocked(opts.origin))) ? opts.origin : 'courier';
+    const requestedOrigin = (archetype && archetype.origin) || opts.origin;
+    const originId = (D.ORIGINS[requestedOrigin] && (archetype || G._replaying || G.originUnlocked(requestedOrigin))) ? requestedOrigin : 'courier';
     const origin = D.ORIGINS[originId];
     // Founder (SPEC[RUN-FOUNDERS]): orthogonal to Origin, chosen only for a Focused
     // (Act Ladder) run — the Long Weave sandbox has no use for a rule-bend
     // with no acts to bend. All three ● founders are unlocked at zero (the
     // other five are Chronicle-gated, R8).
-    const founderId = (opts.acts && D.FOUNDERS[opts.founder]) ? opts.founder : null;
+    const requestedFounder = (archetype && archetype.founder) || opts.founder;
+    const founderId = (opts.acts && D.FOUNDERS[requestedFounder]) ? requestedFounder : null;
     const founder = founderId ? D.FOUNDERS[founderId] : null;
     // Threat (scourge clock, decoupled from difficulty) and weave conditions
     // (stackable modifiers). Both default to harmless/empty for old callers.
@@ -109,20 +145,22 @@ SW.game = (function () {
       seed: seed,
       rngState: U.seedFrom(seed),
       difficulty: difficulty,
+      pressure: pressure,
+      archetype: archetypeId,
       threat: threat,
       conditions: conditions,
       doctrineLean: doctrineLean,
       daily: (typeof opts.daily === 'string') ? opts.daily : null,
       origin: originId,
       founder: founderId,
-      identity: Object.assign({ name: 'The Provisional Weft', hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.', myth: 'none' }, opts.identity || {}),
+      identity: Object.assign({ name: G.threadName(seed, archetypeId), hue: 195, sigil: U.seedFrom(seed) % 1000, motto: 'Finish the round.', myth: 'none' }, opts.identity || {}),
       tick: 0, paused: true, speed: 1,
-      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + (founder ? (founder.credits || 0) : 0) + startCreditsBonus),
+      credits: Math.max(150, D.DIFFICULTY[difficulty].startCredits + (origin.credits || 0) + (founder ? (founder.credits || 0) : 0) + (archetype ? (archetype.credits || 0) : 0) + startCreditsBonus),
       research: 0,
       nextId: 1,
       systems: [], ships: [], routes: [], directives: [], rivals: [],
       stats: { deliveries: 0, creditsEarned: 0, shipsBuilt: 0, shipsLost: 0, systemsLost: 0, popLost: 0, popSaved: 0, techs: 0, researchEarned: 0 },
-      tech: { unlocked: (origin.techs || []).slice() },
+      tech: { unlocked: Array.from(new Set((origin.techs || []).concat((archetype && archetype.techs) || []))) },
       gameOver: null,
       bookmarks: [],
       perks: [], perkPoints: 0, milestones: {}, scourgeStance: null,
@@ -174,7 +212,7 @@ SW.game = (function () {
     // building at homeId), and where the camera centres. Sol stops being the
     // universal centre. The start neighbourhood is seeded, so it isn't always
     // the same place. origin.startReach composes on top below.
-    // The Sol prologue *is* the wake-at-home beat, so it pins the Heart to Sol
+    // Canonical Act 0 is the wake-at-home beat, so it pins the Heart to Sol
     // regardless of the dial (rim/drift are for the open-galaxy start).
     const heart = opts.tutorial ? 'home' : ((state.world && state.world.heart) || 'home');
     // helper: adopt `sysId` as the new home — reveal its neighbourhood, ensure
@@ -235,15 +273,18 @@ SW.game = (function () {
         for (const nb of s0.links) state.systems[nb].discovered = true;
       }
     }
-    ((founder && founder.ships) || origin.ships || ['sparrow']).forEach(function (h, i) {
+    ((archetype && archetype.ships) || (founder && founder.ships) || origin.ships || ['sparrow']).forEach(function (h, i) {
       SW.ships.create(state, h, startSys, i === 0 ? 'Stitch' : undefined);
     });
+    if (archetype && archetype.cargo && state.ships[0]) {
+      Object.keys(archetype.cargo).forEach(function (c) { state.ships[0].cargo[c] = archetype.cargo[c]; });
+    }
     // Founding Myth — a single line of lore on the run's opening ticker. Pure
     // flavor; events may read state.identity.myth for tinted text later.
     const myth = D.MYTHS && D.MYTHS[state.identity.myth];
     if (myth && myth.line) G.news(state, myth.line, startSys);
     // The Sol cold open — only when explicitly requested (never for bots/tests)
-    if (opts.tutorial && SW.tutorial) SW.tutorial.init(state);
+    if (opts.tutorial && SW.tutorial) SW.tutorial.init(state, { guidance: opts.guidance || 'full' });
     // The Act Ladder seals its first Charter once ships exist (Loomship = flagship).
     if (state.acts && state.acts.on && SW.acts) SW.acts.init(state);
     SW.charters.ensure(state);
@@ -254,6 +295,8 @@ SW.game = (function () {
       campaignId: state.campaign.id,
       seed: seed,
       difficulty: difficulty,
+      pressure: pressure,
+      archetype: archetypeId,
       origin: originId,
       founder: founderId,
       threat: threat,
@@ -264,6 +307,7 @@ SW.game = (function () {
       world: JSON.parse(JSON.stringify(state.world)),
       aptitude: opts.aptitude || null,
       tutorial: !!opts.tutorial,
+      guidance: opts.guidance || null,
       acts: !!opts.acts,
       runtimeSeed: state.campaign.seeds.runtime
     };
@@ -296,7 +340,10 @@ SW.game = (function () {
         if (lf[k] < 0.5) delete lf[k];
       }
     })();
-    SW.scourge.tick(state);
+    // The Fray is still part of every canonical pressure, including Guided,
+    // but cannot silently consume the Heart while Act 0 is teaching. The first
+    // real Fray pulse happens under Act I's visible clock.
+    if (!(SW.tutorial && SW.tutorial.isActive(state))) SW.scourge.tick(state);
     SW.worldevents.tick(state);
     if (SW.pledges) SW.pledges.tick(state);
     if (SW.acts && SW.acts.active(state)) SW.acts.tick(state);
@@ -907,6 +954,29 @@ SW.game = (function () {
   A.abandonPledge = function (state, pledgeId) {
     if (!SW.pledges) return err('Pledges unavailable.');
     return SW.pledges.abandon(state, pledgeId);
+  };
+  A.draftCharter = function (state, charterId) {
+    if (!SW.charters) return err('Charters unavailable.');
+    const r = SW.charters.draft(state, charterId);
+    if (r.ok) {
+      G.news(state, 'Charter drafted: ' + r.charter.name + '. ' + r.charter.line, state.homeId);
+      G.emit('toast', { kind: 'good', text: '◆ Charter drafted: ' + r.charter.name + ' — ' + r.charter.line });
+      G.emit('sfx', 'chime');
+    }
+    return r;
+  };
+  A.skipActZero = function (state) {
+    if (!SW.tutorial) return err('The Wake is unavailable.');
+    return SW.tutorial.skip(state);
+  };
+  A.renameThread = function (state, value) {
+    if (!state || !state.identity) return err('No active Thread.');
+    const name = String(value === undefined ? '' : value).replace(/\s+/g, ' ').trim();
+    if (!name) return err('Give the Thread a name.');
+    if (name.length > 40) return err('Thread names are limited to 40 characters.');
+    state.identity.name = name;
+    G.news(state, 'This Thread is now called ' + name + '.', state.homeId);
+    return { ok: true, name: name };
   };
 
   // ---- The Act Ladder (SPEC[RUN-ACTS]): bank / push / graduate at a boundary ----

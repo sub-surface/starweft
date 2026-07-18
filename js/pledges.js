@@ -139,6 +139,78 @@ SW.pledges = (function () {
     return state.board;
   };
 
+  // Deterministic Act 0 board: two honest choices, both feasible for every
+  // starting craft. The route and physical stock are real; only the authored
+  // labels distinguish the safer promise from the tighter one.
+  P.seedTutorialBoard = function (state) {
+    P.ensure(state);
+    if (state.board.some(function (o) { return !!o.actZero; })) return state.board.filter(function (o) { return !!o.actZero; });
+    const home = state.systems[state.homeId];
+    let settled = state.systems.filter(function (s) { return s.id !== state.homeId && s.pop > 0 && s.scourge !== 2 && !s.badlands && SW.ships.inRange(state, s); })
+      .sort(function (a, b) { return (a.hops || 999) - (b.hops || 999) || a.id - b.id; });
+    if (!settled.length) {
+      settled = state.systems.filter(function (s) { return s.id !== state.homeId && s.pop > 0 && s.scourge !== 2 && !s.badlands; })
+        .sort(function (a, b) { return (a.hops || 999) - (b.hops || 999) || a.id - b.id; }).slice(0, 2);
+      settled.forEach(function (s) { if (s.buildings.indexOf('relay') < 0) s.buildings.push('relay'); });
+    }
+    if (!settled.length) return [];
+    const dests = [settled[0], settled[1] || settled[0]];
+    const maxCap = Math.max(1, state.ships.reduce(function (m, sh) { return Math.max(m, SW.ships.cap(state, sh)); }, 1));
+    home.stocks.ORE = Math.max(home.stocks.ORE || 0, 30);
+    const kinds = [
+      { tier: 'safe', qty: Math.min(2, maxCap), window: 240 },
+      { tier: 'ambitious', qty: Math.min(4, maxCap), window: 165 }
+    ];
+    const made = kinds.map(function (kind, i) {
+      const sys = dests[i];
+      const path = SW.ships.findPath(state, state.homeId, sys.id) || [state.homeId, sys.id];
+      path.forEach(function (id) { if (state.systems[id]) state.systems[id].discovered = true; });
+      sys.discovered = true;
+      sys.capacity.ORE = Math.max(sys.capacity.ORE || 0, 30);
+      sys.stocks.ORE = Math.min(sys.stocks.ORE || 0, sys.capacity.ORE - kind.qty - 4);
+      const hops = Math.max(1, path.length - 1);
+      const chips = P.chips(state, 'ORE', kind.qty, hops);
+      return {
+        id: 'of' + (state.nextPledgeId++), c: 'ORE', qty: kind.qty,
+        to: sys.id, toName: sys.name, hops: hops, chips: chips,
+        fare: P.fareOf(chips), bond: P.bondOf(chips), window: kind.window,
+        ttl: state.tick + 9999, actZero: true, tutorialTier: kind.tier, source: state.homeId
+      };
+    });
+    state.board = state.board.filter(function (o) { return !o.actZero; }).concat(made);
+    return made;
+  };
+
+  P.preflight = function (state, offer) {
+    const destination = state.systems[offer.to];
+    let source = Number.isInteger(offer.source) ? state.systems[offer.source] : null;
+    if (!source) {
+      source = state.systems.filter(function (sys) {
+        return sys.discovered && sys.scourge !== 2 && ((sys.stocks && sys.stocks[offer.c]) || 0) >= Math.min(offer.qty, 1);
+      }).sort(function (a, b) {
+        return SW.economy.buyPrice(state, a, offer.c, 'player') - SW.economy.buyPrice(state, b, offer.c, 'player') || a.id - b.id;
+      })[0] || state.systems[state.homeId];
+    }
+    const ship = state.ships.filter(function (sh) { return (D.HULLS[sh.hull].cap || 0) > 0; })
+      .sort(function (a, b) { return SW.ships.speed(state, b) - SW.ships.speed(state, a); })[0];
+    const path = source && destination ? SW.ships.findPath(state, source.id, destination.id) : null;
+    let eta = 0;
+    if (ship && path) for (let i = 1; i < path.length; i++) eta += Math.max(2, Math.round(U.dist(state.systems[path[i - 1]], state.systems[path[i]]) / SW.ships.speed(state, ship)));
+    const capacity = ship ? SW.ships.cap(state, ship) : 0;
+    const exposed = path && path.some(function (id) {
+      const sys = state.systems[id]; return sys && (sys.scourge >= 1 || sys.region === 'reach');
+    });
+    const cap = destination ? ((destination.capacity && destination.capacity[offer.c]) || D.TUNE.capDefault) : 1;
+    const before = destination ? ((destination.stocks && destination.stocks[offer.c]) || 0) : 0;
+    const effectiveBond = Math.round(offer.bond * ((SW.acts && SW.acts.active(state)) ? SW.acts.bondMult(state) : 1));
+    return {
+      source: source ? source.name : 'unknown source', capacity: capacity,
+      eta: eta, slack: Math.max(0, offer.window - eta), exposure: exposed ? 'exposed' : 'calm',
+      stake: effectiveBond, baseStake: offer.bond, fare: offer.fare,
+      worldEffect: destination ? (destination.name + ' ' + D.COMMODITIES[offer.c].name + ' stock ' + Math.round(before) + '→' + Math.round(Math.min(cap, before + offer.qty)) + ' / ' + Math.round(cap)) : 'destination unavailable'
+    };
+  };
+
   // Guild trust: 1.0 pristine; each recent bust dims it, recovering over time.
   P.trust = function (state) {
     P.ensure(state);
@@ -175,7 +247,11 @@ SW.pledges = (function () {
       progress: 0,
     };
     state.pledges.push(pledge);
-    SW.game.emit('toast', { kind: 'info', text: '◈ Pledge sealed: ' + o.qty + D.COMMODITIES[o.c].icon + ' to ' + o.toName + ' by tick ' + pledge.deadline + '. Bond ' + U.fmt(o.bond) + '¤.' });
+    if (state.tutorial && state.tutorial.active && o.actZero) {
+      state.tutorial.pledgeTaken = pledge.id;
+      state.tutorial.pledgeTier = o.tutorialTier;
+    }
+    SW.game.emit('toast', { kind: 'info', text: '◈ Pledge sealed: ' + o.qty + D.COMMODITIES[o.c].icon + ' to ' + o.toName + ' by tick ' + pledge.deadline + '. Bond ' + U.fmt(charged) + '¤.' });
     SW.game.emit('sfx', 'click');
     return { ok: true, pledge: pledge };
   };
@@ -232,6 +308,10 @@ SW.pledges = (function () {
     ps.weaveTotal += weave;
     ps.bestThread = Math.max(ps.bestThread || 0, thread);
     state.stats.pledgesKept = (state.stats.pledgesKept || 0) + 1;
+    if (state.tutorial && state.tutorial.active) {
+      state.tutorial.pledgeCompleted = true;
+      state.tutorial.lastPledgeOutcome = { to: p.to, commodity: p.c, qty: p.qty, weave: weave, fare: p.fare, bond: p.bond };
+    }
     SW.game.emit('fx', { kind: 'floater', sysId: p.to, text: '+' + U.fmt(weave) + ' WEAVE', good: true });
     SW.game.emit('toast', {
       kind: 'good',
