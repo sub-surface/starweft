@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" data-ui-scale="100">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<title>STARWEFT — UI Component Catalog & Isolated Styleguide</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  body {
+    background: #000000;
+    color: var(--ink);
+    font-family: var(--font-base);
+    padding: 24px;
+    margin: 0;
+    overflow-y: auto;
+  }
+  .catalogHeader {
+    border-bottom: 1px solid var(--line-bright);
+    padding-bottom: 16px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .catalogHeader h1 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .catalogHeader span {
+    font-size: 12px;
+    color: var(--ink-dim);
+    font-family: var(--font-mono);
+  }
+  .catalogGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+  .catalogCard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .catalogCard h3 {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+  }
+  /* Isolated Stage for Orbital Ring */
+  .ringStage {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    background: #050608;
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .mockStar {
+    width: 12px;
+    height: 12px;
+    background: #f0f6fc;
+    border-radius: 50%;
+    box-shadow: 0 0 16px rgba(155, 214, 234, 0.8), 0 0 4px #ffffff;
+    position: absolute;
+  }
+  .mockStarLabel {
+    position: absolute;
+    top: calc(50% + 56px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #f0f6fc;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  /* The isolated ring container inside the stage */
+  .ringContainer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+  }
+  .techStarburstRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 16px 0;
+    background: #05070a;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+  }
+  .techBurstItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .techBurstLabel {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--ink-dim);
+  }
+  .rowWrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .subLabel {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--ink-dim);
+    margin-top: -6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="catalogHeader">
+  <h1>◈ STARWEFT UI COMPONENT CATALOG</h1>
+  <span>SPEC[UI-ORBITAL-RING] · SPEC[SW-PLG-004] · SPEC[UI-TECH-ASTROLABE]</span>
+</div>
+
+<div class="catalogGrid">
+
+  <!-- CARD 1: Orbital Ring (Default 6-Verb System) -->
+  <div class="catalogCard">
+    <h3>1. Orbital Ring — Full System Context (6 Verbs)</h3>
+    <div class="subLabel">Enter · Details · Send Ship · Guild Board · Bookmark · Build</div>
+    <div class="ringStage" id="stageFullRing">
+      <div class="mockStar"></div>
+      <div class="mockStarLabel">SOL · G2V</div>
+      <div class="ringContainer orbitalRing" id="mockRing6">
+        <!-- Buttons placed via math at orbitR = 40px -->
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 2: Orbital Ring (4-Verb / Unexplored / Remote System) -->
+  <div class="catalogCard">
+    <h3>2. Orbital Ring — Remote System (4 Verbs)</h3>
+    <div class="subLabel">Enter · Details · Send Ship · Bookmark</div>
+    <div class="ringStage" id="stageRemoteRing">
+      <div class="mockStar" style="background: #eac36e; box-shadow: 0 0 16px rgba(234, 195, 110, 0.8);"></div>
+      <div class="mockStarLabel">PROXIMA · M5V</div>
+      <div class="ringContainer orbitalRing" id="mockRing4"></div>
+    </div>
+  </div>
+
+  <!-- CARD 3: System HUD Badges & Indicators -->
+  <div class="catalogCard">
+    <h3>3. System Status Badges & HUD Markers</h3>
+    <div class="rowWrap">
+      <span class="tag acc">◈ SOL (CAPITAL)</span>
+      <span class="tag" style="border-color: #f76a76; color: #f76a76;">△ 24 TICKS (THREAT)</span>
+      <span class="tag good">✓ SECURED</span>
+      <span class="tag">★ BOOKMARKED</span>
+      <span class="tag" style="border-color: var(--accent); color: var(--accent);">✺ WONDER: HUSK</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <div class="sub">Presence Arcs (Player Cyan, Rival Gray, Threat Red):</div>
+      <div style="display: flex; gap: 16px; align-items: center; margin-top: 8px;">
+        <span class="num" style="color: var(--accent);">● 85% Player Weave</span>
+        <span class="num" style="color: var(--ink-dim);">○ 15% Free Trader</span>
+        <span class="num" style="color: #f76a76;">▲ Fray Intrusion</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 4: Ship Command Bar & Modular Hardware Sockets -->
+  <div class="catalogCard">
+    <h3>4. Ship Command Bar & Hardware Module Sockets</h3>
+    <div style="background: var(--surface); border: 1px solid var(--line-bright); border-radius: var(--radius); padding: 10px;">
+      <div class="row" style="margin-bottom: 8px;">
+        <span class="title grow">▲ SPARROW-01</span>
+        <span class="tag acc">idle</span>
+        <span class="sub num">Sol · hold 0/25</span>
+      </div>
+      <div class="rowWrap" style="margin-bottom: 8px;">
+        <span class="tag" title="Drive socket: +40% speed">▲ Ion Burner</span>
+        <span class="tag" title="Hold socket: +15 cargo capacity">◇ Cargo Pod</span>
+        <span class="tag" title="Sensor socket: auto-scan nearby lanes">◈ Survey Lens</span>
+      </div>
+      <div class="row">
+        <button class="primary" style="flex: 1;">DISPATCH ROUTE</button>
+        <button style="flex: 1;">HOLD MANIFEST</button>
+        <button style="flex: 1;">OUTFIT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 5: Unified Logistics Exchange & Pledges -->
+  <div class="catalogCard">
+    <h3>5. Logistics Exchange & Pledges</h3>
+    <div class="listItem" style="border: 1px solid var(--line-bright);">
+      <div class="row">
+        <span class="title grow">◈ SOL → ALPHA CENTAURI</span>
+        <span class="num" style="color: var(--accent); font-weight: 700;">+180 WEAVE</span>
+      </div>
+      <div class="row" style="margin-top: 4px;">
+        <span class="sub grow">25× ORE · 4 hops · 180-tick window</span>
+        <span class="tag acc">×1.5 STREAK</span>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <button class="primary" style="flex: 1;">SEAL PLEDGE (BOND 50¤)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 6: Buttons, Form Controls & Tags -->
+  <div class="catalogCard">
+    <h3>6. Buttons, Form Controls & Elevation Hierarchy</h3>
+    <div class="rowWrap">
+      <button class="primary">Primary Verb</button>
+      <button>Default Action</button>
+      <button disabled>Disabled State</button>
+      <button class="danger">Sever Connection</button>
+    </div>
+    <div class="rowWrap" style="margin-top: 8px;">
+      <input type="text" value="search systems..." style="width: 140px;">
+      <span class="tag acc">active</span>
+      <span class="tag good">complete</span>
+      <span class="tag bad">breached</span>
+      <span class="tag">neutral</span>
+    </div>
+  </div>
+
+  <!-- CARD 7: Tech Tree Celestial Astrolabe Starburst Tiers -->
+  <div class="catalogCard" style="grid-column: 1 / -1;">
+    <h3>7. Tech Tree Celestial Astrolabe — 4-Tier Visual Hierarchy</h3>
+    <div class="techStarburstRow">
+      <!-- Tier 1: Foundation -->
+      <div class="techBurstItem">
+        <canvas id="cvTier1" width="60" height="60"></canvas>
+        <span class="techBurstLabel">TIER I · 4-POINT</span>
+        <span class="tag acc">Courier Hulls</span>
+      </div>
+      <!-- Tier 2: Expansion -->
+      <div class="techBurstItem">
+        <canvas id="cvTier2" width="60" height="60"></canvas>
+        <span class="techBurstLabel">TIER II · 6-POINT + RING</span>
+        <span class="tag acc">Freighter Hulls</span>
+      </div>
+      <!-- Tier 3: Ascendance -->
+      <div class="techBurstItem">
+        <canvas id="cvTier3" width="60" height="60"></canvas>
+        <span class="techBurstLabel">TIER III · 8-POINT + RETICLE</span>
+        <span class="tag acc">Logistics Directives</span>
+      </div>
+      <!-- Tier 4: Mastery -->
+      <div class="techBurstItem">
+        <canvas id="cvTier4" width="60" height="60"></canvas>
+        <span class="techBurstLabel">TIER IV · 12-POINT NOVA</span>
+        <span class="tag acc">Superhauler Hulls</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Build Orbital Rings in the Mock Containers
+function mountMockRing(containerId, btns, orbitR) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let html = '<div class="ringTrack" style="width:' + (orbitR * 2) + 'px;height:' + (orbitR * 2) + 'px;"></div>';
+  for (let i = 0; i < btns.length; i++) {
+    const ang = -Math.PI / 2 + (i * 2 * Math.PI / btns.length);
+    const bx = Math.round(Math.cos(ang) * orbitR);
+    const by = Math.round(Math.sin(ang) * orbitR);
+    const b = btns[i];
+    html += '<button data-act="' + b.act + '" title="' + b.title + '" style="--bx:' + bx + 'px;--by:' + by + 'px;transform:translate(' + bx + 'px,' + by + 'px) translate(-50%,-50%)"><span class="ringGlyph glyph-' + b.act + '">' + b.glyph + '</span></button>';
+  }
+  container.innerHTML = html;
+}
+
+const ringBtns6 = [
+  { act: 'enterSys', glyph: '⏵', title: 'Enter' },
+  { act: 'ringDetails', glyph: 'ⓘ', title: 'Details' },
+  { act: 'ringSend', glyph: '➤', title: 'Send ship' },
+  { act: 'ringBoard', glyph: '◈', title: 'Guild board' },
+  { act: 'bookmark', glyph: '★', title: 'Bookmark' },
+  { act: 'ringBuild', glyph: '▦', title: 'Build' }
+];
+
+const ringBtns4 = [
+  { act: 'enterSys', glyph: '⏵', title: 'Enter' },
+  { act: 'ringDetails', glyph: 'ⓘ', title: 'Details' },
+  { act: 'ringSend', glyph: '➤', title: 'Send ship' },
+  { act: 'bookmark', glyph: '☆', title: 'Bookmark' }
+];
+
+mountMockRing('mockRing6', ringBtns6, 40);
+mountMockRing('mockRing4', ringBtns4, 35);
+
+// Draw Isolated Starbursts on Canvas
+function drawBurst(cvId, tier, color) {
+  const cv = document.getElementById(cvId);
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const cx = 30, cy = 30;
+  const starR = tier === 4 ? 17 : tier === 3 ? 14 : tier === 2 ? 12 : 10;
+  const innerR = 3.8;
+
+  ctx.clearRect(0, 0, 60, 60);
+
+  // Spikes
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(cx - starR, cy); ctx.lineTo(cx + starR, cy);
+  ctx.moveTo(cx, cy - starR); ctx.lineTo(cx, cy + starR);
+  ctx.stroke();
+
+  if (tier >= 2) {
+    const diagR = starR * (tier === 4 ? 0.75 : tier === 3 ? 0.68 : 0.55);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(cx - diagR, cy - diagR); ctx.lineTo(cx + diagR, cy + diagR);
+    ctx.moveTo(cx - diagR, cy + diagR); ctx.lineTo(cx + diagR, cy - diagR);
+    ctx.stroke();
+
+    if (tier === 2) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR + 3.2, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+  }
+
+  if (tier >= 3) {
+    const br = starR * 0.72, bLen = 2.5;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - br, cy - br + bLen); ctx.lineTo(cx - br, cy - br); ctx.lineTo(cx - br + bLen, cy - br);
+    ctx.moveTo(cx + br, cy - br + bLen); ctx.lineTo(cx + br, cy - br); ctx.lineTo(cx + br - bLen, cy - br);
+    ctx.moveTo(cx - br, cy + br - bLen); ctx.lineTo(cx - br, cy + br); ctx.lineTo(cx - br + bLen, cy + br);
+    ctx.moveTo(cx + br, cy + br - bLen); ctx.lineTo(cx + br, cy + br); ctx.lineTo(cx + br - bLen, cy + br);
+    ctx.stroke();
+  }
+
+  if (tier === 4) {
+    const minR = starR * 0.45;
+    const cos30 = Math.cos(Math.PI / 6) * minR, sin30 = Math.sin(Math.PI / 6) * minR;
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(cx - cos30, cy - sin30); ctx.lineTo(cx + cos30, cy + sin30);
+    ctx.moveTo(cx + cos30, cy - sin30); ctx.lineTo(cx - cos30, cy + sin30);
+    ctx.moveTo(cx - sin30, cy - cos30); ctx.lineTo(cx + sin30, cy + sin30);
+    ctx.moveTo(cx + sin30, cy - sin30); ctx.lineTo(cx - sin30, cy + sin30);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, starR * 0.88, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Diamond Core
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - innerR);
+  ctx.lineTo(cx + innerR, cy);
+  ctx.lineTo(cx, cy + innerR);
+  ctx.lineTo(cx - innerR, cy);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+drawBurst('cvTier1', 1, '#9bd6ea');
+drawBurst('cvTier2', 2, '#eac36e');
+drawBurst('cvTier3', 3, '#6fe0b6');
+drawBurst('cvTier4', 4, '#8ca8f5');
+</script>
+
+</body>
+</html>

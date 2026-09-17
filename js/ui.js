@@ -554,13 +554,13 @@ SW.ui = (function () {
       ring.innerHTML = ''; ring.dataset.builtFor = ''; return;
     }
     const btns = ringButtons(s, s.systems[sysId]);
-    const orbitR = ui.isTouch() ? 46 : 34;
-    let html = '';
+    const orbitR = ui.isTouch() ? 48 : (btns.length >= 5 ? 40 : 35);
+    let html = '<div class="ringTrack" style="width:' + (orbitR * 2) + 'px;height:' + (orbitR * 2) + 'px;"></div>';
     for (let i = 0; i < btns.length; i++) {
       const ang = -Math.PI / 2 + (i * 2 * Math.PI / btns.length);
       const bx = Math.round(Math.cos(ang) * orbitR), by = Math.round(Math.sin(ang) * orbitR);
       const b = btns[i];
-      html += '<button data-act="' + b.act + '" title="' + esc(b.title) + '" data-info="' + esc(b.info) + '" style="transform:translate(' + bx + 'px,' + by + 'px) translate(-50%,-50%)">' + b.glyph + '</button>';
+      html += '<button data-act="' + b.act + '" title="' + esc(b.title) + '" data-info="' + esc(b.info) + '" style="--bx:' + bx + 'px;--by:' + by + 'px;transform:translate(' + bx + 'px,' + by + 'px) translate(-50%,-50%)"><span class="ringGlyph glyph-' + b.act + '">' + b.glyph + '</span></button>';
     }
     ring.innerHTML = html;
     ring.dataset.builtFor = String(sysId);

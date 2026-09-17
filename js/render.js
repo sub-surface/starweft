@@ -247,6 +247,62 @@ SW.render = (function () {
         mag: 0.04 + rnd() * 0.07, size: 1,
       });
     }
+
+    // ============ Level 4: The Local Group & Intergalactic Loom (SPEC[SW-VIS-004], SPEC[SW-IG-001]) ============
+    // Large Magellanic Cloud (LMC)
+    const LMC_C = { x: 38000, y: -65000, z: -28000 };
+    for (let i = 0; i < 140; i++) {
+      const a = rnd() * Math.PI * 2, r = g3() * 6500;
+      galaxyPts.push({
+        x: LMC_C.x + Math.cos(a) * r,
+        y: LMC_C.y + Math.sin(a) * r * 0.7,
+        z: LMC_C.z + (g3() * 2 - 1) * 1200,
+        mag: 0.12 + rnd() * 0.25,
+        size: rnd() < 0.08 ? 1.6 : 1,
+      });
+    }
+
+    // Small Magellanic Cloud (SMC)
+    const SMC_C = { x: -20000, y: -82000, z: -36000 };
+    for (let i = 0; i < 75; i++) {
+      const a = rnd() * Math.PI * 2, r = g3() * 4200;
+      galaxyPts.push({
+        x: SMC_C.x + Math.cos(a) * r,
+        y: SMC_C.y + Math.sin(a) * r * 0.65,
+        z: SMC_C.z + (g3() * 2 - 1) * 900,
+        mag: 0.10 + rnd() * 0.22,
+        size: 1,
+      });
+    }
+
+    // Andromeda Galaxy (M31) - inclined grand spiral
+    const M31_C = { x: 80000, y: 105000, z: -38000 };
+    for (let i = 0; i < 340; i++) {
+      const a = rnd() * Math.PI * 2, r = g3() * 16000;
+      const rot = 0.62;
+      const ex = Math.cos(a) * r, ey = Math.sin(a) * r * 0.38;
+      galaxyPts.push({
+        x: M31_C.x + Math.cos(rot) * ex - Math.sin(rot) * ey,
+        y: M31_C.y + Math.sin(rot) * ex + Math.cos(rot) * ey,
+        z: M31_C.z + (g3() * 2 - 1) * 1600,
+        mag: 0.18 + rnd() * 0.45,
+        size: rnd() < 0.10 ? 1.7 : 1,
+      });
+    }
+
+    // Triangulum Galaxy (M33) - face-on pinwheel
+    const M33_C = { x: -62000, y: 105000, z: -22000 };
+    for (let i = 0; i < 95; i++) {
+      const a = rnd() * Math.PI * 2, r = g3() * 7500;
+      galaxyPts.push({
+        x: M33_C.x + Math.cos(a) * r,
+        y: M33_C.y + Math.sin(a) * r * 0.85,
+        z: M33_C.z + (g3() * 2 - 1) * 1100,
+        mag: 0.11 + rnd() * 0.22,
+        size: 1,
+      });
+    }
+
     // arm name anchors, sampled from the same spirals
     function armPt(phase, th) {
       const r = R0 * Math.exp(B * th);
@@ -260,10 +316,15 @@ SW.render = (function () {
       { p: armPt(ARM_PHASES[1], 8.9), t: 'SCUTUM–CENTAURUS' },
       { p: armPt(ARM_PHASES[3], 10.1), t: 'OUTER ARM' },
       { p: GAL_CENTER, t: 'SAGITTARIUS A✶' },
+      { p: LMC_C, t: 'LARGE MAGELLANIC CLOUD', intergalactic: true },
+      { p: SMC_C, t: 'SMALL MAGELLANIC CLOUD', intergalactic: true },
+      { p: M31_C, t: 'ANDROMEDA (M31)', intergalactic: true },
+      { p: M33_C, t: 'TRIANGULUM (M33)', intergalactic: true },
+      { p: { x: 53000, y: 58000, z: -19000 }, t: 'THE PRECURSOR STARBRIDGE', intergalactic: true },
     ];
   }
 
-  const DIST_MIN = 22, DIST_MAX = 90000;
+  const DIST_MIN = 22, DIST_MAX = 160000;
   R.fit = function () {
     R.cam.tx = 8; R.cam.ty = 0; R.cam.tz = 0;
     // Frame the bubble proportionally to its actual size (was a hardcoded 160
@@ -822,6 +883,31 @@ SW.render = (function () {
     drawBeacons(st, now, proj);
     drawCompass(st);
     drawOrbitGuide(now);
+    if (dist > 4000) drawCosmicPulses(now, deep);
+  }
+
+  function drawCosmicPulses(now, deep) {
+    if (deep < 0.25) return;
+    const filaments = [
+      [{ x: 26600, y: 22000, z: 0 }, { x: 75000, y: 92000, z: -35000 }],
+      [{ x: 26600, y: -24000, z: 0 }, { x: 38000, y: -65000, z: -28000 }],
+      [{ x: 38000, y: -65000, z: -28000 }, { x: -20000, y: -82000, z: -36000 }],
+      [{ x: 75000, y: 92000, z: -35000 }, { x: -62000, y: 105000, z: -22000 }]
+    ];
+    ctx.fillStyle = 'rgba(125, 210, 255, ' + (0.75 * deep) + ')';
+    for (let i = 0; i < filaments.length; i++) {
+      const f = filaments[i];
+      const t = ((now / 3600) + i * 0.25) % 1;
+      const px = f[0].x + (f[1].x - f[0].x) * t;
+      const py = f[0].y + (f[1].y - f[0].y) * t;
+      const pz = f[0].z + (f[1].z - f[0].z) * t;
+      const q = project({ x: px, y: py, z: pz });
+      if (q && q.x >= -10 && q.x <= W + 10 && q.y >= -10 && q.y <= H + 10) {
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   // ---------- signal beacons (SPEC[UI-SIGNALS]): the map tells you ----------
@@ -937,6 +1023,51 @@ SW.render = (function () {
       c2.fillStyle = g;
       c2.fillRect(0, 0, W, H);
     }
+    const m31 = project({ x: 75000, y: 92000, z: -35000 });
+    if (m31) {
+      const sheenR = Math.max(20, 22000 * m31.s);
+      const g = c2.createRadialGradient(m31.x, m31.y, 0, m31.x, m31.y, sheenR);
+      g.addColorStop(0, 'rgba(215,228,252,' + 0.14 * deep + ')');
+      g.addColorStop(0.35, 'rgba(170,190,230,' + 0.04 * deep + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c2.fillStyle = g;
+      c2.fillRect(0, 0, W, H);
+    }
+    const lmc = project({ x: 38000, y: -65000, z: -28000 });
+    if (lmc) {
+      const sheenR = Math.max(16, 11000 * lmc.s);
+      const g = c2.createRadialGradient(lmc.x, lmc.y, 0, lmc.x, lmc.y, sheenR);
+      g.addColorStop(0, 'rgba(220,230,245,' + 0.11 * deep + ')');
+      g.addColorStop(0.4, 'rgba(180,200,225,' + 0.03 * deep + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c2.fillStyle = g;
+      c2.fillRect(0, 0, W, H);
+    }
+
+    // Intergalactic Weft filaments (The Starbridge & Cosmic Corridors)
+    if (deep > 0.3) {
+      const filaments = [
+        [{ x: 26600, y: 22000, z: 0 }, { x: 75000, y: 92000, z: -35000 }],
+        [{ x: 26600, y: -24000, z: 0 }, { x: 38000, y: -65000, z: -28000 }],
+        [{ x: 38000, y: -65000, z: -28000 }, { x: -20000, y: -82000, z: -36000 }],
+        [{ x: 75000, y: 92000, z: -35000 }, { x: -62000, y: 105000, z: -22000 }]
+      ];
+      c2.save();
+      c2.lineWidth = 1.2;
+      c2.setLineDash([4, 8]);
+      c2.strokeStyle = 'rgba(100, 185, 245, ' + (0.32 * deep) + ')';
+      for (let fi = 0; fi < filaments.length; fi++) {
+        const p1 = project(filaments[fi][0]), p2 = project(filaments[fi][1]);
+        if (p1 && p2) {
+          c2.beginPath();
+          c2.moveTo(p1.x, p1.y);
+          c2.lineTo(p2.x, p2.y);
+          c2.stroke();
+        }
+      }
+      c2.setLineDash([]);
+      c2.restore();
+    }
     c2.fillStyle = '#cdd6e4';
     for (const p of galaxyPts) {
       const q = project(p);
@@ -951,9 +1082,12 @@ SW.render = (function () {
       c2.font = '600 9.5px "Segoe UI", sans-serif';
       c2.textAlign = 'center';
       for (const L of armLabels) {
+        if (L.intergalactic && R.cam.dist < 28000) continue;
+        if (!L.intergalactic && R.cam.dist > 110000) continue;
         const q = project(L.p);
         if (!q || q.x < 20 || q.x > W - 20 || q.y < 20 || q.y > H - 20) continue;
-        c2.fillStyle = L.p === GAL_CENTER ? 'rgba(226,232,242,' + labelA * 1.4 + ')' : 'rgba(140,150,165,' + labelA + ')';
+        const color = L.intergalactic ? 'rgba(125,195,250,' + labelA * 1.3 + ')' : (L.p === GAL_CENTER ? 'rgba(226,232,242,' + labelA * 1.4 + ')' : 'rgba(140,150,165,' + labelA + ')');
+        c2.fillStyle = color;
         c2.fillText(L.t, q.x, q.y);
       }
       c2.textAlign = 'left';
@@ -1374,14 +1508,16 @@ SW.render = (function () {
     const labeled = p.s > 6 || R.selectedSys === sys.id || R.hoverSys === sys.id || sys.id === st.homeId || sys.wonder;
     if (labeled) {
       const alpha = U.clamp((p.s - 3) / 8, 0.35, 1) * f;
-      ctx.fillStyle = 'rgba(201,209,217,' + alpha + ')';
-      ctx.font = (p.s > 10 ? '11px' : '10px') + ' "Segoe UI", sans-serif';
+      const isSel = R.selectedSys === sys.id;
+      const labelY = isSel ? (p.y + radius + 56) : (p.y + radius + 11);
+      ctx.fillStyle = isSel ? 'rgba(255,255,255,0.95)' : 'rgba(201,209,217,' + alpha + ')';
+      ctx.font = (isSel ? '600 ' : '') + (p.s > 10 ? '11px' : '10px') + ' "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(sys.name, p.x, p.y + radius + 11);
+      ctx.fillText(sys.name, p.x, labelY);
       if (p.s > 9 && sys.type !== 'frontier') {
-        ctx.fillStyle = 'rgba(110,118,129,' + alpha + ')';
+        ctx.fillStyle = 'rgba(110,118,129,' + (isSel ? 0.9 : alpha) + ')';
         ctx.font = '8.5px "Segoe UI", sans-serif';
-        ctx.fillText(D.SYS_TYPES[sys.type].icon + ' ' + D.SYS_TYPES[sys.type].name.toUpperCase(), p.x, p.y + radius + 21);
+        ctx.fillText(D.SYS_TYPES[sys.type].icon + ' ' + D.SYS_TYPES[sys.type].name.toUpperCase(), p.x, labelY + 10);
       }
       ctx.textAlign = 'left';
     }

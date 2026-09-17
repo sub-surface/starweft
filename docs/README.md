@@ -25,3 +25,4 @@ This directory contains the modular engineering guides, product contracts, desig
 * [devlog-2026-09-17-reorientation.md](devlogs/devlog-2026-09-17-reorientation.md) — Comprehensive re-orientation, critical review synthesis, Orion Spur bug diagnosis, and strategic roadmap.
 * [devlog-2026-09-17-execution-phases-1-2-3.md](devlogs/devlog-2026-09-17-execution-phases-1-2-3.md) — Complete execution and verification report for Phases 1, 2, and 3.
 * [devlog-2026-09-17-tech-tree-astrolabe-redesign.md](devlogs/devlog-2026-09-17-tech-tree-astrolabe-redesign.md) — Complete execution and verification report for Playwright screenshot harness and Tech Tree Radial Astrolabe redesign.
+* [devlog-2026-09-17-ui-catalog-and-intergalactic-scale.md](devlogs/devlog-2026-09-17-ui-catalog-and-intergalactic-scale.md) — Isolated UI catalog, orbital ring optical alignment, rapid test harness, and Local Group / Intergalactic scale architecture.

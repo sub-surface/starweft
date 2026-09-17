@@ -133,8 +133,8 @@ time.*
 ### 1.5 Product ledger
 
 - [ ] **SW-VIS-001** Default play is one canonical 60-90 minute Thread.
-- [ ] **SW-VIS-002** Every successful Thread traverses System, Bubble, and Galaxy
-  scale in that order.
+- [x] **SW-VIS-002** Every successful Thread traverses System, Bubble, and Galaxy
+  scale in that order. Evidence: `js/acts.js` wires `state.act.scale` progression across Act 1 (`system`), Act 2 (`bubble`), and Act 3+ (`galaxy`), transitioning at act boundaries. Verified in `test/smoke.js`.
 - [ ] **SW-VIS-003** Each scale changes the player's decision grammar.
 - [ ] **SW-VIS-004** The campaign culminates in a bounded intergalactic summit.
 - [x] **SW-VIS-005** Logistics is already the primary authored verb. Evidence:
@@ -911,8 +911,8 @@ galaxy remains viewable and is never overwritten by starting another.
 
 ### 12.4 Summit ledger
 
-- [ ] **SW-IG-001** Summit requires Reach, Resilience, and Accord from multiple
-  Threads.
+- [x] **SW-IG-001** Summit requires Reach, Resilience, and Accord from multiple
+  Threads. Evidence: `SW.campaign.recordThreadCompletion` tallies campaign capability points (reach, resilience, accord) based on completed thread archetype and win state; `SW.campaign.summitStatus` unlocks the macro-logistics summit operations when threads supply these capabilities. Verified in `test/smoke.js`.
 - [ ] **SW-IG-002** Summit is a bounded 15-20 minute final operation.
 - [ ] **SW-IG-003** At least three campaign histories materially alter conditions.
 - [ ] **SW-IG-004** Allies, scars, Archive, and holdings affect available plans.

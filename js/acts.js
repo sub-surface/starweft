@@ -207,6 +207,7 @@ SW.acts = (function () {
     state.paused = true;
     if (a.n >= D.ACTS.maxActs) {
       a.summit = true;
+      if (state.act) state.act.scale = 'summit';
       a.draft = [];
       SW.game.news(state, 'The summit Charter is met. The Guild offers the choice: retire in glory, or pass into the Long Weave.', state.homeId);
       SW.story.setObjective(state, '◈ SUMMIT met — retire the thread, or graduate into the Long Weave.');
@@ -239,6 +240,10 @@ SW.acts = (function () {
     // record the act just cleared
     a.history.push({ n: a.n, commission: a.commission, weave: Math.round(A2.progress(state)), ticks: state.tick - a.startTick, outcome: 'pushed' });
     a.n += 1;
+    if (state.act) {
+      state.act.index = a.n;
+      state.act.scale = a.n === 1 ? 'system' : (a.n === 2 ? 'bubble' : (a.n >= 3 ? 'galaxy' : 'system'));
+    }
     a.startWeave = state.weave;
     a.startTick = state.tick;
     a.quota = A2.quotaOf(a.n);
@@ -349,6 +354,9 @@ SW.acts = (function () {
       },
     };
     state.paused = true;
+    if (SW.campaign && SW.campaign.recordThreadCompletion) {
+      SW.campaign.recordThreadCompletion(state, go);
+    }
     SW.game.legacySet(go.win ? 'won' : 'thread_cut');
     SW.game.emit('gameover', state.gameOver);
     SW.game.emit('sfx', go.win ? 'victory' : 'defeat');

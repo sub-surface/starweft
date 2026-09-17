@@ -133,15 +133,51 @@ input[type=checkbox] { accent-color: var(--accent); }
 /* One wrapper positioned per frame (render.js post-render step) via
    style.transform from R.screenPosOf; each button is laid out around it at a
    fixed angle and self-centers, so only the wrapper moves every frame. */
-#ring { position: absolute; top: 0; left: 0; z-index: 16; pointer-events: none; }
-#ring button {
+#ring, .orbitalRing { position: absolute; top: 0; left: 0; z-index: 16; pointer-events: none; }
+.ringTrack {
+  position: absolute; top: 0; left: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(155, 214, 234, 0.28);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+#ring button, .orbitalRing button, .ringBtn {
   position: absolute; top: 0; left: 0;
   width: 28px; height: 28px; border-radius: 50%; padding: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; line-height: 1; pointer-events: auto;
-  background: var(--surface); border: 1px solid var(--line-bright); color: var(--ink);
+  background: rgba(10, 14, 20, 0.92);
+  border: 1px solid var(--line-bright);
+  color: var(--ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  user-select: none;
 }
-#ring button:hover, #ring button:focus-visible { border-color: var(--accent); color: var(--accent); }
+#ring button:hover, .orbitalRing button:hover,
+#ring button:focus-visible, .orbitalRing button:focus-visible,
+.ringBtn:hover, .ringBtn:focus-visible {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(16, 24, 34, 0.96);
+  box-shadow: 0 0 10px rgba(155, 214, 234, 0.45);
+  transform: translate(var(--bx, 0), var(--by, 0)) translate(-50%, -50%) scale(1.15) !important;
+  z-index: 2;
+}
+
+.ringGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+.glyph-enterSys { transform: translateX(1px); }
+.glyph-ringSend { transform: translate(1px, -0.5px); }
+.glyph-ringDetails { font-size: 13px; font-weight: 600; }
+.glyph-bookmark { transform: translateY(-0.5px); }
+.glyph-ringBoard { font-size: 12px; }
+.glyph-ringBuild { font-size: 12px; }
 
 /* ---- Guild board flyout (SPEC[UI-GUILD-BOARD]): offers glow at their system, not a list ---- */
 #boardFlyout {

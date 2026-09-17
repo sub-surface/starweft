@@ -643,7 +643,7 @@ step('raid button opens simulacrum choice once unlocked', function () {
 });
 
 step('galactic LOD: frames render at every zoom scale', function () {
-  for (const d of [30, 150, 700, 1600, 5000, 20000, 90000]) {
+  for (const d of [30, 150, 700, 1600, 5000, 20000, 90000, 140000]) {
     SW.render.cam.dist = d; SW.render.cam.distTarget = d;
     pumpFrames(3);
   }

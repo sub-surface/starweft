@@ -490,5 +490,23 @@ SW.galaxy = (function () {
     home.stocks.ORE = Math.round(25 * wealth);
   }
 
+  // ============ Local Group & Intergalactic Loom (SPEC[SW-VIS-004], SPEC[SW-IG-001]) ============
+  // Scale Level 4: Galactic entities and cosmic corridors linking the Milky Way
+  // to neighboring island universes across the deep void.
+  G.LOCAL_GROUP = [
+    { id: 'milkyway', name: 'Milky Way', type: 'spiral', r: 50000, pos: { x: 26600, y: 0, z: 0 }, desc: 'The Weaver’s Home' },
+    { id: 'lmc', name: 'Large Magellanic Cloud', type: 'satellite', r: 14000, pos: { x: 38000, y: -65000, z: -28000 }, desc: 'Outer Weaver Relay' },
+    { id: 'smc', name: 'Small Magellanic Cloud', type: 'satellite', r: 8000, pos: { x: -20000, y: -82000, z: -36000 }, desc: 'Severed Satellite' },
+    { id: 'm31', name: 'Andromeda (M31)', type: 'spiral', r: 65000, pos: { x: 75000, y: 92000, z: -35000 }, desc: 'Target of the Starbridge' },
+    { id: 'm33', name: 'Triangulum (M33)', type: 'spiral', r: 24000, pos: { x: -62000, y: 105000, z: -22000 }, desc: 'The Distant Pinwheel' },
+  ];
+
+  G.COSMIC_CORRIDORS = [
+    { from: 'milkyway', to: 'lmc', name: 'Magellanic Arc', status: 'dormant', energy: 0.8 },
+    { from: 'lmc', to: 'smc', name: 'Magellanic Bridge', status: 'dormant', energy: 0.5 },
+    { from: 'milkyway', to: 'm31', name: 'The Great Starbridge', status: 'beacon', energy: 0.95 },
+    { from: 'm31', to: 'm33', name: 'Triangulum Filament', status: 'dormant', energy: 0.4 },
+  ];
+
   return G;
 })();

@@ -428,5 +428,86 @@ SW.campaign = (function () {
     account.activeSaveKind = state.kind;
   };
 
+  // ============ Campaign capability progression & Summit (SPEC[SW-IG-001]) ============
+  C.recordThreadCompletion = function (state, outcome) {
+    if (!state || !state.campaign) return null;
+    const camp = state.campaign;
+    const th = state.thread || {};
+    const a = state.acts || {};
+    const ident = state.identity || {};
+    const record = {
+      id: th.id || ('thread-' + camp.threadNumber),
+      name: ident.name || 'Unnamed Thread',
+      archetype: state.archetype || 'courier',
+      actsCleared: a.n || 1,
+      weave: Math.round(state.weave || 0),
+      tick: state.tick || 0,
+      outcome: (outcome && outcome.cut) || 'banked',
+      win: !!(outcome && outcome.win),
+      timestamp: Date.now()
+    };
+    camp.completedThreads = camp.completedThreads || [];
+    camp.completedThreads.push(record);
+
+    // Capability progression based on archetype role
+    camp.capabilities = camp.capabilities || { reach: 0, resilience: 0, accord: 0 };
+    if (outcome && outcome.win) {
+      if (state.archetype === 'cartographer' || state.archetype === 'courier') {
+        camp.capabilities.reach = (camp.capabilities.reach || 0) + 1;
+      } else if (state.archetype === 'stationwright' || state.archetype === 'warden') {
+        camp.capabilities.resilience = (camp.capabilities.resilience || 0) + 1;
+      } else if (state.archetype === 'envoy') {
+        camp.capabilities.accord = (camp.capabilities.accord || 0) + 1;
+      } else {
+        camp.capabilities.reach = (camp.capabilities.reach || 0) + 1;
+      }
+    }
+
+    // Check if summit is unlocked (SPEC[SW-IG-001])
+    camp.summit = camp.summit || { version: 1, available: false, resolved: false };
+    if ((camp.capabilities.reach >= 1 && camp.capabilities.resilience >= 1 && camp.capabilities.accord >= 1) ||
+        camp.completedThreads.length >= 3) {
+      camp.summit.available = true;
+    }
+    return record;
+  };
+
+  C.summitStatus = function (state) {
+    if (!state || !state.campaign) return { available: false, plans: [] };
+    const camp = state.campaign;
+    const caps = camp.capabilities || { reach: 0, resilience: 0, accord: 0 };
+    const avail = !!(camp.summit && camp.summit.available);
+    return {
+      available: avail,
+      resolved: !!(camp.summit && camp.summit.resolved),
+      reach: caps.reach || 0,
+      resilience: caps.resilience || 0,
+      accord: caps.accord || 0,
+      plans: [
+        {
+          id: 'bridge',
+          name: 'The Andromeda Bridge',
+          target: 'Andromeda (M31)',
+          desc: 'Connect to the neighboring spiral using high-energy non-conductive Weft filaments.',
+          unlocked: (caps.reach || 0) >= 1
+        },
+        {
+          id: 'carry',
+          name: 'The Triangulum Exodus',
+          target: 'Triangulum (M33)',
+          desc: 'Launch a self-sustaining generation fleet outward into the Triangulum pinwheel.',
+          unlocked: (caps.resilience || 0) >= 1
+        },
+        {
+          id: 'mend',
+          name: 'The Magellanic Bastion',
+          target: 'LMC / SMC Relays',
+          desc: 'Anchor the Starbridge into the satellite clouds to reinforce the Milky Way heart.',
+          unlocked: (caps.accord || 0) >= 1
+        }
+      ]
+    };
+  };
+
   return C;
 })();

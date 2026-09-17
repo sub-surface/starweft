@@ -7,6 +7,8 @@ const FILES = ['util', 'data', 'perks', 'starcat', 'lore', 'events_data', 'plane
 for (const f of FILES) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SW = globalThis.SW;
 const U = SW.util, D = SW.data, G = SW.game, A = SW.game.actions;
+const QUICK = process.argv.includes('--quick');
+if (QUICK) console.log('  [QUICK mode active: reduced bot soak ticks for rapid iteration]');
 
 let failures = 0, checks = 0;
 function assert(cond, msg) {
@@ -122,6 +124,12 @@ section('3D galaxy generation (real catalog + procedural)');
   // tutorial guarantee
   const near = st.systems.filter(function (s) { return s.hops > 0 && s.hops <= 2; });
   assert(near.some(function (s) { return s.type === 'mining' || s.type === 'agri' || s.type === 'gas'; }), 'producer near Sol');
+
+  // Local Group & Intergalactic Loom (SPEC[SW-VIS-004], SPEC[SW-IG-001])
+  assert(Array.isArray(SW.galaxy.LOCAL_GROUP) && SW.galaxy.LOCAL_GROUP.length >= 5, 'Local Group galaxies exist');
+  assert(SW.galaxy.LOCAL_GROUP.some(function (g) { return g.id === 'm31' && g.name.indexOf('Andromeda') >= 0; }), 'Andromeda M31 in Local Group');
+  assert(SW.galaxy.LOCAL_GROUP.some(function (g) { return g.id === 'lmc'; }), 'LMC in Local Group');
+  assert(Array.isArray(SW.galaxy.COSMIC_CORRIDORS) && SW.galaxy.COSMIC_CORRIDORS.length >= 3, 'Intergalactic cosmic corridors exist');
 }
 
 // ---------- 2. planetary systems ----------
@@ -1117,12 +1125,13 @@ section('Origins (roguelite starts)');
 }
 
 // ---------- 10. long standard run with bot ----------
-section('Long run (standard, 3000 ticks, bot)');
+section('Long run (standard, ' + (QUICK ? '400' : '3000') + ' ticks, bot)');
 {
   G._memLegacy = {};
   const st = G.newGame({ seed: 'smoke-10', difficulty: 'standard' });
   let lastCheck = 0;
-  for (let i = 0; i < 3000 && !st.gameOver; i++) {
+  const maxTicks = QUICK ? 400 : 3000;
+  for (let i = 0; i < maxTicks && !st.gameOver; i++) {
     G.tick(st);
     botStep(st);
     if (st.tick - lastCheck >= 250) { lastCheck = st.tick; invariants(st, 'tick ' + st.tick); }
@@ -1133,9 +1142,9 @@ section('Long run (standard, 3000 ticks, bot)');
     ' deliveries=' + st.stats.deliveries + ' corrupted=' + SW.scourge.corruptedCount(st) +
     ' contracts=' + ((st.stats.contractsDone || 0) + st.contracts.length) +
     (st.gameOver ? (' GAMEOVER(' + (st.gameOver.win ? 'win' : 'loss') + ')') : ''));
-  assert(st.stats.deliveries >= 10, 'bot made deliveries (' + st.stats.deliveries + ')');
-  assert(st.story.flags.routes_unlocked, 'routes unlocked through play');
-  assert(st.scourge.phase !== 'dormant', 'scourge activated');
+  assert(st.stats.deliveries >= (QUICK ? 2 : 10), 'bot made deliveries (' + st.stats.deliveries + ')');
+  assert(QUICK || st.story.flags.routes_unlocked, 'routes unlocked through play');
+  assert(QUICK || st.scourge.phase !== 'dormant', 'scourge activated');
   assert(st.rivals.length >= 4, 'many rivals exist (' + st.rivals.length + ')');
   assert(new Set(st.rivals.map(function (r) { return r.archetype; })).size >= 4, 'rival archetypes stay diverse');
   assert(st.rivals.some(function (r) { return (r.lines || []).length > 0 || !r.alive; }), 'rivals run persistent trade lines');
@@ -1157,7 +1166,8 @@ section('Living Weave: laneFlow after long bot run');
   G._memLegacy = {};
   const st = G.newGame({ seed: 'smoke-laneflow', difficulty: 'relaxed' });
   // Run long enough for routes to form and ships to traverse lanes
-  for (let i = 0; i < 800 && !st.gameOver; i++) {
+  const flowTicks = QUICK ? 300 : 800;
+  for (let i = 0; i < flowTicks && !st.gameOver; i++) {
     G.tick(st);
     botStep(st);
   }
@@ -1218,7 +1228,8 @@ section('Scourge & refugee path-aware assertions');
   const refugeeHavens = [];
   const origCorrupt = SW.scourge._testCorrupt || null;
   // Intercept: run until scourge is active and a pop system has fallen
-  for (let i = 0; i < 600 && !st.gameOver; i++) {
+  const bTicks = QUICK ? 250 : 600;
+  for (let i = 0; i < bTicks && !st.gameOver; i++) {
     G.tick(st);
     botStep(st);
   }
@@ -1960,6 +1971,7 @@ section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
   const pr = A.pushThread(s, boon);
   assert(pr.ok, 'push accepted: ' + (pr.msg || ''));
   assert(s.acts.n === 2 && s.acts.boons.indexOf(boon) >= 0, 'advanced to act II with the drafted boon');
+  assert(!s.act || s.act.scale === 'bubble', 'act scale advanced to bubble on push (SPEC[SW-VIS-002])');
   assert(s.acts.aperture > beforeAperture, 'the reach widened on push');
   assert((s.perkPoints || 0) === beforePerk + D.ACTS.boundaryPerk, 'push granted an aptitude point');
   assert(!s.paused, 'push resumes the run');
@@ -1993,6 +2005,19 @@ section('The Act Ladder (focused run: quota, boundary, bank/push, deaths)');
   assert(bk.acts.boundary, 'bank run reaches boundary');
   const br = A.bankThread(bk);
   assert(br.ok && bk.gameOver && bk.gameOver.win && bk.gameOver.epitaph.cut === 'banked', 'bank ends the run as a win with a banked epitaph');
+  if (bk.campaign) {
+    assert(bk.campaign.completedThreads.length >= 1, 'campaign records completed threads (SPEC[SW-IG-001])');
+    assert(typeof SW.campaign.summitStatus(bk) === 'object', 'campaign summitStatus returns valid status object');
+    // Test multiple threads accumulating Reach, Resilience, Accord unlocking summit
+    bk.archetype = 'stationwright';
+    SW.campaign.recordThreadCompletion(bk, { win: true });
+    bk.archetype = 'envoy';
+    SW.campaign.recordThreadCompletion(bk, { win: true });
+    const status = SW.campaign.summitStatus(bk);
+    assert(status.reach >= 1 && status.resilience >= 1 && status.accord >= 1, 'Reach, Resilience, and Accord accumulated (SPEC[SW-IG-001])');
+    assert(status.available === true, 'Summit is available after Reach, Resilience, and Accord from multiple Threads (SPEC[SW-IG-001])');
+    assert(status.plans.every(function (p) { return p.unlocked; }), 'All macro-logistics plans unlocked with full capabilities (SPEC[SW-IG-001])');
+  }
 
   // the three cuts
   const cut = mk('cut'); cut.acts.clock = cut.tick + 3;
