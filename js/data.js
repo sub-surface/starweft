@@ -59,17 +59,41 @@ SW.data = (function () {
   // to despite the now-vast distances.
   D.HULLS = {
     // trade line
-    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 2.90, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', desc: 'A plucky little probe. Where it all begins.' },
-    courier:    { name: 'Courier',     cap: 25,  speed: 3.80, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4,  desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
-    freighter:  { name: 'Freighter',   cap: 60,  speed: 2.60, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6,  desc: 'The backbone of any serious weave.' },
-    liner:      { name: 'Liner',       cap: 15,  speed: 3.30, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
-    superhauler:{ name: 'Superhauler', cap: 150, speed: 2.20, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', desc: 'A cathedral of cargo.' },
+    sparrow:    { name: 'Sparrow',     cap: 10,  speed: 2.90, cost: 400,   upkeep: 2,  power: 0,  tech: null,          line: 'trade',   glyph: '·', sockets: ['drive'], desc: 'A plucky little probe. Where it all begins.' },
+    courier:    { name: 'Courier',     cap: 25,  speed: 3.80, cost: 1600,  upkeep: 4,  power: 0,  tech: 'couriers',    line: 'trade',   glyph: '▸', berths: 4, sockets: ['drive', 'cargo'], desc: 'Faster, roomier, still cute. Four bolted-in berths.' },
+    freighter:  { name: 'Freighter',   cap: 60,  speed: 2.60, cost: 6200,  upkeep: 9,  power: 1,  tech: 'freighters',  line: 'trade',   glyph: '◆', berths: 6, sockets: ['drive', 'cargo', 'avionics'], desc: 'The backbone of any serious weave.' },
+    liner:      { name: 'Liner',       cap: 15,  speed: 3.30, cost: 9500,  upkeep: 11, power: 1,  tech: 'freighters',  line: 'trade',   glyph: '⬗', berths: 40, sockets: ['drive', 'cargo', 'avionics'], desc: 'Rows of berths and a galley that almost apologizes. People are the cargo.' },
+    superhauler:{ name: 'Superhauler', cap: 150, speed: 2.20, cost: 24000, upkeep: 18, power: 2,  tech: 'superhaulers',line: 'trade',   glyph: '⬢', sockets: ['drive', 'cargo', 'cargo', 'avionics'], desc: 'A cathedral of cargo.' },
     // frontier line
-    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 5.50, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
-    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 4.50, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
+    pathfinder: { name: 'Pathfinder',  cap: 4,   speed: 5.50, cost: 900,   upkeep: 2,  power: 0,  tech: 'scouts',      line: 'frontier',glyph: '↟', sockets: ['drive', 'avionics'], desc: 'Surveys systems while idle. Sells the charts.', survey: 1 },
+    surveyor:   { name: 'Surveyor',    cap: 12,  speed: 4.50, cost: 4200,  upkeep: 5,  power: 1,  tech: 'surveycorps', line: 'frontier',glyph: '⌖', sockets: ['drive', 'avionics', 'avionics'], desc: 'Deep-survey vessel. Finds what hides.', survey: 3 },
     // vanguard line
-    corvette:   { name: 'Corvette',    cap: 8,   speed: 3.80, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', desc: 'Escort hull. Assign to a route to guard it.' },
-    lancer:     { name: 'Lancer',      cap: 4,   speed: 3.40, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', desc: 'A wing of fighters and the ship that carries them.' },
+    corvette:   { name: 'Corvette',    cap: 8,   speed: 3.80, cost: 3500,  upkeep: 6,  power: 6,  tech: 'corvettes',   line: 'vanguard',glyph: '∆', sockets: ['drive', 'military', 'avionics'], desc: 'Escort hull. Assign to a route to guard it.' },
+    lancer:     { name: 'Lancer',      cap: 4,   speed: 3.40, cost: 11000, upkeep: 12, power: 16, tech: 'lancers',     line: 'vanguard',glyph: '✠', sockets: ['drive', 'military', 'military', 'avionics'], desc: 'A wing of fighters and the ship that carries them.' },
+  };
+
+  // ---- Modular Ship Blueprints (SPEC[SW-TECH-001], tech-tree-overhaul.md) ----
+  // Physical hardware components installed into ship hull sockets.
+  D.MODULES = {
+    // Drives
+    ion_burner:      { id: 'ion_burner',      name: 'Ion Burner',          slot: 'drive',    tech: null,         glyph: '▲', desc: 'Standard chemical/ion hybrid thruster. Reliable and cheap.' },
+    torch_drive:     { id: 'torch_drive',     name: 'Torch Drive',         slot: 'drive',    tech: 'iondrives',  speedMult: 1.25, glyph: '▲', desc: '+25% speed across all lanes.' },
+    ramscoop_drive:  { id: 'ramscoop_drive',  name: 'Sub-space Ramscoop',  slot: 'drive',    tech: 'deepdrives', speedMult: 1.15, badlandsSafe: true, glyph: '▲', desc: 'Harvests trace hydrogen in deep void. Safe travel in Badlands.' },
+
+    // Cargo & Payload
+    standard_hold:   { id: 'standard_hold',   name: 'Standard Hold',       slot: 'cargo',    tech: null,         glyph: '▢', desc: 'Standard pressurized cargo bay.' },
+    magnetic_clamps: { id: 'magnetic_clamps', name: 'Magnetic Clamps',     slot: 'cargo',    tech: 'cargopods',  capMult: 1.25, glyph: '▢', desc: '+25% cargo capacity via external magnetic clamp racks.' },
+    cryo_berths:     { id: 'cryo_berths',     name: 'Cryo-Berths',         slot: 'cargo',    tech: 'couriers',   berthsBonus: 4, glyph: '▢', desc: 'Pressurized sleeper pods for passenger transit.' },
+    hazard_hold:     { id: 'hazard_hold',     name: 'Inoculated Hold',     slot: 'cargo',    tech: 'scourge2',   scourgeImmune: true, glyph: '▢', desc: 'Sealed lead-bismuth shielding. Cargo immune to Scourge.' },
+
+    // Avionics & Sensors
+    standard_nav:    { id: 'standard_nav',    name: 'Standard Nav Array',  slot: 'avionics', tech: null,         glyph: '⌖', desc: 'Basic sub-space receiver and navigational compass.' },
+    deep_astrogation:{ id: 'deep_astrogation',name: 'Deep Astrogation',    slot: 'avionics', tech: 'surveycorps',surveyMult: 1.5, glyph: '⌖', desc: 'Multi-band spectral sensors. Surveys 50% faster.' },
+    weft_harmonizer: { id: 'weft_harmonizer', name: 'Weft Harmonizer',     slot: 'avionics', tech: 'smartroutes',pledgeMult: 1.2, glyph: '⌖', desc: 'Precursor harmonic alignment. Kept Pledges score +20% TONNAGE.' },
+
+    // Military / Tactical
+    pd_turret:       { id: 'pd_turret',       name: 'Point-Defense Turret',slot: 'military', tech: 'corvettes',  powerBonus: 4, glyph: '✠', desc: 'Automated kinetic interceptor array. +4 Combat power.' },
+    shield_lattice:  { id: 'shield_lattice',  name: 'Shield Lattice',      slot: 'military', tech: 'convoys',    powerBonus: 8, routeDefense: 4, glyph: '✠', desc: '+8 Combat power; provides +4 route convoy defense.' },
   };
 
   // ---- Buildings ----

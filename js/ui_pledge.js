@@ -138,6 +138,38 @@ SW.uiPledge = (function () {
       }
     }
 
+    // the Unified Logistics Exchange: Passenger Transit (Passage & Relief)
+    const charters = s.charters || [];
+    if (charters.length) {
+      html += '<h4 data-info="ui:pledges">⇡ Passenger Transit Manifests (' + charters.length + ')</h4>';
+      for (const ch of charters) {
+        const fromSys = s.systems[ch.from], toSys = s.systems[ch.to];
+        const left = Math.max(0, ch.expires - s.tick);
+        html += '<div class="listItem">' +
+          '<div class="row"><span class="title grow">⇡ ' + U.fmt1(ch.n) + 'M souls · ' + esc(fromSys ? fromSys.name : 'Origin') + ' → ' + esc(toSys ? toSys.name : 'Destination') + '</span>' +
+          '<span class="num">+' + U.fmt(ch.fare) + '¤</span></div>' +
+          '<div class="row"><span class="sub num grow">fare ' + U.fmt(ch.fare) + '¤ · expires in ' + left + ' ticks</span>' +
+          (fromSys ? '<button data-act="focusSys" data-sys="' + fromSys.id + '" title="Centre map on origin ' + esc(fromSys.name) + '">locate</button>' : '') +
+          '</div></div>';
+      }
+    }
+
+    // the Unified Logistics Exchange: Standing Directives (Automated Network Supply)
+    const directives = s.directives || [];
+    if (directives.length) {
+      html += '<h4 data-info="ui:pledges">▦ Standing Directives (' + directives.length + ')</h4>';
+      for (const dir of directives) {
+        const targetSys = s.systems[dir.sys];
+        const assignedCount = (s.ships || []).filter(function (sh) { return sh.directiveId === dir.id; }).length;
+        html += '<div class="listItem">' +
+          '<div class="row"><span class="title grow">▦ Keep ' + esc(targetSys ? targetSys.name : 'System') + ' stocked w/ ' + comm(dir.comm) + '</span>' +
+          '<span class="sub num">' + assignedCount + ' ships</span></div>' +
+          '<div class="row"><span class="sub num grow">target: ' + dir.target + ' units</span>' +
+          (targetSys ? '<button data-act="focusSys" data-sys="' + targetSys.id + '">locate</button>' : '') +
+          '</div></div>';
+      }
+    }
+
     body.innerHTML = html;
   };
 

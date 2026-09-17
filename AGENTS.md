@@ -6,6 +6,9 @@ sole engineering, verification, workflow, and deployment guide.
 Read [SPEC.md](SPEC.md) before making product, mechanic, narrative, UX, status, or
 roadmap decisions. It is the sole product contract and progress ledger.
 
+Modular engineering contracts, technical deep-dives, design overhauls, and devlogs
+are tracked in [docs/README.md](docs/README.md).
+
 Do not treat `README.md`, research sources, Git history, commit messages, or old
 review links as authority. If either canonical document conflicts with the code,
 investigate the discrepancy and update the appropriate authority as part of the

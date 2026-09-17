@@ -17,6 +17,8 @@ There are exactly two living authorities:
   workflow, and deployment operations.
 
 `README.md` is a public introduction. `AGENTS.md` is a pointer to this guide.
+Modular technical deep-dives, short-term fix contracts, design overhauls, and
+devlogs live under `docs/` (see [docs/README.md](docs/README.md)).
 Files under `research/` are evidence, not product authority. Git history preserves
 retired proposals and reviews; do not recreate a third live contract.
 

@@ -2809,8 +2809,13 @@ section('Documentation authority and stable SPEC references');
     return out;
   }
 
-  const lingeringDocs = filesBelow(path.join(root, 'docs')).filter(function (p) { return /\.md$/i.test(p); });
-  assert(lingeringDocs.length === 0, 'retired docs tree contains no live Markdown (' + lingeringDocs.join(', ') + ')');
+  const retiredInDocs = [
+    'DECISIONS.md', 'DEPLOY.md', 'deep-research-report.md',
+    path.join('roadmaps', 'LIVING_BUBBLE_DEPENDENCY_ROADMAP.md'),
+  ];
+  for (const rel of retiredInDocs) {
+    assert(!fs.existsSync(path.join(root, 'docs', rel)), 'retired doc absent from docs: ' + rel);
+  }
 
   const spec = fs.readFileSync(path.join(root, 'SPEC.md'), 'utf8');
   const checkboxIds = {};
@@ -2845,6 +2850,7 @@ section('Documentation authority and stable SPEC references');
   assert(dangling.length === 0, 'all SPEC[ID] references resolve to checkbox anchors (' + dangling.join(', ') + ')');
 
   const activeDocs = expectedRootDocs.map(function (name) { return path.join(root, name); })
+    .concat(filesBelow(path.join(root, 'docs')).filter(function (p) { return /\.md$/i.test(p); }))
     .concat([path.join(root, 'research', 'README.md')]);
   const brokenLinks = [];
   for (const file of activeDocs) {

@@ -50,12 +50,24 @@ SW.render = (function () {
   const trails = {};
   const laneHeat = {};
   let fxLive = [];
-  let pickables = [];             // [{x,y,r,sys}] rebuilt per frame
-  let posById = {};               // sys.id -> {x,y,r}, parallel to pickables — O(1) lookup for the orbital ring (F5)
+  const pickablesPool = [];
+  let pickablesCount = 0;
+  const posById = {};
+  const posByIdPool = [];
+  const projPool = [];
+  const projArray = [];
+  const orderSystems = [];
   let bodyPickables = [];
   let shipPickables = [];         // system view: ships at berths / mid-hop
   let orbitGuideUntil = 0;
   const SYSTEM_PLANE_OFFSET = -Math.PI / 2;
+
+  function addPickable(x, y, r, sys) {
+    let pick = pickablesPool[pickablesCount];
+    if (!pick) pick = pickablesPool[pickablesCount] = { x: 0, y: 0, r: 0, sys: null };
+    pick.x = x; pick.y = y; pick.r = r; pick.sys = sys;
+    pickablesCount++;
+  }
 
   function accent(a) {
     const st = SW.game.state;
@@ -181,16 +193,22 @@ SW.render = (function () {
     const ARM_PHASES = [0.9, 0.9 + Math.PI / 2, 0.9 + Math.PI, 0.9 + Math.PI * 1.5];
     const B = 0.23, R0 = 3300;
     for (let arm = 0; arm < 4; arm++) {
-      for (let i = 0; i < 800; i++) {
-        const th = 0.4 + rnd() * 6.4;                 // winds ~1 turn
+      for (let i = 0; i < 1100; i++) {
+        const th = 0.4 + rnd() * 11.2;                // winds out across the full galactic disc
         const r = R0 * Math.exp(B * th);
         if (r > 46000) continue;
         const a = th + ARM_PHASES[arm];
         const spread = 700 + r * 0.055;
         const jr = (g3() * 2 - 1) * spread, ja = (g3() * 2 - 1) * spread / Math.max(1, r);
+        const ptX = C.x + Math.cos(a + ja) * (r + jr);
+        const ptY = C.y + Math.sin(a + ja) * (r + jr);
+        // The Severed Gulf / Great Void: an intentional dark rift between the detached Orion Spur and the core disk
+        if (ptX > 8000 && ptX < 18000 && Math.abs(ptY) < 6500) {
+          if (rnd() > 0.12) continue; // thin out 88% of stars in the gulf
+        }
         galaxyPts.push({
-          x: C.x + Math.cos(a + ja) * (r + jr),
-          y: C.y + Math.sin(a + ja) * (r + jr),
+          x: ptX,
+          y: ptY,
           z: (g3() * 2 - 1) * 380,
           mag: (0.10 + rnd() * 0.26) * U.clamp(1.25 - r / 40000, 0.35, 1),
           size: rnd() < 0.05 ? 1.6 : 1,
@@ -212,8 +230,11 @@ SW.render = (function () {
     for (let i = 0; i < 1700; i++) {
       const a = rnd() * Math.PI * 2, r = -Math.log(1 - rnd() * 0.96) * 13000;
       if (r > 48000) continue;
+      const ptX = C.x + Math.cos(a) * r;
+      const ptY = C.y + Math.sin(a) * r;
+      if (ptX > 8000 && ptX < 18000 && Math.abs(ptY) < 6500 && rnd() > 0.15) continue;
       galaxyPts.push({
-        x: C.x + Math.cos(a) * r, y: C.y + Math.sin(a) * r,
+        x: ptX, y: ptY,
         z: (g3() * 2 - 1) * 420,
         mag: 0.05 + rnd() * 0.13,
         size: 1,
@@ -233,6 +254,7 @@ SW.render = (function () {
     }
     armLabels = [
       { p: { x: 1200, y: 4200, z: 0 }, t: 'ORION SPUR' },
+      { p: { x: 13000, y: 2000, z: 0 }, t: 'THE SEVERED GULF' },
       { p: armPt(ARM_PHASES[0], 9.55), t: 'PERSEUS ARM' },
       { p: armPt(ARM_PHASES[2], 8.6), t: 'SAGITTARIUS ARM' },
       { p: armPt(ARM_PHASES[1], 8.9), t: 'SCUTUM–CENTAURUS' },
@@ -364,7 +386,7 @@ SW.render = (function () {
     cosP = Math.cos(R.cam.pitch); sinP = Math.sin(R.cam.pitch);
     focal = Math.min(W, H) * 1.05;
   }
-  function project(p) {
+  function project(p, out) {
     const dx = p.x - R.cam.tx, dy = p.y - R.cam.ty, dz = (p.z || 0) - R.cam.tz;
     const x1 = dx * cosY - dy * sinY;
     const y1 = dx * sinY + dy * cosY;
@@ -373,6 +395,13 @@ SW.render = (function () {
     const depth = y2 + R.cam.dist;
     if (depth < 2) return null;
     const s = focal / depth;
+    if (out) {
+      out.x = W / 2 + x1 * s;
+      out.y = H / 2 - z2 * s;
+      out.s = s;
+      out.depth = depth;
+      return out;
+    }
     return { x: W / 2 + x1 * s, y: H / 2 - z2 * s, s: s, depth: depth };
   }
   function projectDir(d) { // skybox: direction only, no translation
@@ -578,7 +607,8 @@ SW.render = (function () {
   }
   function pickSystem(mx, my) {
     let best = null, bestD = 15;
-    for (const p of pickables) {
+    for (let i = 0; i < pickablesCount; i++) {
+      const p = pickablesPool[i];
       const d = Math.hypot(p.x - mx, p.y - my);
       if (d < bestD + p.r * 0.4) { bestD = d; best = p.sys; }
     }
@@ -749,14 +779,19 @@ SW.render = (function () {
   function laneKey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
 
   function drawGalaxy(st, now) {
-    pickables = [];
-    posById = {};
+    pickablesCount = 0;
+    for (const k in posById) delete posById[k];
     const dist = R.cam.dist, deep = deepFade();
     // one projection pass shared by lanes + systems
     let proj = null;
     if (dist < LOD.systems) {
-      proj = new Array(st.systems.length);
-      for (const sys of st.systems) proj[sys.id] = project(sys);
+      proj = projArray;
+      for (let i = 0; i < st.systems.length; i++) {
+        const sys = st.systems[i];
+        let slot = projPool[sys.id];
+        if (!slot) slot = projPool[sys.id] = { x: 0, y: 0, s: 0, depth: 0 };
+        proj[sys.id] = project(sys, slot);
+      }
     }
     if (dist < LOD.regions) drawRegions(st, now);
     if (dist < LOD.lanes) drawLanes(st, now, proj);
@@ -765,14 +800,18 @@ SW.render = (function () {
 
     // systems, far-to-near (beyond ~2400 ly the bubble is a single mote)
     if (proj) {
-      const order = [];
-      for (const sys of st.systems) {
+      orderSystems.length = 0;
+      for (let i = 0; i < st.systems.length; i++) {
+        const sys = st.systems[i];
         const p = proj[sys.id];
         if (!p || p.x < -80 || p.x > W + 80 || p.y < -80 || p.y > H + 80) continue;
-        order.push({ sys: sys, p: p });
+        orderSystems.push(sys);
       }
-      order.sort(function (a, b) { return b.p.depth - a.p.depth; });
-      for (const o of order) drawSystem(st, o.sys, o.p, now);
+      orderSystems.sort(function (a, b) { return proj[b.id].depth - proj[a.id].depth; });
+      for (let i = 0; i < orderSystems.length; i++) {
+        const sys = orderSystems[i];
+        drawSystem(st, sys, proj[sys.id], now);
+      }
     }
     if (deep > 0.25) drawBubbleMarker(st, now, U.clamp((deep - 0.25) / 0.5, 0, 1));
     drawBubbleBeacon(st, now);
@@ -791,11 +830,11 @@ SW.render = (function () {
   // dashed-ring rendering in drawSystem — here they only gain pickability and
   // membership in the edge-compass set. Quiet, steady lights for everything
   // that is not a crisis (§12.9: juice serves legibility, never noise).
-  let beaconPickables = [];
-  let edgePingPickables = [];
+  const beaconPickables = [];
+  const edgePingPickables = [];
   function drawBeacons(st, now, proj) {
-    beaconPickables = [];
-    edgePingPickables = [];
+    beaconPickables.length = 0;
+    edgePingPickables.length = 0;
     R._beacons = (SW.signals && st) ? SW.signals.list(st) : [];
     if (!proj || !R._beacons.length) return;
     ctx.textAlign = 'center';
@@ -983,7 +1022,7 @@ SW.render = (function () {
       ctx.fillText((eaten ? eaten + ' SYSTEMS DARK' : '') + (threats ? (eaten ? ' · ' : '') + '△ ' + threats : ''), p.x, p.y + r + 14);
     }
     ctx.textAlign = 'left';
-    pickables.push({ x: p.x, y: p.y, r: Math.max(12, r), sys: st.systems[st.homeId] });
+    addPickable(p.x, p.y, Math.max(12, r), st.systems[st.homeId]);
   }
 
   function regionTint(type, a) {
@@ -1133,6 +1172,15 @@ SW.render = (function () {
             ctx.lineTo(b.x + nx2, b.y + ny2);
             ctx.stroke();
           }
+          // Logistics Lens: moving conduit motes along active trade lanes
+          if (weaveStyle.t > 0.15 && f > 0.1) {
+            const flowSpeed = 0.00035 * (1 + weaveStyle.t * 1.2);
+            const motePos = ((now * flowSpeed + (sys.id * 0.17)) % 1);
+            const mx = a.x + (b.x - a.x) * motePos;
+            const my = a.y + (b.y - a.y) * motePos;
+            ctx.fillStyle = 'rgba(' + br + ',' + bg + ',' + bb + ',' + (0.55 * weaveAlpha * f) + ')';
+            ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
+          }
         } else {
           ctx.setLineDash([]);
           ctx.strokeStyle = 'rgba(190,200,216,' + ((known ? 0.07 + heat * 0.5 : 0.025) * f) + ')';
@@ -1238,8 +1286,11 @@ SW.render = (function () {
   function drawSystem(st, sys, p, now) {
     const f = fog(p.depth);
     const radius = Math.max(1.6, (1.6 + Math.min(6, Math.sqrt(Math.max(0, sys.pop)) * 1.1)) * p.s * 0.16);
-    pickables.push({ x: p.x, y: p.y, r: radius, sys: sys });
-    posById[sys.id] = { x: p.x, y: p.y, r: radius };
+    addPickable(p.x, p.y, radius, sys);
+    let pos = posByIdPool[sys.id];
+    if (!pos) pos = posByIdPool[sys.id] = { x: 0, y: 0, r: 0 };
+    pos.x = p.x; pos.y = p.y; pos.r = radius;
+    posById[sys.id] = pos;
 
     if (!sys.discovered) {
       ctx.strokeStyle = 'rgba(110,118,129,' + 0.35 * f + ')';

@@ -18,7 +18,8 @@
 The active authority model is deliberately small:
 
 1. `SPEC.md` owns product vision, mechanics, fiction, UX, progress, acceptance
-   criteria, and implementation order.
+   criteria, and implementation order. Active design proposals and short-term
+   contracts are detailed in [docs/](docs/README.md).
 2. `CLAUDE.md` owns architecture, workflow, tests, registries, deployment, and
    engineering constraints.
 3. `research/` contains non-authoritative evidence. It informs this contract but
@@ -2858,6 +2859,8 @@ named current foundation exists; the overhaul requirements elsewhere remain open
 - [x] **UI-EDGE-COMPASS** Current offscreen/edge compass foundation exists.
 - [x] **UI-GUILD-BOARD** Current board UI exists; placeless offer generation is
   explicitly not protected.
+- [x] **UI-TECH-ASTROLABE** Radial celestial astrolabe and starburst constellation graph
+  replacing Cartesian grid for the development surface.
 
 ---
 

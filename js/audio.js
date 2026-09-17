@@ -187,12 +187,57 @@ SW.audio = (function () {
     survey:   function () { tone(700, 0.1, { vol: 0.25 }); tone(933, 0.16, { delay: 0.1, vol: 0.22 }); },
     victory:  function () { [523, 659, 784, 1047, 1319].forEach(function (f, i) { tone(f, 0.4, { delay: i * 0.15, vol: 0.35 }); }); },
     defeat:   function () { [392, 370, 349, 330].forEach(function (f, i) { tone(f, 0.5, { delay: i * 0.3, type: 'sawtooth', vol: 0.2 }); }); },
+
+    // ---- Ableton Cue Registry (SPEC[SW-VIS-012], audio-sound-effect-contract.md) ----
+    radio_chirp_inbound: function () {
+      tone(1200, 0.12, { type: 'sine', slide: 1800, vol: 0.18 });
+      tone(2400, 0.08, { type: 'triangle', delay: 0.08, vol: 0.12 });
+    },
+    radio_static_burst: function () {
+      tone(180, 0.22, { type: 'sawtooth', slide: 90, vol: 0.12 });
+    },
+    radio_distress_beacon: function () {
+      tone(440, 0.25, { type: 'triangle', slide: 380, vol: 0.28 });
+      tone(440, 0.25, { type: 'triangle', delay: 0.35, slide: 380, vol: 0.22 });
+    },
+    manifest_stamp_accepted: function () {
+      tone(160, 0.12, { type: 'square', slide: 80, vol: 0.3 });
+      tone(90, 0.18, { type: 'sine', delay: 0.04, vol: 0.35 });
+    },
+    manifest_delivered_cash: function () {
+      tone(523, 0.1, { type: 'triangle', vol: 0.25 });
+      tone(784, 0.12, { type: 'triangle', delay: 0.08, vol: 0.28 });
+      tone(1046, 0.22, { type: 'triangle', delay: 0.15, vol: 0.32 });
+      tone(110, 0.2, { type: 'sine', delay: 0.02, slide: 55, vol: 0.35 });
+    },
+    manifest_breached: function () {
+      tone(220, 0.4, { type: 'sawtooth', slide: 207, vol: 0.3 });
+    },
+    ship_launch_thrust: function () {
+      tone(55, 0.45, { type: 'sine', slide: 110, vol: 0.35 });
+    },
+    cargo_clamp_engage: function () {
+      tone(280, 0.08, { type: 'square', slide: 90, vol: 0.25 });
+    },
+    fray_pulse_distant: function () {
+      tone(48, 0.8, { type: 'sine', slide: 36, vol: 0.4 });
+    },
+    lane_fracture: function () {
+      tone(880, 0.15, { type: 'sawtooth', slide: 120, vol: 0.28 });
+    },
+    system_blackout: function () {
+      tone(300, 0.6, { type: 'sawtooth', slide: 40, vol: 0.32 });
+    },
   };
 
   A.sfx = function (name) {
     if (SW.ui && SW.ui.audioCaption) SW.ui.audioCaption(name);
     if (SFX[name]) { try { SFX[name](); } catch (e) {} }
+    else if (name === 'manifest_stamp_accepted') { try { SFX.click(); } catch (e) {} }
+    else if (name === 'manifest_delivered_cash') { try { SFX.chime(); } catch (e) {} }
+    else if (name === 'manifest_breached') { try { SFX.loss(); } catch (e) {} }
   };
+  A.play = function (name, opts) { A.sfx(name); };
 
   return A;
 })();

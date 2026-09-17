@@ -45,6 +45,13 @@ SW.uiShip = (function () {
       (hull.power ? '<span class="num">pwr ' + SW.combat.power(s, ship) + '</span>' : '') +
       '<span>' + status + '</span>' +
       (ship.stranded ? '<span style="color:var(--danger)">stranded</span>' : '') + '</div>';
+    const mods = SW.ships.installedModules(s, ship);
+    if (mods.length) {
+      html += '<div class="cmdUnit" style="font-size:0.85em;gap:4px">' +
+        mods.map(function (m) {
+          return '<span class="tag" title="' + esc(m.desc) + '">' + m.glyph + ' ' + esc(m.name) + '</span>';
+        }).join('') + '</div>';
+    }
     const manifest = Object.keys(ship.cargo);
     const cargoDataV = SW.ships.dataValue(ship);
     if (manifest.length || cargoDataV > 0 || ship.pax) {

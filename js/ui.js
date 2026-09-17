@@ -369,6 +369,10 @@ SW.ui = (function () {
   function refreshTick() {
     const s = st();
     if (!s) return;
+    if (s.paused && s.tick === lastRenderTick) {
+      if (++tickerBeat % 16 === 0) SW.uiMarket.rotateTicker();
+      return;
+    }
     // Keep the "Continue" slot metadata in step with autosaves so the main menu
     // shows the player's real progress. Cheap, and only when the autosave fires.
     if (s.tick > 0 && s.tick % (D.TUNE.autosaveEvery || 40) === 0 && s.tick !== _lastMetaTick) {

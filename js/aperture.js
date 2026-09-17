@@ -16,7 +16,19 @@ SW.aperture = (function () {
 
   function clone(value) {
     if (value === undefined) return undefined;
-    return JSON.parse(JSON.stringify(value));
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      const arr = new Array(value.length);
+      for (let i = 0; i < value.length; i++) arr[i] = clone(value[i]);
+      return arr;
+    }
+    const copy = {};
+    for (const k in value) {
+      if (Object.prototype.hasOwnProperty.call(value, k)) {
+        copy[k] = clone(value[k]);
+      }
+    }
+    return copy;
   }
 
   function stable(value) {
@@ -190,12 +202,15 @@ SW.aperture = (function () {
   };
 
   function physicalSystem(sys) {
-    const value = clone(sys);
-    // Discovery is player knowledge, not physical simulation state. Aperture
-    // records it beside the aggregate and never writes it back to the galaxy.
-    delete value.discovered;
-    delete value.surveyed;
-    return value;
+    if (!sys) return sys;
+    const copy = {};
+    for (const k in sys) {
+      if (k === 'discovered' || k === 'surveyed') continue;
+      if (Object.prototype.hasOwnProperty.call(sys, k)) {
+        copy[k] = clone(sys[k]);
+      }
+    }
+    return copy;
   }
 
   A.aggregateSystem = function (state, id, index) {

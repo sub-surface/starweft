@@ -5,16 +5,56 @@ SW.ships = (function () {
   const U = SW.util, D = SW.data;
   const S = {};
 
-  // ---- Stats with tech ----
+  // ---- Stats with tech & modular blueprints ----
+  S.installedModules = function (state, ship) {
+    const h = D.HULLS[ship.hull];
+    if (!h) return [];
+    if (ship.modules && Array.isArray(ship.modules) && ship.modules.length) {
+      return ship.modules.map(function (id) { return D.MODULES[id]; }).filter(Boolean);
+    }
+    // Dynamic blueprint resolution based on hull sockets and unlocked tech
+    const out = [];
+    const sockets = h.sockets || ['drive'];
+    for (const slot of sockets) {
+      if (slot === 'drive') {
+        if (hasTech(state, 'deepdrives') && (ship.hull === 'pathfinder' || ship.hull === 'surveyor')) out.push(D.MODULES.ramscoop_drive);
+        else if (hasTech(state, 'iondrives')) out.push(D.MODULES.torch_drive);
+        else out.push(D.MODULES.ion_burner);
+      } else if (slot === 'cargo') {
+        if (hasTech(state, 'scourge2') && ship.hull === 'superhauler') out.push(D.MODULES.hazard_hold);
+        else if (hasTech(state, 'cargopods')) out.push(D.MODULES.magnetic_clamps);
+        else out.push(D.MODULES.standard_hold);
+      } else if (slot === 'avionics') {
+        if (hasTech(state, 'surveycorps') && (ship.hull === 'pathfinder' || ship.hull === 'surveyor')) out.push(D.MODULES.deep_astrogation);
+        else if (hasTech(state, 'smartroutes')) out.push(D.MODULES.weft_harmonizer);
+        else out.push(D.MODULES.standard_nav);
+      } else if (slot === 'military') {
+        if (hasTech(state, 'convoys')) out.push(D.MODULES.shield_lattice);
+        else if (hasTech(state, 'corvettes')) out.push(D.MODULES.pd_turret);
+      }
+    }
+    return out;
+  };
+
   S.cap = function (state, ship) {
     const h = D.HULLS[ship.hull];
-    return Math.floor(h.cap * (hasTech(state, 'cargopods') ? 1.25 : 1));
+    let mult = hasTech(state, 'cargopods') ? 1.25 : 1;
+    const mods = S.installedModules(state, ship);
+    for (const m of mods) {
+      if (m && m.capMult && !hasTech(state, 'cargopods')) mult *= m.capMult;
+    }
+    return Math.floor(h.cap * mult);
   };
   S.speed = function (state, ship) {
     const h = D.HULLS[ship.hull];
-    let v = h.speed * (hasTech(state, 'iondrives') ? 1.25 : 1);
-    if (state.story && state.story.flags.cats_aboard) v *= 1.03; // cats improve everything
-    if (state.story && state.story.flags.crew_hired) v *= 1.03;
+    let mult = hasTech(state, 'iondrives') ? 1.25 : 1;
+    const mods = S.installedModules(state, ship);
+    for (const m of mods) {
+      if (m && m.speedMult && !hasTech(state, 'iondrives')) mult *= m.speedMult;
+    }
+    let v = h.speed * mult;
+    if (state.story && state.story.flags && state.story.flags.cats_aboard) v *= 1.03; // cats improve everything
+    if (state.story && state.story.flags && state.story.flags.crew_hired) v *= 1.03;
     return v;
   };
   S.cargoTotal = function (ship) {

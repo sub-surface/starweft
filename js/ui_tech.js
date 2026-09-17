@@ -14,55 +14,182 @@ SW.uiTech = (function () {
   function A() { return SW.ui.A(); }
   function esc(s) { return SW.ui.esc(s); }
 
-  // ---- tuning constants (not in D.TUNE: purely UI layout) ----
-  const NODE_W      = 120;   // chip width px (canvas units)
-  const NODE_H      = 30;    // chip height px
-  const COL_GAP     = 28;    // padding between branch columns
-  const ROW_GAP     = 44;    // vertical gap between tiers
-  const HEADER_H    = 22;    // branch label row height
+  // ---- radial celestial astrolabe constants (SPEC[UI-TECH-ASTROLABE]) ----
+  const CENTER_R    = 64;    // central Weave Core radius (canvas units)
+  const DOC_R       = 108;   // doctrine orbit ring radius
+  const TIER_R      = [0, 180, 305, 430, 555]; // radial orbits for tiers 1..4 (spacious 125px tier delta)
   const MAX_TIER    = 4;
-  const ZOOM_MIN    = 0.18;
+  const OUTER_R     = 760;   // outer bounding orbit for branch titles and sector banners
+  const BOUND_PAD   = 90;    // padding outside outer orbit
+  const TOTAL_SIZE  = (OUTER_R + BOUND_PAD) * 2; // total virtual square: 1700x1700
+  const CX          = TOTAL_SIZE / 2;
+  const CY          = TOTAL_SIZE / 2;
+  const ZOOM_MIN    = 0.16;
   const ZOOM_MAX    = 3.5;
   const ZOOM_STEP   = 1.15;  // per wheel tick or button press
 
+  // Dedicated Domain sectors, styling, and semantic celestial color palette
+  const DOMAINS = {
+    core: {
+      name: 'CORE PROTOCOLS',
+      sub: 'PROPULSION & BULK SYSTEMS',
+      icon: '◈',
+      color: '#9bd6ea',         // Electric Cyan / Starlight
+      dim: 'rgba(155, 214, 234, 0.16)',
+      glow: 'rgba(155, 214, 234, 0.45)',
+      bgWash: 'rgba(155, 214, 234, 0.022)',
+      centerAngle: -90 * Math.PI / 180,
+      startAngle: -112 * Math.PI / 180,
+      endAngle: -68 * Math.PI / 180
+    },
+    logistics: {
+      name: 'LOGISTICS MATRIX',
+      sub: 'COMMERCE, FREIGHT & AUTOMATION',
+      icon: '◇',
+      color: '#eac36e',         // Solar Amber / Warm Gold
+      dim: 'rgba(234, 195, 110, 0.16)',
+      glow: 'rgba(234, 195, 110, 0.45)',
+      bgWash: 'rgba(234, 195, 110, 0.022)',
+      centerAngle: -10 * Math.PI / 180,
+      startAngle: -68 * Math.PI / 180,
+      endAngle: 48 * Math.PI / 180
+    },
+    frontier: {
+      name: 'DEEP FRONTIER',
+      sub: 'SURVEY, CARTOGRAPHY & GATES',
+      icon: '✦',
+      color: '#6fe0b6',         // Starlight Mint / Emerald
+      dim: 'rgba(111, 224, 182, 0.16)',
+      glow: 'rgba(111, 224, 182, 0.45)',
+      bgWash: 'rgba(111, 224, 182, 0.022)',
+      centerAngle: 90 * Math.PI / 180,
+      startAngle: 48 * Math.PI / 180,
+      endAngle: 132 * Math.PI / 180
+    },
+    vanguard: {
+      name: 'VANGUARD FORCES',
+      sub: 'DEFENSE, STRIKE & NAVAL ARMS',
+      icon: '▲',
+      color: '#8ca8f5',         // Cerulean Steel / Cobalt
+      dim: 'rgba(140, 168, 245, 0.16)',
+      glow: 'rgba(140, 168, 245, 0.45)',
+      bgWash: 'rgba(140, 168, 245, 0.022)',
+      centerAngle: 172 * Math.PI / 180,
+      startAngle: 132 * Math.PI / 180,
+      endAngle: 212 * Math.PI / 180
+    },
+    scourge: {
+      name: 'SCOURGE ANALYSIS',
+      sub: 'BIO-ANOMALY & INOCULATION',
+      icon: '✠',
+      color: '#f76a76',         // Abyssal Rose / Crimson
+      dim: 'rgba(247, 106, 118, 0.16)',
+      glow: 'rgba(247, 106, 118, 0.45)',
+      bgWash: 'rgba(247, 106, 118, 0.022)',
+      centerAngle: 230 * Math.PI / 180,
+      startAngle: 212 * Math.PI / 180,
+      endAngle: 248 * Math.PI / 180
+    }
+  };
+
+  const SECTOR_BOUNDARIES = [
+    -112 * Math.PI / 180,
+    -68  * Math.PI / 180,
+     48  * Math.PI / 180,
+    132  * Math.PI / 180,
+    212  * Math.PI / 180
+  ];
+
   let techHits = [];   // [{x,y,rw,rh,id}] in canvas-client coords for hit-testing
 
-  // ---- layout ----
+  // ---- radial constellation layout ----
   function computeLayout(tree) {
     const branches = tree.branches;
-    const bySlot = {};
+    const pos = {};
+
+    // Group nodes by branch and tier
+    const byBranchTier = {};
     for (const n of tree.nodes) {
       const k = n.branch + ':' + n.tier;
-      bySlot[k] = bySlot[k] || [];
-      bySlot[k].push(n.id);
+      byBranchTier[k] = byBranchTier[k] || [];
+      byBranchTier[k].push(n);
     }
-    const maxSlots = {};
+
+    // Process branch by branch, tier by tier from 1 to MAX_TIER
     for (const b of branches) {
-      let mx = 1;
-      for (let t = 1; t <= MAX_TIER; t++) mx = Math.max(mx, (bySlot[b + ':' + t] || []).length);
-      maxSlots[b] = mx;
+      const dInfo = DOMAINS[b] || DOMAINS.core;
+      const bAngle = dInfo.centerAngle;
+      const arcWidth = dInfo.endAngle - dInfo.startAngle;
+
+      for (let t = 1; t <= MAX_TIER; t++) {
+        const list = byBranchTier[b + ':' + t] || [];
+        if (!list.length) continue;
+
+        // Sort nodes by the average angle of their prerequisites in preceding tiers
+        if (t > 1 && list.length > 1) {
+          list.sort(function (nA, nB) {
+            function getTargetAngle(n) {
+              const reqs = (D.TECHS[n.id] && D.TECHS[n.id].req) || [];
+              let sum = 0, count = 0;
+              for (const r of reqs) {
+                if (pos[r] && pos[r].angle !== undefined) {
+                  sum += pos[r].angle;
+                  count++;
+                }
+              }
+              return count ? sum / count : bAngle;
+            }
+            return getTargetAngle(nA) - getTargetAngle(nB);
+          });
+        }
+
+        const mCount = list.length;
+        for (let idx = 0; idx < mCount; idx++) {
+          const n = list[idx];
+          let angle = bAngle;
+          if (mCount > 1) {
+            const maxSpan = arcWidth * 0.74;
+            const step = Math.min(maxSpan / (mCount - 1), 0.28);
+            angle = bAngle + (idx - (mCount - 1) / 2) * step;
+          }
+
+          // Alternating radial offsets to prevent adjacent label collisions
+          const baseR = TIER_R[n.tier] || (n.tier * 125);
+          const r = (mCount >= 3) ? (baseR + (idx % 2 === 1 ? 32 : -24)) :
+                    (mCount === 2 && n.branch !== 'core') ? (baseR + (idx % 2 === 1 ? 18 : -14)) : baseR;
+
+          const x = CX + r * Math.cos(angle);
+          const y = CY + r * Math.sin(angle);
+          pos[n.id] = { x: x, y: y, r: r, angle: angle, n: n, branch: n.branch, tier: n.tier, domain: dInfo };
+        }
+      }
     }
-    const colX = {}, colW = {};
-    let cx = 0;
-    for (const b of branches) {
-      colX[b] = cx;
-      colW[b] = maxSlots[b] * (NODE_W + COL_GAP / 2) + COL_GAP;
-      cx += colW[b];
+
+    // Position doctrines orbiting the central core ring
+    const docPos = {};
+    const docAngles = {
+      doc_mercantile: DOMAINS.logistics.centerAngle - 0.18,
+      doc_wayfarer:   DOMAINS.frontier.centerAngle,
+      doc_vanguard:   DOMAINS.vanguard.centerAngle
+    };
+    for (const d of (tree.doctrines || [])) {
+      const a = docAngles[d.id] !== undefined ? docAngles[d.id] : 0;
+      const dx = CX + DOC_R * Math.cos(a);
+      const dy = CY + DOC_R * Math.sin(a);
+      const dom = d.id === 'doc_mercantile' ? DOMAINS.logistics :
+                  d.id === 'doc_wayfarer' ? DOMAINS.frontier : DOMAINS.vanguard;
+      docPos[d.id] = { x: dx, y: dy, r: DOC_R, angle: a, d: d, domain: dom };
     }
-    const totalW = cx;
-    const rowH = NODE_H + ROW_GAP;
-    const totalH = HEADER_H + (MAX_TIER + 1) * rowH + ROW_GAP / 2;
-    const pos = {};
-    for (const n of tree.nodes) {
-      const slots = bySlot[n.branch + ':' + n.tier];
-      const idx = slots.indexOf(n.id);
-      const bx = colX[n.branch], bw = colW[n.branch];
-      const cellW = bw / slots.length;
-      const x = bx + idx * cellW + cellW / 2;
-      const y = HEADER_H + n.tier * rowH + NODE_H / 2;
-      pos[n.id] = { x: x, y: y, n: n };
-    }
-    return { pos: pos, colX: colX, colW: colW, totalW: totalW, totalH: totalH, rowH: rowH, branches: branches };
+
+    return {
+      pos: pos,
+      docPos: docPos,
+      totalW: TOTAL_SIZE,
+      totalH: TOTAL_SIZE,
+      CX: CX,
+      CY: CY,
+      branches: branches
+    };
   }
 
   // auto-fit the whole tree into the canvas client rect, centering it
@@ -134,7 +261,7 @@ SW.uiTech = (function () {
     const P = palette();
     const accent = P.accent;
     const layout = computeLayout(tree);
-    const { pos, colX, colW, totalW, totalH, rowH, branches } = layout;
+    const { pos, docPos, totalW, totalH, CX, CY, branches } = layout;
     const viewW = canvas.clientWidth  || 800;
     const viewH = canvas.clientHeight || 500;
     const dpr = window.devicePixelRatio || 1;
@@ -150,7 +277,7 @@ SW.uiTech = (function () {
 
     ctx.clearRect(0, 0, viewW, viewH);
 
-    // Which edges/nodes connect to the hovered or selected node — lift those.
+    // Which edges/nodes connect to the hovered or selected node — lift those
     const focusId = _hoverId || SW.ui.techView.selected;
     const connected = {};
     if (focusId) {
@@ -160,102 +287,504 @@ SW.uiTech = (function () {
       }
     }
 
-    // branch column backgrounds — subtle, single faint ink wash (monochrome)
-    for (const b of branches) {
-      ctx.fillStyle = 'rgba(201,209,217,0.018)';
-      ctx.fillRect(tx(colX[b]), ty(0), colW[b] * z, totalH * z);
+    const scx = tx(CX), scy = ty(CY);
+
+    // 1. Sector background washes (very faint pie wedges tinting each domain)
+    for (const domKey in DOMAINS) {
+      const dom = DOMAINS[domKey];
+      try {
+        ctx.beginPath();
+        ctx.arc(scx, scy, (OUTER_R + 8) * z, dom.startAngle, dom.endAngle, false);
+        ctx.arc(scx, scy, (CENTER_R + 8) * z, dom.endAngle, dom.startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = dom.bgWash;
+        ctx.fill();
+      } catch (e) {}
     }
 
-    // branch headers — small caps in dim ink, matching panel section heads
-    ctx.font = '600 ' + Math.max(8, 9 * z) + 'px "Segoe UI", sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const b of branches) {
-      ctx.fillStyle = P.inkDim;
-      ctx.fillText(b.toUpperCase(), tx(colX[b] + colW[b] / 2), ty(HEADER_H / 2));
+    // 2. Sector boundary dividing hairlines
+    for (const bAngle of SECTOR_BOUNDARIES) {
+      const cosB = Math.cos(bAngle), sinB = Math.sin(bAngle);
+      const rInner = (CENTER_R + 8) * z;
+      const rOuter = (OUTER_R + 18) * z;
+
+      ctx.beginPath();
+      ctx.moveTo(scx + rInner * cosB, scy + rInner * sinB);
+      ctx.lineTo(scx + rOuter * cosB, scy + rOuter * sinB);
+      ctx.strokeStyle = hexA(P.lineBright, 0.45);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4 * z, 6 * z]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Outer boundary tick cross
+      ctx.beginPath();
+      const tr1 = (OUTER_R + 14) * z, tr2 = (OUTER_R + 22) * z;
+      ctx.moveTo(scx + tr1 * cosB, scy + tr1 * sinB);
+      ctx.lineTo(scx + tr2 * cosB, scy + tr2 * sinB);
+      ctx.strokeStyle = hexA(P.accent, 0.45);
+      ctx.lineWidth = 1.2 * z;
+      ctx.stroke();
     }
 
-    // prerequisite edges. Owned chains glow accent; the next reachable step is a
-    // dashed accent hint; a focused node lifts all its connections.
+    // 3. Concentric orbital tier guide rings (astrolabe coordinate circles)
+    const tierLabels = ['TIER I · FOUNDATION', 'TIER II · EXPANSION', 'TIER III · ASCENDANCE', 'TIER IV · MASTERY'];
+    for (let t = 1; t <= MAX_TIER; t++) {
+      const tr = TIER_R[t] * z;
+      ctx.beginPath();
+      ctx.arc(scx, scy, tr, 0, Math.PI * 2);
+      ctx.strokeStyle = hexA(P.accent, 0.08);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3 * z, 6 * z]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Subtle tier notation along ring with a small dark pill cutout
+      const tAngle = -105 * Math.PI / 180;
+      const lx = scx + tr * Math.cos(tAngle);
+      const ly = scy + tr * Math.sin(tAngle);
+      const labelText = tierLabels[t - 1];
+      ctx.font = '600 ' + Math.max(7.5, 8.5 * z) + 'px Consolas, monospace';
+      const tw = ctx.measureText(labelText).width;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(lx - 2 * z, ly - 7 * z, tw + 6 * z, 14 * z);
+      ctx.fillStyle = hexA(P.inkFaint, 0.85);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, lx + z, ly);
+    }
+
+    // 4. Domain Outer Banners (Labels outside outer orbit)
+    for (const domKey in DOMAINS) {
+      const dom = DOMAINS[domKey];
+      const ca = dom.centerAngle;
+      const cosA = Math.cos(ca), sinA = Math.sin(ca);
+      const bannerR = (OUTER_R + 32) * z;
+      const bx = scx + bannerR * cosA;
+      const by = scy + bannerR * sinA;
+
+      const align = cosA > 0.25 ? 'left' : cosA < -0.25 ? 'right' : 'center';
+      const baseline = sinA > 0.4 ? 'top' : sinA < -0.4 ? 'bottom' : 'middle';
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+
+      // Title line: Domain Icon + Name
+      const titleY = (sinA > 0.4) ? by : (sinA < -0.4) ? by - 14 * z : by - 7 * z;
+      ctx.font = '700 ' + Math.max(9.5, 11.5 * z) + 'px "Segoe UI", sans-serif';
+      ctx.fillStyle = dom.color;
+      ctx.fillText(dom.icon + '  ' + dom.name, bx, titleY);
+
+      // Subtitle line: Specialty / Discipline
+      ctx.font = '600 ' + Math.max(7.5, 8.5 * z) + 'px Consolas, monospace';
+      ctx.fillStyle = hexA(dom.color, 0.65);
+      ctx.fillText(dom.sub, bx, titleY + 14 * z);
+    }
+
+    // 5. Central WEAVE ARCHIVE Core
+    const coreR = CENTER_R * z;
+    try {
+      const g = ctx.createRadialGradient(scx, scy, 0, scx, scy, coreR);
+      g.addColorStop(0, hexA(P.accent, 0.18));
+      g.addColorStop(0.7, hexA(P.accent, 0.05));
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(scx, scy, coreR, 0, Math.PI * 2);
+      ctx.fill();
+    } catch (e) {}
+
+    // Outer bold core ring
+    ctx.beginPath();
+    ctx.arc(scx, scy, coreR, 0, Math.PI * 2);
+    ctx.strokeStyle = hexA(P.accent, 0.65);
+    ctx.lineWidth = 2 * z;
+    ctx.stroke();
+
+    // Inner concentric ring
+    ctx.beginPath();
+    ctx.arc(scx, scy, (CENTER_R - 12) * z, 0, Math.PI * 2);
+    ctx.strokeStyle = hexA(P.accent, 0.25);
+    ctx.lineWidth = 1 * z;
+    ctx.stroke();
+
+    // Core tick marks
+    for (let k = 0; k < 12; k++) {
+      const ka = (k * Math.PI) / 6;
+      const t1 = (CENTER_R - 6) * z, t2 = (CENTER_R + 3) * z;
+      ctx.beginPath();
+      ctx.moveTo(scx + t1 * Math.cos(ka), scy + t1 * Math.sin(ka));
+      ctx.lineTo(scx + t2 * Math.cos(ka), scy + t2 * Math.sin(ka));
+      ctx.strokeStyle = hexA(P.accent, 0.4);
+      ctx.lineWidth = 1.2 * z;
+      ctx.stroke();
+    }
+
+    // Core typography
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 ' + Math.max(8, 9.5 * z) + 'px "Segoe UI", sans-serif';
+    ctx.fillStyle = P.accent;
+    ctx.fillText('WEAVE ARCHIVE', scx, scy - 7 * z);
+
+    ctx.font = Math.max(7.5, 8.5 * z) + 'px Consolas, monospace';
+    ctx.fillStyle = P.ink;
+    ctx.fillText('◇ ' + Math.floor(s.research) + ' RES', scx, scy + 8 * z);
+
+    // 6. Filaments from Core to Tier 1 root nodes
+    for (const id in pos) {
+      const p = pos[id], n = p.n;
+      if (n.tier === 1 && (!n.req || n.req.length === 0)) {
+        const dom = p.domain || DOMAINS[n.branch] || DOMAINS.core;
+        const nx = tx(p.x), ny = ty(p.y);
+        const dx = nx - scx, dy = ny - scy;
+        const len = Math.hypot(dx, dy) || 1;
+        const startX = scx + coreR * (dx / len);
+        const startY = scy + coreR * (dy / len);
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(nx, ny);
+        if (n.owned) {
+          ctx.strokeStyle = hexA(dom.color, 0.6);
+          ctx.lineWidth = 1.6 * z;
+        } else if (n.available) {
+          ctx.strokeStyle = hexA(dom.color, 0.35);
+          ctx.lineWidth = 1.2 * z;
+          ctx.setLineDash([3 * z, 4 * z]);
+        } else {
+          ctx.strokeStyle = hexA(P.lineBright, 0.35);
+          ctx.lineWidth = 0.9 * z;
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // 7. Constellation edges between prerequisite nodes
     for (const e of tree.edges) {
       const a = pos[e[0]], b = pos[e[1]];
       if (!a || !b) continue;
+      const dom = b.domain || DOMAINS[b.branch] || DOMAINS.core;
       const isLit   = a.n.owned && b.n.owned;
       const isNext  = a.n.owned && !b.n.owned && b.n.available;
       const focused = focusId && (e[0] === focusId || e[1] === focusId);
-      if (focused) { ctx.strokeStyle = P.accent; ctx.lineWidth = 2 * z; ctx.setLineDash([]); }
-      else if (isLit)  { ctx.strokeStyle = hexA(P.accent, 0.5); ctx.lineWidth = 1.5 * z; ctx.setLineDash([]); }
-      else if (isNext) { ctx.strokeStyle = hexA(P.accent, 0.28); ctx.lineWidth = 1.2 * z; ctx.setLineDash([3 * z, 4 * z]); }
-      else { ctx.strokeStyle = P.line; ctx.lineWidth = 1 * z; ctx.setLineDash([]); }
-      const ax  = tx(a.x),      ay  = ty(a.y + NODE_H / 2 + 1);
-      const bx2 = tx(b.x),      by2 = ty(b.y - NODE_H / 2 - 1);
-      const midY = (ay + by2) / 2;
+
+      const ax = tx(a.x), ay = ty(a.y);
+      const bx = tx(b.x), by = ty(b.y);
+
       ctx.beginPath();
-      ctx.moveTo(ax, ay); ctx.lineTo(ax, midY); ctx.lineTo(bx2, midY); ctx.lineTo(bx2, by2);
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+
+      if (focused) {
+        ctx.strokeStyle = dom.color;
+        ctx.lineWidth = 2.4 * z;
+        ctx.setLineDash([]);
+      } else if (isLit) {
+        ctx.strokeStyle = hexA(dom.color, 0.65);
+        ctx.lineWidth = 1.6 * z;
+        ctx.setLineDash([]);
+      } else if (isNext) {
+        ctx.strokeStyle = hexA(dom.color, 0.4);
+        ctx.lineWidth = 1.3 * z;
+        ctx.setLineDash([4 * z, 4 * z]);
+      } else {
+        ctx.strokeStyle = hexA(P.lineBright, 0.35);
+        ctx.lineWidth = 0.9 * z;
+        ctx.setLineDash([]);
+      }
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // nodes — clean cards, clear state language, readable labels
     const hits = [];
     const selId = SW.ui.techView.selected;
+
+    // 8. Doctrines (Inner orbit around the Core)
+    for (const dId in docPos) {
+      const dp = docPos[dId], d = dp.d;
+      if (!d.visible) continue;
+      const dom = dp.domain || DOMAINS.logistics;
+      const dsx = tx(dp.x), dsy = ty(dp.y);
+      const isSel = selId === dId;
+      const isHov = _hoverId === dId;
+      const dRad = 8 * z;
+
+      ctx.beginPath();
+      ctx.moveTo(dsx, dsy - dRad);
+      ctx.lineTo(dsx + dRad, dsy);
+      ctx.lineTo(dsx, dsy + dRad);
+      ctx.lineTo(dsx - dRad, dsy);
+      ctx.closePath();
+
+      if (d.owned) {
+        ctx.fillStyle = dom.color;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5 * z;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(10,12,15,0.88)';
+        ctx.fill();
+        ctx.strokeStyle = (isSel || isHov) ? dom.color : d.available ? hexA(dom.color, 0.5) : P.lineBright;
+        ctx.lineWidth = (isSel || isHov) ? 2 * z : 1.2 * z;
+        ctx.stroke();
+      }
+
+      ctx.font = '600 ' + Math.max(7.5, 8.5 * z) + 'px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = d.owned ? dom.color : P.inkDim;
+      ctx.fillText(d.name.replace('Doctrine: ', ''), dsx, dsy + 14 * z);
+
+      hits.push({ x: dsx, y: dsy, rw: Math.max(30 * z, 36), rh: Math.max(16 * z, 18), id: dId });
+    }
+
+    // 9. Research Nodes — Tier Visual Hierarchy & Semantic Celestial Colors
     for (const id in pos) {
       const p = pos[id], n = p.n;
       if (!n.visible) continue;
+      const dom = p.domain || DOMAINS[n.branch] || DOMAINS.core;
       const sel = id === selId;
       const hov = id === _hoverId;
-      const dim = focusId && !connected[id];   // fade nodes unrelated to the focus
-      const rx = tx(p.x - NODE_W / 2), ry = ty(p.y - NODE_H / 2);
-      const rw = NODE_W * z,            rh = NODE_H * z,   rr = 4 * z;
-      ctx.globalAlpha = dim ? 0.4 : 1;
+      const dim = focusId && !connected[id];
+      const sx = tx(p.x), sy = ty(p.y);
+      const tier = n.tier || 1;
 
-      // fill: owned = accent wash, available = panel, locked = void
-      ctx.fillStyle = n.owned     ? P.accentDim :
-                      n.available ? 'rgba(10,12,15,0.92)' :
-                                    'rgba(10,12,15,0.55)';
-      roundRect(ctx, rx, ry, rw, rh, rr); ctx.fill();
+      ctx.globalAlpha = dim ? 0.58 : 1.0;
 
-      // stroke: matches our button/card borders
-      ctx.lineWidth = (sel || hov) ? 2 : n.owned ? 1.5 : 1;
-      ctx.strokeStyle = (sel || hov) ? P.accent :
-                        n.owned      ? hexA(P.accent, 0.5) :
-                        n.available  ? (n.affordable ? hexA(P.accent, 0.4) : P.lineBright) :
-                                       P.line;
-      roundRect(ctx, rx, ry, rw, rh, rr); ctx.stroke();
+      // Tier-scaled geometry
+      // Tier 1: Foundation (4-point diamond star)
+      // Tier 2: Expansion (6-point astrolabe star with satellite ring)
+      // Tier 3: Ascendance (8-point radiant astrolabe star with corner reticle)
+      // Tier 4: Mastery (12-point radiant nova capstone with framing reticle)
+      const baseR = tier === 4 ? (n.owned ? 16 : n.available ? 13 : 10) :
+                    tier === 3 ? (n.owned ? 14 : n.available ? 11.5 : 9) :
+                    tier === 2 ? (n.owned ? 12 : n.available ? 10 : 8) :
+                                 (n.owned ? 10.5 : n.available ? 8.5 : 7);
+      const starR = baseR * z;
+      const innerR = (n.owned ? 3.8 : n.available ? 2.8 : 2.0) * z;
 
-      // a small left status pip (filled = owned, ring = available, faint = locked)
-      const pipX = tx(p.x - NODE_W / 2) + 8 * z, pipY = ty(p.y), pipR = 3 * z;
-      ctx.beginPath(); ctx.arc(pipX, pipY, pipR, 0, Math.PI * 2);
-      if (n.owned) { ctx.fillStyle = P.accent; ctx.fill(); }
-      else if (n.available && n.affordable) { ctx.strokeStyle = P.accent; ctx.lineWidth = 1.4 * z; ctx.stroke(); }
-      else if (n.available) { ctx.strokeStyle = P.inkDim; ctx.lineWidth = 1.2 * z; ctx.stroke(); }
-      else { ctx.fillStyle = P.inkFaint; ctx.fill(); }
+      // Selection / Hover Reticle & Ambient Glow
+      if (sel || hov) {
+        try {
+          const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, (starR + 15) * z);
+          halo.addColorStop(0, hexA(dom.color, 0.3));
+          halo.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(sx, sy, (starR + 15) * z, 0, Math.PI * 2);
+          ctx.fill();
+        } catch (e) {}
 
-      // label — bigger, readable, ink/dim by state
-      const fs = Math.max(8.5, 11 * z);
-      ctx.font = (n.owned ? '600 ' : '') + fs + 'px "Segoe UI", sans-serif';
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = n.owned ? P.ink : n.available ? P.ink : P.inkDim;
-      const maxChars = Math.max(8, Math.floor(rw / (fs * 0.6)) - 3);
-      const label = n.name.length > maxChars ? n.name.slice(0, maxChars - 1) + '…' : n.name;
-      ctx.fillText(label, pipX + 7 * z, ty(p.y));
+        const bRad = (starR + 8) * z;
+        ctx.beginPath();
+        ctx.arc(sx, sy, bRad, 0, Math.PI * 2);
+        ctx.strokeStyle = dom.color;
+        ctx.lineWidth = 1.4 * z;
+        ctx.stroke();
 
-      // owned check / cost badge, right-aligned
-      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      if (n.owned) {
-        ctx.font = Math.max(8, 9 * z) + 'px "Segoe UI", sans-serif';
-        ctx.fillStyle = P.accent;
-        ctx.fillText('✓', tx(p.x + NODE_W / 2) - 7 * z, ty(p.y));
-      } else if (n.available) {
-        ctx.font = Math.max(7.5, 9 * z) + 'px Consolas, monospace';
-        ctx.fillStyle = n.affordable ? P.accent : P.inkDim;
-        ctx.fillText(n.cost + '◇', tx(p.x + NODE_W / 2) - 7 * z, ty(p.y));
+        const tLen = 4 * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - bRad - tLen, sy); ctx.lineTo(sx - bRad + 2 * z, sy);
+        ctx.moveTo(sx + bRad - 2 * z, sy); ctx.lineTo(sx + bRad + tLen, sy);
+        ctx.moveTo(sx, sy - bRad - tLen); ctx.lineTo(sx, sy - bRad + 2 * z);
+        ctx.moveTo(sx, sy + bRad - 2 * z); ctx.lineTo(sx, sy + bRad + tLen);
+        ctx.strokeStyle = dom.color;
+        ctx.lineWidth = 1.6 * z;
+        ctx.stroke();
       }
-      ctx.globalAlpha = 1;
 
-      hits.push({ x: tx(p.x), y: ty(p.y), rw: rw / 2, rh: rh / 2, id: id });
+      // Color scheme for spikes and core
+      const spikeColor = n.owned ? dom.color :
+                         (n.available && n.affordable) ? dom.color :
+                         n.available ? hexA(dom.color, 0.55) :
+                         hexA(P.inkFaint, 0.85);
+
+      ctx.strokeStyle = spikeColor;
+      ctx.lineWidth = (n.owned ? 2.2 : n.available ? 1.6 : 1.0) * z;
+
+      // Draw starburst spikes according to Tier:
+      if (tier === 1) {
+        // Tier 1: 4 cardinal spikes
+        ctx.beginPath();
+        ctx.moveTo(sx - starR, sy); ctx.lineTo(sx + starR, sy);
+        ctx.moveTo(sx, sy - starR); ctx.lineTo(sx, sy + starR);
+        ctx.stroke();
+      } else if (tier === 2) {
+        // Tier 2: 4 cardinal spikes + 4 diagonal rays + satellite orbit ring
+        ctx.beginPath();
+        ctx.moveTo(sx - starR, sy); ctx.lineTo(sx + starR, sy);
+        ctx.moveTo(sx, sy - starR); ctx.lineTo(sx, sy + starR);
+        ctx.stroke();
+
+        const diagR = starR * 0.55;
+        ctx.lineWidth = (n.owned ? 1.4 : 1.0) * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - diagR, sy - diagR); ctx.lineTo(sx + diagR, sy + diagR);
+        ctx.moveTo(sx - diagR, sy + diagR); ctx.lineTo(sx + diagR, sy - diagR);
+        ctx.stroke();
+
+        // Inner orbit ring
+        ctx.beginPath();
+        ctx.arc(sx, sy, innerR + 3.2 * z, 0, Math.PI * 2);
+        ctx.strokeStyle = hexA(spikeColor, 0.45);
+        ctx.lineWidth = 0.9 * z;
+        ctx.stroke();
+      } else if (tier === 3) {
+        // Tier 3: 8-pointed radiant astrolabe star + corner reticle brackets
+        ctx.beginPath();
+        ctx.moveTo(sx - starR, sy); ctx.lineTo(sx + starR, sy);
+        ctx.moveTo(sx, sy - starR); ctx.lineTo(sx, sy + starR);
+        ctx.stroke();
+
+        const diagR = starR * 0.68;
+        ctx.lineWidth = (n.owned ? 1.6 : 1.1) * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - diagR, sy - diagR); ctx.lineTo(sx + diagR, sy + diagR);
+        ctx.moveTo(sx - diagR, sy + diagR); ctx.lineTo(sx + diagR, sy - diagR);
+        ctx.stroke();
+
+        // Corner bracket ticks
+        const br = starR * 0.72, bLen = 2.5 * z;
+        ctx.strokeStyle = hexA(spikeColor, 0.5);
+        ctx.lineWidth = 1 * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - br, sy - br + bLen); ctx.lineTo(sx - br, sy - br); ctx.lineTo(sx - br + bLen, sy - br);
+        ctx.moveTo(sx + br, sy - br + bLen); ctx.lineTo(sx + br, sy - br); ctx.lineTo(sx + br - bLen, sy - br);
+        ctx.moveTo(sx - br, sy + br - bLen); ctx.lineTo(sx - br, sy + br); ctx.lineTo(sx - br + bLen, sy + br);
+        ctx.moveTo(sx + br, sy + br - bLen); ctx.lineTo(sx + br, sy + br); ctx.lineTo(sx + br - bLen, sy + br);
+        ctx.stroke();
+      } else {
+        // Tier 4: Pinnacle 12-pointed radiant nova capstone
+        ctx.beginPath();
+        ctx.moveTo(sx - starR, sy); ctx.lineTo(sx + starR, sy);
+        ctx.moveTo(sx, sy - starR); ctx.lineTo(sx, sy + starR);
+        ctx.stroke();
+
+        const diagR = starR * 0.75;
+        ctx.lineWidth = (n.owned ? 1.8 : 1.2) * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - diagR, sy - diagR); ctx.lineTo(sx + diagR, sy + diagR);
+        ctx.moveTo(sx - diagR, sy + diagR); ctx.lineTo(sx + diagR, sy - diagR);
+        ctx.stroke();
+
+        // Intermediate minor rays (12 rays total)
+        const minR = starR * 0.45;
+        const cos30 = Math.cos(Math.PI / 6) * minR, sin30 = Math.sin(Math.PI / 6) * minR;
+        ctx.lineWidth = 0.9 * z;
+        ctx.beginPath();
+        ctx.moveTo(sx - cos30, sy - sin30); ctx.lineTo(sx + cos30, sy + sin30);
+        ctx.moveTo(sx + cos30, sy - sin30); ctx.lineTo(sx - cos30, sy + sin30);
+        ctx.moveTo(sx - sin30, sy - cos30); ctx.lineTo(sx + sin30, sy + sin30);
+        ctx.moveTo(sx + sin30, sy - cos30); ctx.lineTo(sx - sin30, sy + sin30);
+        ctx.stroke();
+
+        // Outer halo ring
+        ctx.beginPath();
+        ctx.arc(sx, sy, starR * 0.88, 0, Math.PI * 2);
+        ctx.strokeStyle = hexA(dom.color, n.owned ? 0.6 : 0.3);
+        ctx.lineWidth = 1 * z;
+        ctx.setLineDash([2 * z, 3 * z]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Center Core Diamond
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - innerR);
+      ctx.lineTo(sx + innerR, sy);
+      ctx.lineTo(sx, sy + innerR);
+      ctx.lineTo(sx - innerR, sy);
+      ctx.closePath();
+
+      if (n.owned) {
+        ctx.fillStyle = dom.color;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2 * z;
+        ctx.stroke();
+      } else if (n.available) {
+        ctx.fillStyle = n.affordable ? dom.color : 'rgba(10,12,15,0.95)';
+        ctx.fill();
+        ctx.strokeStyle = n.affordable ? '#ffffff' : dom.color;
+        ctx.lineWidth = 1 * z;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(10,12,15,0.95)';
+        ctx.fill();
+        ctx.strokeStyle = P.inkFaint;
+        ctx.lineWidth = 0.9 * z;
+        ctx.stroke();
+      }
+
+      // Celestial Typography: Node Name and Status / Cost
+      const cosA = Math.cos(p.angle);
+      const sinA = Math.sin(p.angle);
+      let lx = sx, ly = sy;
+      let align = 'center';
+      let baseline = 'middle';
+
+      // Single nodes right at the top/bottom vertical meridian float above/below
+      if (Math.abs(cosA) < 0.08) {
+        align = 'center';
+        lx = sx;
+        ly = sy + (sinA < 0 ? -(starR + 14 * z) : (starR + 14 * z));
+      } else if (cosA >= 0.08) {
+        // East hemisphere -> text extends to the right
+        align = 'left';
+        lx = sx + starR + 8 * z;
+        ly = sy;
+      } else {
+        // West hemisphere -> text extends to the left
+        align = 'right';
+        lx = sx - starR - 8 * z;
+        ly = sy;
+      }
+
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+
+      // Tech Name
+      const fsName = Math.max(9.5, 11.5 * z);
+      ctx.font = (n.owned ? '700 ' : '600 ') + fsName + 'px "Segoe UI", sans-serif';
+      ctx.fillStyle = n.owned ? dom.color :
+                      (n.available && n.affordable) ? '#f0f6fc' :
+                      n.available ? P.ink :
+                      P.inkDim;
+      ctx.fillText(n.name, lx, ly - 5 * z);
+
+      // Status / Cost
+      const fsSub = Math.max(8.0, 9.0 * z);
+      ctx.font = fsSub + 'px Consolas, monospace';
+      if (n.owned) {
+        ctx.fillStyle = hexA(dom.color, 0.85);
+        ctx.fillText('✓ OWNED', lx, ly + 6 * z);
+      } else if (n.available) {
+        ctx.fillStyle = n.affordable ? dom.color : P.inkDim;
+        ctx.fillText(n.cost + ' ◇', lx, ly + 6 * z);
+      } else {
+        ctx.fillStyle = P.inkFaint;
+        ctx.fillText('LOCKED', lx, ly + 6 * z);
+      }
+
+      ctx.globalAlpha = 1.0;
+
+      // Hit area: responsive hit coverage for both star and label
+      let hitCx = sx;
+      let hitRw = Math.max(38 * z, 48);
+      if (cosA >= 0.08) {
+        hitCx = sx + 18 * z;
+        hitRw = Math.max(44 * z, 56);
+      } else if (cosA < -0.08) {
+        hitCx = sx - 18 * z;
+        hitRw = Math.max(44 * z, 56);
+      }
+      const hitRh = Math.max(20 * z, 24);
+      hits.push({ x: hitCx, y: sy, rw: hitRw, rh: hitRh, id: id });
     }
-    techHits = hits;
 
+    techHits = hits;
     return layout;
   }
 

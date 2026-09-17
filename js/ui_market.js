@@ -29,6 +29,10 @@ SW.uiMarket = (function () {
     'Loomkeeper pamphlet: WEFT AND BE WOVEN',
     'Salvage law reminder: if it sings, it is not salvage',
     'A drifter swears the black hole blinked. Drinks were involved',
+    '[SUB-SPACE RADIO / 142.8 MHz] Kepler Control: "Heavy hauler inbound from Sol with bulk alloy. Grid holding."',
+    '[NAV TELEMETRY] Sundered Spur beacon: "Gravitational shear stabilizing coreward. Severed Gulf remains dark."',
+    '[GUILD DISPATCH] "All haulers: high bounty on agricultural shipments to frontier habitats."',
+    '[INTERCEPT] Severed Syndicate: "The Weft intelligence is active again. Do not engage their escorts."'
   ];
   function tickerMovers(s) {
     const out = [];
